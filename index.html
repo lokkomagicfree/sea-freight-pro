@@ -3874,16 +3874,16 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
-// ── ONLINE MODE: Firebase Auth + Firestore ──
+// ── ONLINE MODE ──
 </script>
 
-<!-- ═══ LOGIN OVERLAY ═══ -->
+<!-- LOGIN OVERLAY -->
 <div id="login_overlay" style="position:fixed;inset:0;z-index:9000;background:rgba(6,9,15,.97);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center">
   <div style="text-align:center;max-width:340px;width:90%">
     <img src="LOGO.jpg" style="width:110px;height:110px;border-radius:24px;object-fit:cover;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,180,216,.3)">
     <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);margin-bottom:6px">Sea Freight Pro</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:32px">Designed by LOKKO</div>
-    <button id="google_signin_btn" onclick="signInWithGoogle()"
+    <button onclick="signInWithGoogle()"
       style="display:flex;align-items:center;gap:12px;background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .15s"
       onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
       <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2c-7.6 0-14.2 4.1-17.7 10.3z" transform="translate(0,5)"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-1.9 14.5-5.2l-6.7-5.5C29.9 36.9 27.1 38 24 38c-6.1 0-11.2-4-13.1-9.5l-7 5.4C7.6 41.9 15.2 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.5 2.4-1.9 4.5-3.8 6l6.7 5.5C42.3 36.6 45 30.8 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
@@ -3897,7 +3897,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, deleteDoc }
+import { getFirestore, doc, setDoc, getDoc }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -3913,44 +3913,58 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
-
 let _currentUser = null;
-let _unsubscribers = [];
 
 window.signInWithGoogle = async function(){
-  const statusEl = document.getElementById('login_status');
-  if(statusEl) statusEl.textContent = 'กำลัง Sign in...';
-  try{
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  } catch(e){
-    if(statusEl) statusEl.textContent = '❌ ' + e.message;
-    console.error(e);
-  }
+  const s = document.getElementById('login_status');
+  if(s) s.textContent='กำลัง Sign in...';
+  try{ await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch(e){ if(s) s.textContent='❌ '+e.message; }
 };
 
 window.signOutUser = async function(){
   if(!confirm('Sign out?')) return;
-  _unsubscribers.forEach(u=>u()); _unsubscribers=[];
   await signOut(auth);
   toast('👋 Signed out');
 };
 
+function uid(){ return _currentUser?.uid; }
+
+async function fbSet(path, data){
+  if(!uid()) return;
+  try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
+  catch(e){ console.warn('fbSet',e); }
+}
+
+async function fbGet(path){
+  if(!uid()) return null;
+  try{ const s=await getDoc(doc(db,'users',uid(),...path.split('/'))); return s.exists()?s.data():null; }
+  catch(e){ return null; }
+}
+
+function showSyncBadge(ok){
+  const el=document.getElementById('fb_sync_badge'); if(!el) return;
+  el.style.display=''; el.textContent=ok?'☁ Synced':'⚠ Sync error';
+  el.style.color=ok?'var(--green)':'var(--red)';
+  el.style.background=ok?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',3000);
+}
+
 onAuthStateChanged(auth, async user=>{
-  const overlay = document.getElementById('login_overlay');
-  const badge   = document.getElementById('fb_user_badge');
-  const avatar  = document.getElementById('fb_avatar');
-  const nameEl  = document.getElementById('fb_name');
+  const overlay=document.getElementById('login_overlay');
+  const badge=document.getElementById('fb_user_badge');
+  const avatar=document.getElementById('fb_avatar');
+  const nameEl=document.getElementById('fb_name');
   if(user){
-    _currentUser = user;
+    _currentUser=user;
     if(overlay) overlay.style.display='none';
     if(badge)   badge.style.display='flex';
-    if(avatar)  avatar.src = user.photoURL||'';
-    if(nameEl)  nameEl.textContent = user.displayName||user.email;
+    if(avatar)  avatar.src=user.photoURL||'';
+    if(nameEl)  nameEl.textContent=user.displayName||user.email;
     toast('✅ '+(user.displayName||user.email));
-    await initFirestoreSync(user.uid);
+    await initFirestoreSync();
   } else {
-    _currentUser = null;
+    _currentUser=null;
     if(overlay) overlay.style.display='flex';
     if(badge)   badge.style.display='none';
     window.storageLoad?.();
@@ -3960,51 +3974,23 @@ onAuthStateChanged(auth, async user=>{
   }
 });
 
-function uid(){ return _currentUser?.uid; }
-
-async function fbSet(path, data){
-  if(!uid()) return;
-  try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
-  catch(e){ console.warn('fbSet error',e); }
-}
-
-async function fbGet(path){
-  if(!uid()) return null;
-  try{
-    const snap = await getDoc(doc(db,'users',uid(),...path.split('/')));
-    return snap.exists() ? snap.data() : null;
-  }catch(e){ return null; }
-}
-
-function showSyncBadge(ok){
-  const el = document.getElementById('fb_sync_badge'); if(!el) return;
-  el.style.display='';
-  el.textContent = ok ? '☁ Synced' : '⚠ Sync error';
-  el.style.color  = ok ? 'var(--green)' : 'var(--red)';
-  el.style.background = ok ? 'rgba(34,197,94,.1)' : 'rgba(244,63,94,.1)';
-  clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display='none'; },3000);
-}
-
-async function initFirestoreSync(userId){
-  _unsubscribers.forEach(u=>u()); _unsubscribers=[];
-
-  const [jobsSnap,todosSnap,settSnap,srSnap,srReportsSnap,quotSnap] = await Promise.all([
+async function initFirestoreSync(){
+  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap] = await Promise.all([
     fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
     fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
   ]);
-
-  if(jobsSnap?.jobs)           window.savedJobs = jobsSnap.jobs;
-  if(todosSnap?.todos)         window.todos = todosSnap.todos;
-  if(quotSnap?.quotations)     window.savedQuotations = quotSnap.quotations;
+  if(jobsSnap?.jobs)       window.savedJobs=jobsSnap.jobs;
+  if(todosSnap?.todos)     window.todos=todosSnap.todos;
+  if(quotSnap?.quotations) window.savedQuotations=quotSnap.quotations;
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate=settSnap.commRate;
     if(settSnap.exRate!==undefined)   window.exRate=settSnap.exRate;
-    const ci=document.getElementById('comm_rate_inp'), ei=document.getElementById('exrate_inp');
+    const ci=document.getElementById('comm_rate_inp'),ei=document.getElementById('exrate_inp');
     if(ci) ci.value=(window.commRate*100).toFixed(1);
     if(ei) ei.value=(window.exRate).toFixed(2);
   }
-  if(srSnap)          try{ localStorage.setItem('seafreight_salereport_v1',JSON.stringify(srSnap)); }catch(e){}
-  if(srReportsSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1',JSON.stringify(srReportsSnap.reports)); }catch(e){}
+  if(srSnap)         try{localStorage.setItem('seafreight_salereport_v1',JSON.stringify(srSnap));}catch(e){}
+  if(srRepSnap?.reports) try{localStorage.setItem('seafreight_sr_reports_v1',JSON.stringify(srRepSnap.reports));}catch(e){}
 
   window.storageLoad?.();
   window.initCtnRows?.();
@@ -4015,10 +4001,9 @@ async function initFirestoreSync(userId){
   window.updateRateCacheBadge?.();
   showSyncBadge(true);
 
-  // Patch storageSave
-  const origStorageSave = window.storageSave;
+  const origSave = window.storageSave;
   window.storageSave = async function(){
-    const r = origStorageSave?.();
+    const r=origSave?.();
     if(!uid()) return r;
     try{
       await Promise.all([
@@ -4032,7 +4017,6 @@ async function initFirestoreSync(userId){
     return r;
   };
 
-  // Patch srSave
   const origSrSave = window.srSave;
   window.srSave = async function(data){
     origSrSave?.(data);
@@ -4040,10 +4024,9 @@ async function initFirestoreSync(userId){
     try{ await fbSet('data/saleReport',data); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
   };
 
-  // Patch srReportsSave
-  const origSrReportsSave = window.srReportsSave;
+  const origSrRepSave = window.srReportsSave;
   window.srReportsSave = async function(list){
-    origSrReportsSave?.(list);
+    origSrRepSave?.(list);
     if(!uid()) return;
     try{ await fbSet('data/srReports',{reports:list,updatedAt:new Date().toISOString()}); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
   };
