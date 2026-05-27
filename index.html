@@ -439,6 +439,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
             <span>40HC: <strong style="color:var(--cyan)" id="sel_40hc">—</strong></span>
           </div>
         </div>
+
+        <!-- Lat Krabang ARB toggle -->
+        <div style="margin-top:10px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);border-radius:7px;padding:10px 12px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="lkb_toggle" onchange="applyLKBSurcharge()"
+              style="width:15px;height:15px;accent-color:var(--yellow);cursor:pointer">
+            <span style="font-size:12px;font-weight:600;color:var(--yellow)">📍 Lat Krabang (LKB)</span>
+            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">— เพิ่ม ARB surcharge ถ้า POL ไม่ใช่ BKK/LKB</span>
+          </label>
+          <div id="lkb_arb_info" style="display:none;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--yellow)"></div>
+        </div>
       </div>
 
       <!-- Charges table -->
@@ -1480,6 +1491,9 @@ function recalc(){
     const rows=document.querySelectorAll('#charge_body tr');
     if(rows[i]){rows[i].querySelector('.row-profit').textContent=s||c?'$'+pr.toFixed(2):'—';rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';}
   });
+  // Add ARB surcharge to cost if LKB toggle is on
+  const arbExtra = (window._arbCost20||0) + (window._arbCost4h||0);
+  tc += arbExtra;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
@@ -1535,6 +1549,118 @@ function applyRate(idx){
   recalc();toast('✅ Cost applied: '+r.carrier+' $'+r.gp20+'/20GP');
 }
 
+// ── Lat Krabang ARB Surcharge ─────────────────────────────
+// ARB costs per carrier for USA trade (when POL ≠ BKK/LKB)
+const ARB_USA = {
+  'CMA': {gp20:90, hc40:120},
+  'CMACGM': {gp20:90, hc40:120},
+  'YML': {gp20:0, hc40:0},   // Free
+  'YANG MING': {gp20:0, hc40:0},
+  'OOCL': {gp20:0, hc40:0},  // Free
+  'ONE': {gp20:80, hc40:100},
+  'ZIM': {gp20:80, hc40:100},
+  'WHL': {gp20:0, hc40:0},   // Free
+  'WAN HAI': {gp20:0, hc40:0},
+  'EMC': {gp20:90, hc40:100},
+  'EVERGREEN': {gp20:90, hc40:100},
+};
+// Default ARB for other trades
+const ARB_OTHER = {gp20:100, hc40:120};
+
+// BKK/LKB POL keywords
+const BKK_POLS = ['bangkok','bkk','lat krabang','latkrabang','lkb','laem chabang','lcb'];
+
+function polIsBKKorLKB(pol){
+  if(!pol) return false;
+  const p = pol.toLowerCase();
+  return BKK_POLS.some(k => p.includes(k));
+}
+
+function isUSATrade(pod){
+  if(!pod) return false;
+  const p = pod.toLowerCase();
+  return p.includes('us') || p.includes('usa') || p.includes('united states') ||
+    p.includes('los angeles') || p.includes('long beach') || p.includes('new york') ||
+    p.includes('houston') || p.includes('seattle') || p.includes('savannah') ||
+    p.includes('charleston') || p.includes('norfolk') || p.includes('oakland') ||
+    p.includes('chicago') || p.includes('miami') || p.includes('boston');
+}
+
+function getARBRate(carrier, pod){
+  const c = (carrier||'').toUpperCase();
+  const usa = isUSATrade(pod);
+  if(usa){
+    // Find matching carrier
+    for(const [key, val] of Object.entries(ARB_USA)){
+      if(c.includes(key)) return {rate: val, trade:'USA', label: val.gp20===0 ? 'FREE (USA trade)' : null};
+    }
+    // Unknown carrier in USA trade — use default ARB
+    return {rate: ARB_OTHER, trade:'USA', label: null};
+  } else {
+    // Non-USA trade
+    return {rate: ARB_OTHER, trade:'OTHER', label: null};
+  }
+}
+
+function applyLKBSurcharge(){
+  const checked = g('lkb_toggle')?.checked;
+  const infoEl  = g('lkb_arb_info');
+  const pol     = (window._selPol || v('r_pol') || '').trim();
+  const carrier = (window._selCarrier || v('s_carrier') || '').trim();
+  const pod     = (window._selPod || v('r_pod') || '').trim();
+
+  // Reset stored ARB
+  window._arbCost20 = 0;
+  window._arbCost40 = 0;
+  window._arbCost4h = 0;
+
+  if(!checked){
+    if(infoEl){ infoEl.style.display='none'; infoEl.textContent=''; }
+    recalc(); return;
+  }
+
+  // Check if POL is already BKK/LKB
+  if(polIsBKKorLKB(pol)){
+    if(infoEl){
+      infoEl.style.display='';
+      infoEl.innerHTML='<span style="color:var(--green)">✅ POL เป็น BKK/LKB อยู่แล้ว — ไม่มี ARB เพิ่ม</span>';
+    }
+    recalc(); return;
+  }
+
+  // Get ARB rate
+  const {rate, trade, label} = getARBRate(carrier, pod);
+  const qty20 = parseFloat(v('s_q20'))||1;
+  const qty40 = parseFloat(v('s_q40'))||0;
+  const qty4h = parseFloat(v('s_q40hc'))||0;
+  // ARB uses 40HC rate for both 40GP and 40HC
+  const arb20 = rate.gp20 * qty20;
+  const arb4h = rate.hc40 * (qty40 + qty4h);
+
+  window._arbCost20 = arb20;
+  window._arbCost4h = arb4h;
+
+  if(infoEl){
+    infoEl.style.display='';
+    if(rate.gp20 === 0){
+      infoEl.innerHTML = `✅ ${carrier.toUpperCase()} — ARB <span style="color:var(--green)">FREE</span> (${trade} trade)`;
+    } else {
+      const total = arb20 + arb4h;
+      infoEl.innerHTML = `⚠️ ARB (${trade} trade) +$${rate.gp20}/20GP +$${rate.hc40}/40HC<br>
+        <span style="color:var(--yellow)">Total ARB: +$${total.toFixed(0)} USD</span>`;
+    }
+  }
+  recalc();
+}
+
+// Override applyRate to also reset LKB toggle awareness
+const _origApplyRate = applyRate;
+function applyRate(idx){
+  _origApplyRate(idx);
+  // Re-run LKB check if toggle is on
+  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+}
+
 // ── Alert system ───────────────────────────────────────────
 function checkAlerts(){
   const today=new Date().toISOString().slice(0,10);
@@ -1584,7 +1710,9 @@ function saveShipment(){
     bltype:v2('s_bltype'),sc:v2('s_sc'),ams:v2('s_ams'),commodity:v2('s_commodity'),
     hscode:v2('s_hscode'),cyrtn:v2('s_cyrtn'),connote:v2('s_connote'),
     pol:window._selPol||'',pod:window._selPod||'',
-    selCarrier:window._selCarrier||'',selLabel:g('sel_label')?g('sel_label').textContent:''
+    selCarrier:window._selCarrier||'',selLabel:g('sel_label')?g('sel_label').textContent:'',
+    lkb: g('lkb_toggle')?.checked || false,
+    arbCost: (window._arbCost20||0) + (window._arbCost4h||0),
   };
   if(window._editIdx!=null){
     jobData.statusHistory=savedJobs[window._editIdx].statusHistory||[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
@@ -1642,6 +1770,9 @@ function duplicateShipment(idx){
 function clearForm(){
   ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_voyage','s_remarks'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
+  const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
+  const lkbInfo=g('lkb_arb_info'); if(lkbInfo){lkbInfo.style.display='none';lkbInfo.textContent='';}
+  window._arbCost20=0; window._arbCost4h=0;
   buildCharges();window._editIdx=null;
   const btn=g('save_btn');if(btn){btn.textContent='💾 Save Shipment';btn.className='btn btn-cyan';btn.style.background='';}
 }
