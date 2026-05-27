@@ -214,7 +214,6 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:11px" id="load_rates_btn">📂 Load Rates</button>
     <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:11px">+ Add File</button>
     <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:11px">⚖ Compare</button>
-    <!-- Firebase User -->
     <div id="fb_user_badge" style="display:none;align-items:center;gap:8px;margin-left:6px">
       <img id="fb_avatar" src="" width="28" height="28" style="border-radius:50%;border:2px solid var(--cyan);object-fit:cover">
       <span id="fb_name" style="font-size:11px;color:var(--text);font-family:var(--mono);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
@@ -364,13 +363,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
               <option value="shipped">🚢 Shipped</option><option value="arrived">📦 Arrived</option>
               <option value="completed">✅ Completed</option>
             </select></div>
-          <div class="inp-group" id="s_qty_card">
-            <label class="inp-lbl">Qty</label>
-            <div style="display:flex;gap:4px">
-              <input type="number" class="inp" id="s_q20" placeholder="20" min="0" style="width:44px;text-align:center">
-              <input type="number" class="inp" id="s_q40" placeholder="40" min="0" style="width:44px;text-align:center">
-              <input type="number" class="inp" id="s_q40hc" placeholder="HC" min="0" style="width:44px;text-align:center">
-            </div>
+          <div class="inp-group full-col" id="s_qty_card">
+            <label class="inp-lbl">Container (QTY & Type)</label>
+            <div id="ctn_rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
+            <button type="button" onclick="addCtnRow()" class="btn btn-ghost" style="font-size:11px;padding:4px 12px;width:100%">+ Add Container Type</button>
+            <div id="ctn_warn" style="display:none;margin-top:6px;font-size:11px;color:var(--red);font-family:var(--mono);background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:6px;padding:6px 10px"></div>
           </div>
           <div class="inp-group full-col"><label class="inp-lbl">Remarks</label><input spellcheck="false" class="inp" id="s_remarks" placeholder="หมายเหตุ…" style="color:var(--text)"></div>
         </div>
@@ -440,15 +437,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
           </div>
         </div>
 
-        <!-- Lat Krabang ARB toggle -->
+        <!-- Origin toggle: LKB / BKK -->
         <div style="margin-top:10px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);border-radius:7px;padding:10px 12px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="lkb_toggle" onchange="applyLKBSurcharge()"
-              style="width:15px;height:15px;accent-color:var(--yellow);cursor:pointer">
-            <span style="font-size:12px;font-weight:600;color:var(--yellow)">📍 Lat Krabang (LKB)</span>
-            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">— เพิ่ม ARB surcharge ถ้า POL ไม่ใช่ BKK/LKB</span>
-          </label>
-          <div id="lkb_arb_info" style="display:none;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--yellow)"></div>
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px;letter-spacing:.06em">FACTORY ORIGIN — POL จะถูกบันทึกตามที่ติ๊ก</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="lkb_toggle" onchange="onOriginToggle('lkb')"
+                style="width:15px;height:15px;accent-color:var(--yellow);cursor:pointer">
+              <span style="font-size:12px;font-weight:600;color:var(--yellow)">📍 Lat Krabang (LKB)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="bkk_toggle" onchange="onOriginToggle('bkk')"
+                style="width:15px;height:15px;accent-color:var(--orange);cursor:pointer">
+              <span style="font-size:12px;font-weight:600;color:var(--orange)">📍 Bangkok (BKK)</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -555,16 +558,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
     <!-- Jobs Table -->
     <div id="saved_tbl_wrap" class="tbl-wrap" style="max-height:510px;overflow-y:auto;overflow-x:auto">
-      <table class="tbl" style="min-width:1000px">
+      <table class="tbl" style="min-width:1200px">
         <thead><tr>
           <th style="width:32px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
           <th>Booking No.</th><th>Ref No.</th><th>Customer</th>
           <th>ETD</th><th>ETA</th><th>Vessel</th>
+          <th>POL</th><th>POD</th><th>Carrier</th>
           <th style="text-align:right;color:var(--green)">Sell</th>
           <th style="text-align:right;color:var(--red)">Cost</th>
           <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
           <th style="text-align:right">Comm USD</th><th style="text-align:right">Comm THB</th>
-          <th>Status</th><th>Remarks</th><th style="text-align:center">Actions</th>
+          <th>Status</th><th style="min-width:160px">Remarks</th><th style="text-align:center">Actions</th>
         </tr></thead>
         <tbody id="saved_body"></tbody>
         <tfoot id="saved_foot"></tfoot>
@@ -937,21 +941,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   </div>
 </div>
 
-<!-- ═══ LOGIN OVERLAY ═══ -->
-<div id="login_overlay" style="position:fixed;inset:0;z-index:9000;background:rgba(6,9,15,.97);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center">
-  <div style="text-align:center;max-width:340px;width:90%">
-    <img src="LOGO.jpg" style="width:110px;height:110px;border-radius:24px;object-fit:cover;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,180,216,.3)">
-    <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);margin-bottom:6px">Sea Freight Pro</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:32px">Designed by LOKKO</div>
-    <button id="google_signin_btn" onclick="signInWithGoogle()"
-      style="display:flex;align-items:center;gap:12px;background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .15s"
-      onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
-      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2c-7.6 0-14.2 4.1-17.7 10.3z" transform="translate(0,5)"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-1.9 14.5-5.2l-6.7-5.5C29.9 36.9 27.1 38 24 38c-6.1 0-11.2-4-13.1-9.5l-7 5.4C7.6 41.9 15.2 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.5 2.4-1.9 4.5-3.8 6l6.7 5.5C42.3 36.6 45 30.8 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
-      Sign in with Google
-    </button>
-    <div id="login_status" style="font-size:11px;color:var(--muted);margin-top:16px"></div>
-  </div>
-</div>
+<!-- OFFLINE MODE: No login required -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -1054,7 +1044,8 @@ function storageLoad(){
     if(rawTodos) todos = JSON.parse(rawTodos);
     const rawRates = localStorage.getItem(RATE_KEY);
     if(rawRates){
-      ALL_RATES = JSON.parse(rawRates);
+      const parsed = JSON.parse(rawRates);
+      ALL_RATES = expandAndFilterThaiPOL(parsed);
       // Rebuild filters after rates loaded
       setTimeout(()=>{
         buildFilters(); applyFilter(); hideLoadRatesPrompt();
@@ -1186,7 +1177,7 @@ function handleDrop(e){e.preventDefault();const f=e.dataTransfer?.files?.[0];if(
 function handleFile(file){
   if(!file) return;
   if(file.name.endsWith('.json')){
-    const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(Array.isArray(d)&&d.length&&d[0].pol!==undefined){ALL_RATES=d;buildFilters();applyFilter();g('upload_panel').style.display='none';hideLoadRatesPrompt();storageSave();toast('✅ Loaded '+d.length.toLocaleString()+' rates (auto-saved)');}else toast('❌ Invalid JSON format');}catch(ex){toast('❌ JSON error: '+ex.message);}};r.readAsText(file);return;
+    const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(Array.isArray(d)&&d.length&&d[0].pol!==undefined){const filtered=expandAndFilterThaiPOL(d);ALL_RATES=filtered;buildFilters();applyFilter();g('upload_panel').style.display='none';hideLoadRatesPrompt();storageSave();toast('✅ Loaded '+filtered.length.toLocaleString()+' Thai POL rates ('+d.length+' total in file)');}else toast('❌ Invalid JSON format');}catch(ex){toast('❌ JSON error: '+ex.message);}};r.readAsText(file);return;
   }
   const r=new FileReader();r.onload=e=>parseFile(e.target.result,file.name);r.readAsArrayBuffer(file);
 }
@@ -1226,14 +1217,14 @@ function parseFile(buffer,filename){
     });
     const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-1);
     const cutStr=cutoff.toISOString().slice(0,10);
-    const kept=newRates.filter(r=>!r.date_to||r.date_to===''||r.date_to>=cutStr);
+    const kept=expandAndFilterThaiPOL(newRates.filter(r=>!r.date_to||r.date_to===''||r.date_to>=cutStr));
     if(kept.length){
       ALL_RATES=ALL_RATES.concat(kept);buildFilters();applyFilter();
       g('upload_panel').style.display='none';hideLoadRatesPrompt();
       const removed=newRates.length-kept.length;
-      toast('✅ Added '+kept.length.toLocaleString()+' routes from '+filename+(removed?' ('+removed+' old removed)':''));
-      storageSave(); // auto-save rates
-    } else toast('❌ No valid rate data found in '+filename);
+      toast('✅ Added '+kept.length.toLocaleString()+' Thai POL routes'+(removed?' ('+removed+' filtered/old removed)':''));
+      storageSave();
+    } else toast('❌ No Thai POL rates found (LCB/BKK/LKB/Songkhla only)');
   }catch(e){toast('❌ '+e.message);console.error(e);}
 }
 
@@ -1473,7 +1464,7 @@ document.addEventListener('click',e=>{
 function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
-  tbody.innerHTML=items.map((name,i)=>`<tr style="border-bottom:1px solid rgba(30,48,80,.3)">
+  tbody.innerHTML=items.map((name,i)=>`<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}">
     <td style="font-size:12px;padding:6px 10px">${name}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
     <td style="padding:4px 6px"><input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px"></td>
@@ -1491,9 +1482,6 @@ function recalc(){
     const rows=document.querySelectorAll('#charge_body tr');
     if(rows[i]){rows[i].querySelector('.row-profit').textContent=s||c?'$'+pr.toFixed(2):'—';rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';}
   });
-  // Add ARB surcharge to cost if LKB toggle is on
-  const arbExtra = (window._arbCost20||0) + (window._arbCost4h||0);
-  tc += arbExtra;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
@@ -1508,11 +1496,154 @@ function recalc(){
   const netEl=g('r_net');if(netEl)netEl.style.color=netProfit>=0?'var(--green)':'var(--red)';
 }
 
+// ── Container Row Manager ──────────────────────────────────
+const CTN_TYPES = ['20GP','40GP','40HC','45HC','20RF','40RF','20OT','40OT','20FR','40FR'];
+
+let _ctnRows = []; // [{type:'20GP', qty:1}]
+
+function initCtnRows(){
+  _ctnRows = [{type:'20GP', qty:1}];
+  renderCtnRows();
+}
+
+function addCtnRow(){
+  // Default to first type not yet used
+  const used = _ctnRows.map(r=>r.type);
+  const next = CTN_TYPES.find(t=>!used.includes(t)) || '20GP';
+  _ctnRows.push({type:next, qty:1});
+  renderCtnRows();
+}
+
+function removeCtnRow(i){
+  if(_ctnRows.length <= 1){ toast('⚠️ ต้องมีอย่างน้อย 1 ประเภทตู้'); return; }
+  _ctnRows.splice(i,1);
+  renderCtnRows();
+}
+
+function renderCtnRows(){
+  const el = document.getElementById('ctn_rows'); if(!el) return;
+  el.innerHTML = _ctnRows.map((r,i)=>`
+    <div style="display:flex;align-items:center;gap:6px">
+      <select data-ci="${i}" data-f="type" onchange="updateCtnRow(this)"
+        style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 6px;color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:700;outline:none"
+        onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'">
+        ${CTN_TYPES.map(t=>`<option value="${t}"${t===r.type?' selected':''}>${t}</option>`).join('')}
+      </select>
+      <div style="display:flex;align-items:center;gap:4px;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:3px 6px">
+        <button type="button" onclick="stepCtn(${i},-1)" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 4px"
+          onmouseover="this.style.color='var(--cyan)'" onmouseout="this.style.color='var(--muted)'">−</button>
+        <input type="number" min="1" max="99" value="${r.qty}" data-ci="${i}" data-f="qty"
+          onchange="updateCtnRow(this)" oninput="updateCtnRow(this)"
+          style="width:40px;text-align:center;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700;outline:none">
+        <button type="button" onclick="stepCtn(${i},1)" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 4px"
+          onmouseover="this.style.color='var(--cyan)'" onmouseout="this.style.color='var(--muted)'">+</button>
+      </div>
+      <button type="button" onclick="removeCtnRow(${i})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:4px"
+        onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'" title="Remove">✕</button>
+    </div>`).join('');
+  syncLegacyQty();
+  checkCtnVsRate();
+}
+
+function updateCtnRow(el){
+  const i = parseInt(el.dataset.ci);
+  const f = el.dataset.f;
+  if(f==='qty') _ctnRows[i].qty = Math.max(1, parseInt(el.value)||1);
+  if(f==='type') _ctnRows[i].type = el.value;
+  syncLegacyQty();
+  checkCtnVsRate();
+  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+}
+
+function stepCtn(i, delta){
+  _ctnRows[i].qty = Math.max(1, (_ctnRows[i].qty||1) + delta);
+  renderCtnRows();
+  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+}
+
+// Sync to legacy s_q20/s_q40/s_q40hc for backward compat
+function syncLegacyQty(){
+  const q20 = _ctnRows.filter(r=>r.type==='20GP').reduce((s,r)=>s+r.qty,0);
+  const q40 = _ctnRows.filter(r=>r.type==='40GP').reduce((s,r)=>s+r.qty,0);
+  const q4h = _ctnRows.filter(r=>['40HC','45HC'].includes(r.type)).reduce((s,r)=>s+r.qty,0);
+  const setV = (id,v)=>{ const e=document.getElementById(id); if(e) e.value=v||0; };
+  setV('s_q20',q20); setV('s_q40',q40); setV('s_q40hc',q4h);
+}
+
+// Check if selected container types exist in the chosen rate
+function checkCtnVsRate(){
+  const warnEl = document.getElementById('ctn_warn'); if(!warnEl) return;
+  const selCarrier = window._selCarrier||'';
+  if(!selCarrier){ warnEl.style.display='none'; return; }
+
+  // Get rate object for currently selected
+  const selLabel = document.getElementById('sel_label')?.textContent||'';
+  const selRate  = ALL_RATES.find(r=>selCarrier&&r.carrier===selCarrier&&selLabel.includes(r.pol)&&selLabel.includes(r.pod));
+
+  const warnings = [];
+  _ctnRows.forEach(r=>{
+    if(r.type==='20GP'  && selRate && !selRate.gp20) warnings.push(`⚠️ ${r.type} — ไม่มีราคาในเรทนี้`);
+    if(r.type==='40GP'  && selRate && !selRate.gp40) warnings.push(`⚠️ ${r.type} — ไม่มีราคาในเรทนี้`);
+    if(['40HC','45HC'].includes(r.type) && selRate && !selRate.hc40) warnings.push(`⚠️ ${r.type} — ไม่มีราคาในเรทนี้`);
+    if(['20RF','40RF','20OT','40OT','20FR','40FR'].includes(r.type))
+      warnings.push(`⚠️ ${r.type} — ประเภทพิเศษ กรุณาตรวจสอบ cost เพิ่มเติม`);
+  });
+
+  if(warnings.length){
+    warnEl.style.display='';
+    warnEl.innerHTML = warnings.join('<br>');
+  } else {
+    warnEl.style.display='none';
+  }
+}
+
 // ── Route picker ───────────────────────────────────────────
+// Only show rates with Thai POL
+const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla'];
+
+function isStrictThaiPOL(pol){
+  // pol must be a single port (no | separator) AND be a Thai port
+  if(!pol) return false;
+  const p = pol.trim().toLowerCase();
+  // Reject if contains pipe (multi-port combined)
+  if(p.includes('|')) return false;
+  return THAI_POLS.some(k => p.includes(k));
+}
+
+function isThaiPOL(pol){
+  // Used for loose check (filterRoutes display) — keep backward compat
+  if(!pol) return false;
+  // Split by | and check if any individual segment is Thai
+  const parts = pol.split('|').map(s=>s.trim().toLowerCase());
+  return parts.some(p => THAI_POLS.some(k => p.includes(k)) && !p.includes('|'));
+}
+
+// Expand multi-POL rate into separate Thai-only rates, filter non-Thai
+function expandAndFilterThaiPOL(rates){
+  const result = [];
+  rates.forEach(r=>{
+    const pol = (r.pol||'').trim();
+    if(!pol.includes('|')){
+      // Single POL — keep only if Thai
+      if(isStrictThaiPOL(pol)) result.push(r);
+    } else {
+      // Multi-POL — split and create one entry per Thai port
+      const parts = pol.split('|').map(s=>s.trim());
+      parts.forEach(p=>{
+        if(isStrictThaiPOL(p)){
+          result.push({...r, pol: p});
+        }
+      });
+    }
+  });
+  return result;
+}
+
 function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),vstatus=v('r_vstatus');
   if(!pol&&!pod&&!car){g('route_body').innerHTML='<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
   let res=ALL_RATES.filter(r=>{
+    if(!isThaiPOL(r.pol)) return false;  // ← Thai POL only
     if(car&&r.carrier!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
@@ -1539,126 +1670,23 @@ function applyRate(idx){
   const box=g('sel_rate_box'),lbl=g('sel_label');
   if(box)box.style.display='';
   if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod;
-  // Store for email
   window._selPol=r.pol||''; window._selPod=r.pod||'';
   window._selCarrier=r.carrier||'';
-  // Auto-fill carrier field if empty
   const cf=g('s_carrier'); if(cf&&!cf.value) cf.value=r.carrier||'';
   const set20=g('sel_20'),set40=g('sel_40'),set4h=g('sel_40hc');
   if(set20)set20.textContent='$'+r.gp20;if(set40)set40.textContent='$'+r.gp40;if(set4h)set4h.textContent='$'+r.hc40;
-  recalc();toast('✅ Cost applied: '+r.carrier+' $'+r.gp20+'/20GP');
-}
-
-// ── Lat Krabang ARB Surcharge ─────────────────────────────
-// ARB costs per carrier for USA trade (when POL ≠ BKK/LKB)
-const ARB_USA = {
-  'CMA': {gp20:90, hc40:120},
-  'CMACGM': {gp20:90, hc40:120},
-  'YML': {gp20:0, hc40:0},   // Free
-  'YANG MING': {gp20:0, hc40:0},
-  'OOCL': {gp20:0, hc40:0},  // Free
-  'ONE': {gp20:80, hc40:100},
-  'ZIM': {gp20:80, hc40:100},
-  'WHL': {gp20:0, hc40:0},   // Free
-  'WAN HAI': {gp20:0, hc40:0},
-  'EMC': {gp20:90, hc40:100},
-  'EVERGREEN': {gp20:90, hc40:100},
-};
-// Default ARB for other trades
-const ARB_OTHER = {gp20:100, hc40:120};
-
-// BKK/LKB POL keywords
-const BKK_POLS = ['bangkok','bkk','lat krabang','latkrabang','lkb','laem chabang','lcb'];
-
-function polIsBKKorLKB(pol){
-  if(!pol) return false;
-  const p = pol.toLowerCase();
-  return BKK_POLS.some(k => p.includes(k));
-}
-
-function isUSATrade(pod){
-  if(!pod) return false;
-  const p = pod.toLowerCase();
-  return p.includes('us') || p.includes('usa') || p.includes('united states') ||
-    p.includes('los angeles') || p.includes('long beach') || p.includes('new york') ||
-    p.includes('houston') || p.includes('seattle') || p.includes('savannah') ||
-    p.includes('charleston') || p.includes('norfolk') || p.includes('oakland') ||
-    p.includes('chicago') || p.includes('miami') || p.includes('boston');
-}
-
-function getARBRate(carrier, pod){
-  const c = (carrier||'').toUpperCase();
-  const usa = isUSATrade(pod);
-  if(usa){
-    // Find matching carrier
-    for(const [key, val] of Object.entries(ARB_USA)){
-      if(c.includes(key)) return {rate: val, trade:'USA', label: val.gp20===0 ? 'FREE (USA trade)' : null};
-    }
-    // Unknown carrier in USA trade — use default ARB
-    return {rate: ARB_OTHER, trade:'USA', label: null};
-  } else {
-    // Non-USA trade
-    return {rate: ARB_OTHER, trade:'OTHER', label: null};
-  }
-}
-
-function applyLKBSurcharge(){
-  const checked = g('lkb_toggle')?.checked;
-  const infoEl  = g('lkb_arb_info');
-  const pol     = (window._selPol || v('r_pol') || '').trim();
-  const carrier = (window._selCarrier || v('s_carrier') || '').trim();
-  const pod     = (window._selPod || v('r_pod') || '').trim();
-
-  // Reset stored ARB
-  window._arbCost20 = 0;
-  window._arbCost40 = 0;
-  window._arbCost4h = 0;
-
-  if(!checked){
-    if(infoEl){ infoEl.style.display='none'; infoEl.textContent=''; }
-    recalc(); return;
-  }
-
-  // Check if POL is already BKK/LKB
-  if(polIsBKKorLKB(pol)){
-    if(infoEl){
-      infoEl.style.display='';
-      infoEl.innerHTML='<span style="color:var(--green)">✅ POL เป็น BKK/LKB อยู่แล้ว — ไม่มี ARB เพิ่ม</span>';
-    }
-    recalc(); return;
-  }
-
-  // Get ARB rate
-  const {rate, trade, label} = getARBRate(carrier, pod);
-  const qty20 = parseFloat(v('s_q20'))||1;
-  const qty40 = parseFloat(v('s_q40'))||0;
-  const qty4h = parseFloat(v('s_q40hc'))||0;
-  // ARB uses 40HC rate for both 40GP and 40HC
-  const arb20 = rate.gp20 * qty20;
-  const arb4h = rate.hc40 * (qty40 + qty4h);
-
-  window._arbCost20 = arb20;
-  window._arbCost4h = arb4h;
-
-  if(infoEl){
-    infoEl.style.display='';
-    if(rate.gp20 === 0){
-      infoEl.innerHTML = `✅ ${carrier.toUpperCase()} — ARB <span style="color:var(--green)">FREE</span> (${trade} trade)`;
-    } else {
-      const total = arb20 + arb4h;
-      infoEl.innerHTML = `⚠️ ARB (${trade} trade) +$${rate.gp20}/20GP +$${rate.hc40}/40HC<br>
-        <span style="color:var(--yellow)">Total ARB: +$${total.toFixed(0)} USD</span>`;
-    }
-  }
   recalc();
+  toast('✅ Cost applied: '+r.carrier+' $'+r.gp20+'/20GP');
+  checkCtnVsRate();
 }
 
-// Override applyRate to also reset LKB toggle awareness
-const _origApplyRate = applyRate;
-function applyRate(idx){
-  _origApplyRate(idx);
-  // Re-run LKB check if toggle is on
-  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+// ── Factory Origin Toggle (LKB / BKK) ─────────────────────
+// ติ๊ก = เปลี่ยน POL ตอน save เท่านั้น ไม่บวก cost อะไรทั้งนั้น
+
+function onOriginToggle(which){
+  // Mutual exclusive
+  if(which==='lkb' && g('lkb_toggle')?.checked){ const b=g('bkk_toggle'); if(b) b.checked=false; }
+  if(which==='bkk' && g('bkk_toggle')?.checked){ const l=g('lkb_toggle'); if(l) l.checked=false; }
 }
 
 // ── Alert system ───────────────────────────────────────────
@@ -1712,8 +1740,15 @@ function saveShipment(){
     pol:window._selPol||'',pod:window._selPod||'',
     selCarrier:window._selCarrier||'',selLabel:g('sel_label')?g('sel_label').textContent:'',
     lkb: g('lkb_toggle')?.checked || false,
-    arbCost: (window._arbCost20||0) + (window._arbCost4h||0),
+    bkk: g('bkk_toggle')?.checked || false,
+    ctnRows: JSON.parse(JSON.stringify(_ctnRows)),
+    q20: _ctnRows.filter(r=>r.type==='20GP').reduce((s,r)=>s+r.qty,0),
+    q40: _ctnRows.filter(r=>r.type==='40GP').reduce((s,r)=>s+r.qty,0),
+    q40hc: _ctnRows.filter(r=>['40HC','45HC'].includes(r.type)).reduce((s,r)=>s+r.qty,0),
   };
+  // Override POL if LKB or BKK is ticked
+  if(g('lkb_toggle')?.checked) jobData.pol = 'LAT KRABANG (LKB)';
+  if(g('bkk_toggle')?.checked) jobData.pol = 'BANGKOK (BKK)';
   if(window._editIdx!=null){
     jobData.statusHistory=savedJobs[window._editIdx].statusHistory||[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
     savedJobs[window._editIdx]=jobData;window._editIdx=null;
@@ -1743,8 +1778,20 @@ function editShipment(idx){
   if(j.pod){const rd=g('r_pod');if(rd)rd.value=j.pod;window._selPod=j.pod;}
   if(j.selCarrier){const rc=g('r_carrier');if(rc)rc.value=j.selCarrier;window._selCarrier=j.selCarrier;}
   if(j.selLabel){const box=g('sel_rate_box'),lbl=g('sel_label');if(box)box.style.display='';if(lbl)lbl.textContent=j.selLabel;}
+  const lkbT=g('lkb_toggle'); if(lkbT) lkbT.checked=j.lkb||false;
+  const bkkT=g('bkk_toggle'); if(bkkT) bkkT.checked=j.bkk||false;
   if(j.pol||j.pod)setTimeout(filterRoutes,150);
   if(j.chargeType)set('s_type',j.chargeType);
+  // Restore container rows
+  if(j.ctnRows && j.ctnRows.length){ _ctnRows = JSON.parse(JSON.stringify(j.ctnRows)); }
+  else {
+    _ctnRows = [];
+    if(j.q20>0) _ctnRows.push({type:'20GP',qty:j.q20});
+    if(j.q40>0) _ctnRows.push({type:'40GP',qty:j.q40});
+    if(j.q40hc>0) _ctnRows.push({type:'40HC',qty:j.q40hc});
+    if(!_ctnRows.length) _ctnRows=[{type:'20GP',qty:1}];
+  }
+  renderCtnRows();
   buildCharges();
   if(j.sells&&j.costs){
     const si=[...document.querySelectorAll('.sell-inp')],ci=[...document.querySelectorAll('.cost-inp')];
@@ -1771,8 +1818,9 @@ function clearForm(){
   ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_voyage','s_remarks'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
-  const lkbInfo=g('lkb_arb_info'); if(lkbInfo){lkbInfo.style.display='none';lkbInfo.textContent='';}
-  window._arbCost20=0; window._arbCost4h=0;
+  const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
+  const lkbInfo=g('lkb_arb_info'); if(lkbInfo){lkbInfo.style.display='none';lkbInfo.innerHTML='';}
+  initCtnRows();
   buildCharges();window._editIdx=null;
   const btn=g('save_btn');if(btn){btn.textContent='💾 Save Shipment';btn.className='btn btn-cyan';btn.style.background='';}
 }
@@ -1809,7 +1857,7 @@ function renderShipments(){
     const keyJobs=groups[key];
     const[y,m]=key.split('-');const label=key==='Unknown'?'Unknown':((MN[m]||m)+' '+y);
     const typeLabel=keyJobs[0]?.jobType==='import'?'📥 Import':'📤 Export';
-    html+=`<tr><td colspan="14" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
+    html+=`<tr><td colspan="17" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
@@ -1820,6 +1868,9 @@ function renderShipments(){
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px">${j.etd||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px">${j.eta||'—'}</td>
         <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap">${j.pol||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${j.pod||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.profit>=0?'var(--green)':'var(--red)'};font-weight:600;padding:7px 10px">$${j.profit.toFixed(2)}</td>
@@ -1827,7 +1878,7 @@ function renderShipments(){
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">$${j.comm.toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
         <td style="padding:5px 8px">${statusSel(j.status,j._idx)}</td>
-        <td style="padding:4px 8px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
+        <td style="padding:4px 8px;min-width:160px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value;storageSave()" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
           <button onclick="duplicateShipment(${j._idx})" title="Duplicate" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-right:2px">📋</button>
@@ -1836,12 +1887,11 @@ function renderShipments(){
       </tr>`;
     });
   });
-  if(!jobs.length)html='<tr><td colspan="14" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
+  if(!jobs.length)html='<tr><td colspan="17" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
-  // Footer totals
   const totP=savedJobs.reduce((s,j)=>s+j.profit,0),totC=savedJobs.reduce((s,j)=>s+j.comm,0);
   const foot=g('saved_foot');
-  if(foot)foot.innerHTML=`<tr style="border-top:2px solid var(--border2)"><td></td><td colspan="6" style="padding:8px 12px;font-size:11px;color:var(--muted)">${savedJobs.length} total jobs</td><td></td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:${totP>=0?'var(--green)':'var(--red)'}">$${totP.toFixed(2)}</td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--gold)">$${totC.toFixed(2)}</td><td style="text-align:right;font-family:var(--mono);padding:8px 10px;color:var(--gold)">${(totC*exRate).toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td><td colspan="4"></td></tr>`;
+  if(foot)foot.innerHTML=`<tr style="border-top:2px solid var(--border2)"><td></td><td colspan="9" style="padding:8px 12px;font-size:11px;color:var(--muted)">${savedJobs.length} total jobs</td><td></td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:${totP>=0?'var(--green)':'var(--red)'}">$${totP.toFixed(2)}</td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--gold)">$${totC.toFixed(2)}</td><td style="text-align:right;font-family:var(--mono);padding:8px 10px;color:var(--gold)">${(totC*exRate).toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td><td colspan="4"></td></tr>`;
   updateAlertCount();
 }
 
@@ -3824,16 +3874,30 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// FIREBASE — Auth + Firestore Sync
-// ═══════════════════════════════════════════════════════════
-
+// ── ONLINE MODE: Firebase Auth + Firestore ──
 </script>
+
+<!-- ═══ LOGIN OVERLAY ═══ -->
+<div id="login_overlay" style="position:fixed;inset:0;z-index:9000;background:rgba(6,9,15,.97);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:340px;width:90%">
+    <img src="LOGO.jpg" style="width:110px;height:110px;border-radius:24px;object-fit:cover;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,180,216,.3)">
+    <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);margin-bottom:6px">Sea Freight Pro</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:32px">Designed by LOKKO</div>
+    <button id="google_signin_btn" onclick="signInWithGoogle()"
+      style="display:flex;align-items:center;gap:12px;background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .15s"
+      onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2c-7.6 0-14.2 4.1-17.7 10.3z" transform="translate(0,5)"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-1.9 14.5-5.2l-6.7-5.5C29.9 36.9 27.1 38 24 38c-6.1 0-11.2-4-13.1-9.5l-7 5.4C7.6 41.9 15.2 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.5 2.4-1.9 4.5-3.8 6l6.7 5.5C42.3 36.6 45 30.8 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
+      Sign in with Google
+    </button>
+    <div id="login_status" style="font-size:11px;color:var(--muted);margin-top:16px"></div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc }
+import { getFirestore, doc, setDoc, getDoc, deleteDoc }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -3850,7 +3914,6 @@ const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-// ── Expose to global scope so non-module code can call ──
 let _currentUser = null;
 let _unsubscribers = [];
 
@@ -3868,140 +3931,122 @@ window.signInWithGoogle = async function(){
 
 window.signOutUser = async function(){
   if(!confirm('Sign out?')) return;
-  _unsubscribers.forEach(u=>u());
-  _unsubscribers = [];
+  _unsubscribers.forEach(u=>u()); _unsubscribers=[];
   await signOut(auth);
   toast('👋 Signed out');
 };
 
-// ── Auth state ──
 onAuthStateChanged(auth, async user=>{
   const overlay = document.getElementById('login_overlay');
   const badge   = document.getElementById('fb_user_badge');
   const avatar  = document.getElementById('fb_avatar');
   const nameEl  = document.getElementById('fb_name');
-
   if(user){
     _currentUser = user;
-    // Hide login overlay
-    if(overlay){ overlay.style.display='none'; }
-    // Show user badge
-    if(badge)  { badge.style.display='flex'; }
-    if(avatar) { avatar.src = user.photoURL || ''; }
-    if(nameEl) { nameEl.textContent = user.displayName || user.email; }
-
-    toast('✅ ' + (user.displayName||user.email));
+    if(overlay) overlay.style.display='none';
+    if(badge)   badge.style.display='flex';
+    if(avatar)  avatar.src = user.photoURL||'';
+    if(nameEl)  nameEl.textContent = user.displayName||user.email;
+    toast('✅ '+(user.displayName||user.email));
     await initFirestoreSync(user.uid);
   } else {
     _currentUser = null;
-    if(overlay){ overlay.style.display='flex'; }
-    if(badge)  { badge.style.display='none'; }
-    // Load from localStorage as fallback while signed out
+    if(overlay) overlay.style.display='flex';
+    if(badge)   badge.style.display='none';
     window.storageLoad?.();
+    window.initCtnRows?.();
     window.renderShipments?.();
     window.renderTodos?.();
   }
 });
 
-// ── Firestore sync helpers ──
 function uid(){ return _currentUser?.uid; }
 
 async function fbSet(path, data){
   if(!uid()) return;
-  try{ await setDoc(doc(db, 'users', uid(), ...path.split('/')), data, {merge:true}); }
-  catch(e){ console.warn('fbSet error', e); }
+  try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
+  catch(e){ console.warn('fbSet error',e); }
 }
 
 async function fbGet(path){
   if(!uid()) return null;
   try{
-    const snap = await getDoc(doc(db, 'users', uid(), ...path.split('/')));
+    const snap = await getDoc(doc(db,'users',uid(),...path.split('/')));
     return snap.exists() ? snap.data() : null;
   }catch(e){ return null; }
 }
 
 function showSyncBadge(ok){
-  const el = document.getElementById('fb_sync_badge');
-  if(!el) return;
-  el.style.display = '';
+  const el = document.getElementById('fb_sync_badge'); if(!el) return;
+  el.style.display='';
   el.textContent = ok ? '☁ Synced' : '⚠ Sync error';
   el.style.color  = ok ? 'var(--green)' : 'var(--red)';
   el.style.background = ok ? 'rgba(34,197,94,.1)' : 'rgba(244,63,94,.1)';
-  clearTimeout(el._t);
-  el._t = setTimeout(()=>{ el.style.display='none'; }, 3000);
+  clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display='none'; },3000);
 }
 
-// ── Main sync init ──
 async function initFirestoreSync(userId){
   _unsubscribers.forEach(u=>u()); _unsubscribers=[];
 
-  // ── 1. Load all data from Firestore ──
-  const [jobsSnap, todosSnap, settSnap, srSnap, srReportsSnap, quotSnap] = await Promise.all([
-    fbGet('data/jobs'),
-    fbGet('data/todos'),
-    fbGet('data/settings'),
-    fbGet('data/saleReport'),
-    fbGet('data/srReports'),
-    fbGet('data/quotations'),
+  const [jobsSnap,todosSnap,settSnap,srSnap,srReportsSnap,quotSnap] = await Promise.all([
+    fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
+    fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
   ]);
 
-  if(jobsSnap?.jobs)  { window.savedJobs = jobsSnap.jobs; }
-  if(todosSnap?.todos){ window.todos      = todosSnap.todos; }
-  if(quotSnap?.quotations){ window.savedQuotations = quotSnap.quotations; }
+  if(jobsSnap?.jobs)           window.savedJobs = jobsSnap.jobs;
+  if(todosSnap?.todos)         window.todos = todosSnap.todos;
+  if(quotSnap?.quotations)     window.savedQuotations = quotSnap.quotations;
   if(settSnap){
-    if(settSnap.commRate !== undefined) window.commRate = settSnap.commRate;
-    if(settSnap.exRate   !== undefined) window.exRate   = settSnap.exRate;
-    const ci=document.getElementById('comm_rate_inp');
-    const ei=document.getElementById('exrate_inp');
+    if(settSnap.commRate!==undefined) window.commRate=settSnap.commRate;
+    if(settSnap.exRate!==undefined)   window.exRate=settSnap.exRate;
+    const ci=document.getElementById('comm_rate_inp'), ei=document.getElementById('exrate_inp');
     if(ci) ci.value=(window.commRate*100).toFixed(1);
     if(ei) ei.value=(window.exRate).toFixed(2);
   }
-  if(srSnap){
-    // Restore to localStorage-based srLoad/srSave
-    try{ localStorage.setItem('seafreight_salereport_v1', JSON.stringify(srSnap)); }catch(e){}
-  }
-  if(srReportsSnap?.reports){
-    try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srReportsSnap.reports)); }catch(e){}
-  }
+  if(srSnap)          try{ localStorage.setItem('seafreight_salereport_v1',JSON.stringify(srSnap)); }catch(e){}
+  if(srReportsSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1',JSON.stringify(srReportsSnap.reports)); }catch(e){}
 
-  // Re-render everything
+  window.storageLoad?.();
+  window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
+  window.fetchRate?.();
+  window.updateAlertCount?.();
+  window.updateRateCacheBadge?.();
   showSyncBadge(true);
 
-  // ── 2. Patch storageSave to also write to Firestore ──
+  // Patch storageSave
   const origStorageSave = window.storageSave;
   window.storageSave = async function(){
     const r = origStorageSave?.();
     if(!uid()) return r;
     try{
       await Promise.all([
-        fbSet('data/jobs',      { jobs: window.savedJobs||[], updatedAt: new Date().toISOString() }),
-        fbSet('data/todos',     { todos: window.todos||[], updatedAt: new Date().toISOString() }),
-        fbSet('data/settings',  { commRate: window.commRate, exRate: window.exRate }),
-        fbSet('data/quotations',{ quotations: window.savedQuotations||[], updatedAt: new Date().toISOString() }),
+        fbSet('data/jobs',      {jobs:window.savedJobs||[], updatedAt:new Date().toISOString()}),
+        fbSet('data/todos',     {todos:window.todos||[], updatedAt:new Date().toISOString()}),
+        fbSet('data/settings',  {commRate:window.commRate, exRate:window.exRate}),
+        fbSet('data/quotations',{quotations:window.savedQuotations||[], updatedAt:new Date().toISOString()}),
       ]);
       showSyncBadge(true);
     }catch(e){ showSyncBadge(false); }
     return r;
   };
 
-  // ── 3. Patch srSave to also sync sale report data ──
+  // Patch srSave
   const origSrSave = window.srSave;
   window.srSave = async function(data){
     origSrSave?.(data);
     if(!uid()) return;
-    try{ await fbSet('data/saleReport', data); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
+    try{ await fbSet('data/saleReport',data); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
   };
 
-  // ── 4. Patch srReportsSave ──
+  // Patch srReportsSave
   const origSrReportsSave = window.srReportsSave;
   window.srReportsSave = async function(list){
     origSrReportsSave?.(list);
     if(!uid()) return;
-    try{ await fbSet('data/srReports', { reports: list, updatedAt: new Date().toISOString() }); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
+    try{ await fbSet('data/srReports',{reports:list,updatedAt:new Date().toISOString()}); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
   };
 }
-
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
