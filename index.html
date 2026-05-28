@@ -1606,7 +1606,10 @@ function buildCharges(){
 function recalc(){
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
   const badge = g('charge_qty_badge');
-  if(badge) badge.textContent = '× '+totalQty+' TEU';
+  if(badge){
+    const label = (_ctnRows||[]).filter(r=>r.qty>0).map(r=>r.qty+'×'+r.type).join(', ') || '1×20GP';
+    badge.textContent = label;
+  }
   const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   let ts=0,tc=0;
