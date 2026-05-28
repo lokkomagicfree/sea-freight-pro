@@ -214,12 +214,6 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:11px" id="load_rates_btn">📂 Load Rates</button>
     <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:11px">+ Add File</button>
     <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:11px">⚖ Compare</button>
-    <div id="fb_user_badge" style="display:none;align-items:center;gap:8px;margin-left:6px">
-      <img id="fb_avatar" src="" width="28" height="28" style="border-radius:50%;border:2px solid var(--cyan);object-fit:cover">
-      <span id="fb_name" style="font-size:11px;color:var(--text);font-family:var(--mono);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-      <button onclick="signOutUser()" class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--muted)">Sign out</button>
-    </div>
-    <div id="fb_sync_badge" style="display:none;font-size:10px;font-family:var(--mono);color:var(--green);padding:3px 8px;background:rgba(34,197,94,.1);border-radius:5px">☁ Synced</div>
   </div>
 </div>
 <!-- Mobile floating load button (shows only when no rates) -->
@@ -233,12 +227,53 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <!-- ═══ RATES PAGE ═══ -->
 <div id="page-rates" class="page active">
   <div id="upload_panel" style="display:none">
+    <!-- Excel/JSON upload -->
     <div class="card" id="upload_zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)"
       style="border:2px dashed var(--border2);text-align:center;padding:32px;cursor:pointer" onclick="g('file_inp').click()">
       <div style="font-size:32px;margin-bottom:8px">📂</div>
       <div style="font-size:13px;color:var(--muted)">Drop Excel rate file here or click to browse</div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px;opacity:.6">FIX / FAK / BULLET / FOOD / WWL / ISC / Summary</div>
       <input type="file" id="file_inp" accept=".xlsx,.xls,.json" style="display:none" onchange="handleFile(this.files[0])">
+    </div>
+    <!-- Image upload for rate extraction -->
+    <div class="card" style="margin-top:12px;border:2px dashed rgba(168,85,247,.4);padding:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:18px">🖼️</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--purple)">Upload Rate Image (AI Extract)</div>
+          <div style="font-size:10px;color:var(--muted)">อัพโหลดรูป rate sheet — AI จะดึง POL/POD/ราคา ให้อัตโนมัติ</div>
+        </div>
+        <input type="file" id="img_rate_inp" accept="image/*" multiple style="display:none" onchange="handleRateImages(this.files)">
+        <button onclick="g('img_rate_inp').click()" class="btn btn-ghost" style="margin-left:auto;font-size:11px;padding:5px 14px;border-color:var(--purple);color:var(--purple)">📷 Select Images</button>
+      </div>
+      <div id="img_rate_preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="img_rate_status" style="font-size:11px;color:var(--muted);font-family:var(--mono)"></div>
+      <!-- Manual valid date input -->
+      <div id="img_rate_date_row" style="display:none;margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:11px;color:var(--muted)">Valid From:</div>
+        <input type="date" id="img_rate_from" class="fi" style="width:140px;font-size:11px">
+        <div style="font-size:11px;color:var(--muted)">Valid To:</div>
+        <input type="date" id="img_rate_to" class="fi" style="width:140px;font-size:11px">
+        <div style="font-size:11px;color:var(--muted);opacity:.6">(ถ้ารูปไม่มีวันที่ ให้ใส่เอง)</div>
+      </div>
+      <!-- Extracted rates preview -->
+      <div id="img_rate_result" style="display:none;margin-top:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:8px;font-family:var(--mono)">EXTRACTED RATES (LAEM CHABANG ONLY)</div>
+        <div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">
+          <table class="tbl" style="min-width:500px">
+            <thead><tr>
+              <th>Carrier</th><th>POL</th><th>POD</th>
+              <th style="text-align:right">20GP</th><th style="text-align:right">40GP</th><th style="text-align:right">40HC</th>
+              <th>Valid From</th><th>Valid To</th><th style="text-align:center">✓</th>
+            </tr></thead>
+            <tbody id="img_rate_tbody"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="importExtractedRates()" class="btn btn-cyan" style="font-size:11px;padding:5px 16px">✅ Import Selected</button>
+          <button onclick="clearImgExtract()" class="btn btn-ghost" style="font-size:11px;padding:5px 12px">🗑 Clear</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3874,162 +3909,214 @@ document.addEventListener('DOMContentLoaded', ()=>{
   }
 });
 
-// ── ONLINE MODE ──
-</script>
+// ── Image Rate Extraction (AI) ─────────────────────────────
+let _extractedRates = [];
+let _imgFiles = [];
 
-<!-- LOGIN OVERLAY -->
-<div id="login_overlay" style="position:fixed;inset:0;z-index:9000;background:rgba(6,9,15,.97);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center">
-  <div style="text-align:center;max-width:340px;width:90%">
-    <img src="LOGO.jpg" style="width:110px;height:110px;border-radius:24px;object-fit:cover;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,180,216,.3)">
-    <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);margin-bottom:6px">Sea Freight Pro</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:32px">Designed by LOKKO</div>
-    <button onclick="signInWithGoogle()"
-      style="display:flex;align-items:center;gap:12px;background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .15s"
-      onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
-      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2c-7.6 0-14.2 4.1-17.7 10.3z" transform="translate(0,5)"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-1.9 14.5-5.2l-6.7-5.5C29.9 36.9 27.1 38 24 38c-6.1 0-11.2-4-13.1-9.5l-7 5.4C7.6 41.9 15.2 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.5 2.4-1.9 4.5-3.8 6l6.7 5.5C42.3 36.6 45 30.8 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
-      Sign in with Google
-    </button>
-    <div id="login_status" style="font-size:11px;color:var(--muted);margin-top:16px"></div>
-  </div>
-</div>
+function handleRateImages(files){
+  _imgFiles = [...files];
+  const preview = g('img_rate_preview');
+  preview.innerHTML = _imgFiles.map((f,i)=>`
+    <div style="position:relative;display:inline-block">
+      <img src="${URL.createObjectURL(f)}" style="height:80px;width:80px;object-fit:cover;border-radius:6px;border:2px solid var(--purple)">
+      <div style="position:absolute;bottom:2px;left:2px;right:2px;background:rgba(0,0,0,.6);font-size:9px;color:#fff;text-align:center;border-radius:3px;padding:1px">${f.name.slice(0,12)}</div>
+    </div>`).join('');
+  // Show date row
+  const dr = g('img_rate_date_row');
+  if(dr) dr.style.display='flex';
+  // Set default dates
+  const today = new Date();
+  const nextMonth = new Date(today); nextMonth.setMonth(nextMonth.getMonth()+1);
+  const fi = g('img_rate_from'), ti = g('img_rate_to');
+  if(fi && !fi.value) fi.value = today.toISOString().slice(0,10);
+  if(ti && !ti.value) ti.value = nextMonth.toISOString().slice(0,10);
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc }
-  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyD7uD5a2HnYuBeX0pkL17-H8hf2ZTybb6s",
-  authDomain: "sea-freight-pro.firebaseapp.com",
-  projectId: "sea-freight-pro",
-  storageBucket: "sea-freight-pro.firebasestorage.app",
-  messagingSenderId: "513112241807",
-  appId: "1:513112241807:web:3c4c43616f94c9577022fa",
-  measurementId: "G-X0QGW4MGT2"
-};
-
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
-let _currentUser = null;
-
-window.signInWithGoogle = async function(){
-  const s = document.getElementById('login_status');
-  if(s) s.textContent='กำลัง Sign in...';
-  try{ await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch(e){ if(s) s.textContent='❌ '+e.message; }
-};
-
-window.signOutUser = async function(){
-  if(!confirm('Sign out?')) return;
-  await signOut(auth);
-  toast('👋 Signed out');
-};
-
-function uid(){ return _currentUser?.uid; }
-
-async function fbSet(path, data){
-  if(!uid()) return;
-  try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
-  catch(e){ console.warn('fbSet',e); }
+  if(_imgFiles.length) extractRatesFromImages();
 }
 
-async function fbGet(path){
-  if(!uid()) return null;
-  try{ const s=await getDoc(doc(db,'users',uid(),...path.split('/'))); return s.exists()?s.data():null; }
-  catch(e){ return null; }
-}
+async function extractRatesFromImages(){
+  const statusEl = g('img_rate_status');
+  if(statusEl){ statusEl.textContent='🤖 AI กำลังวิเคราะห์รูป...'; statusEl.style.color='var(--cyan)'; }
 
-function showSyncBadge(ok){
-  const el=document.getElementById('fb_sync_badge'); if(!el) return;
-  el.style.display=''; el.textContent=ok?'☁ Synced':'⚠ Sync error';
-  el.style.color=ok?'var(--green)':'var(--red)';
-  el.style.background=ok?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)';
-  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',3000);
-}
+  const validFrom = g('img_rate_from')?.value || '';
+  const validTo   = g('img_rate_to')?.value || '';
 
-onAuthStateChanged(auth, async user=>{
-  const overlay=document.getElementById('login_overlay');
-  const badge=document.getElementById('fb_user_badge');
-  const avatar=document.getElementById('fb_avatar');
-  const nameEl=document.getElementById('fb_name');
-  if(user){
-    _currentUser=user;
-    if(overlay) overlay.style.display='none';
-    if(badge)   badge.style.display='flex';
-    if(avatar)  avatar.src=user.photoURL||'';
-    if(nameEl)  nameEl.textContent=user.displayName||user.email;
-    toast('✅ '+(user.displayName||user.email));
-    await initFirestoreSync();
-  } else {
-    _currentUser=null;
-    if(overlay) overlay.style.display='flex';
-    if(badge)   badge.style.display='none';
-    window.storageLoad?.();
-    window.initCtnRows?.();
-    window.renderShipments?.();
-    window.renderTodos?.();
-  }
-});
+  // Convert all images to base64
+  const imageContents = await Promise.all(_imgFiles.map(f => new Promise((res,rej)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      const b64 = e.target.result.split(',')[1];
+      const mime = f.type || 'image/jpeg';
+      res({ type:'image', source:{ type:'base64', media_type:mime, data:b64 } });
+    };
+    reader.onerror = rej;
+    reader.readAsDataURL(f);
+  })));
 
-async function initFirestoreSync(){
-  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap] = await Promise.all([
-    fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
-    fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
-  ]);
-  if(jobsSnap?.jobs)       window.savedJobs=jobsSnap.jobs;
-  if(todosSnap?.todos)     window.todos=todosSnap.todos;
-  if(quotSnap?.quotations) window.savedQuotations=quotSnap.quotations;
-  if(settSnap){
-    if(settSnap.commRate!==undefined) window.commRate=settSnap.commRate;
-    if(settSnap.exRate!==undefined)   window.exRate=settSnap.exRate;
-    const ci=document.getElementById('comm_rate_inp'),ei=document.getElementById('exrate_inp');
-    if(ci) ci.value=(window.commRate*100).toFixed(1);
-    if(ei) ei.value=(window.exRate).toFixed(2);
-  }
-  if(srSnap)         try{localStorage.setItem('seafreight_salereport_v1',JSON.stringify(srSnap));}catch(e){}
-  if(srRepSnap?.reports) try{localStorage.setItem('seafreight_sr_reports_v1',JSON.stringify(srRepSnap.reports));}catch(e){}
+  const prompt = `You are a freight rate extraction assistant. Extract shipping rates from these rate sheet images.
 
-  window.storageLoad?.();
-  window.initCtnRows?.();
-  window.renderShipments?.();
-  window.renderTodos?.();
-  window.fetchRate?.();
-  window.updateAlertCount?.();
-  window.updateRateCacheBadge?.();
-  showSyncBadge(true);
+RULES:
+1. Look for ANY route that includes Thailand as origin — this includes:
+   - POL listed as: "Laem Chabang", "LCB", "THBC", "Thailand", "Bangkok", "BKK", "LKB", "Lat Krabang", "Songkhla"
+   - Origin country listed as "Thailand" even if port name differs
+   - Table headers showing "Thailand" as origin region
+2. For EACH destination found with Thai origin, create one rate entry
+3. Extract: carrier name (infer from document if not explicit), POD (destination port/city/country), 20GP price, 40GP price, 40HC price (or 40RQ for reefer), valid_from date, valid_to date
+4. Set POL = "LAEM CHABANG" for ALL extracted routes regardless of what the image says
+5. If 40GP not shown but 40HC is, use 0 for 40GP
+6. If dates not visible, use ""
+7. For carrier: look for company name, logo, or sender name in the document
+8. Return ONLY a raw JSON array — no explanation, no markdown, no code blocks, no backticks
+9. Format exactly: [{"carrier":"XXX","pol":"LAEM CHABANG","pod":"CITY, COUNTRY","gp20":1000,"gp40":1200,"hc40":1200,"valid_from":"2026-06-01","valid_to":"2026-06-30"}]
+10. POD should be clean: "LOS ANGELES, CA" or "MANZANILLO, MX" not raw codes
+11. If image has zero Thai/Laem Chabang routes, return []
+12. If there are surcharges noted per port (like +USD300), IGNORE them — extract base rate only`;
 
-  const origSave = window.storageSave;
-  window.storageSave = async function(){
-    const r=origSave?.();
-    if(!uid()) return r;
+  try{
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':'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',
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages:[{
+          role:'user',
+          content:[
+            ...imageContents,
+            { type:'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.map(c=>c.text||'').join('') || '';
+
+    // Parse JSON from response
+    let rates = [];
+    // Show raw response for debug
+    console.log('AI RAW RESPONSE:', text);
+    const debugEl = g('img_rate_status');
+    if(debugEl) debugEl.innerHTML += `<br><small style="color:var(--muted);word-break:break-all">${text.slice(0,300)}</small>`;
     try{
-      await Promise.all([
-        fbSet('data/jobs',      {jobs:window.savedJobs||[], updatedAt:new Date().toISOString()}),
-        fbSet('data/todos',     {todos:window.todos||[], updatedAt:new Date().toISOString()}),
-        fbSet('data/settings',  {commRate:window.commRate, exRate:window.exRate}),
-        fbSet('data/quotations',{quotations:window.savedQuotations||[], updatedAt:new Date().toISOString()}),
-      ]);
-      showSyncBadge(true);
-    }catch(e){ showSyncBadge(false); }
-    return r;
-  };
+      const clean = text.replace(/```json|```/g,'').trim();
+      const match = clean.match(/\[[\s\S]*\]/);
+      if(match) rates = JSON.parse(match[0]);
+    }catch(e){ console.error('Parse error',e,text); }
 
-  const origSrSave = window.srSave;
-  window.srSave = async function(data){
-    origSrSave?.(data);
-    if(!uid()) return;
-    try{ await fbSet('data/saleReport',data); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
-  };
+    // Apply manual dates if not in image
+    rates = rates.map(r=>({
+      ...r,
+      valid_from: r.valid_from || validFrom,
+      valid_to:   r.valid_to   || validTo,
+      pol: 'LAEM CHABANG',
+    }));
 
-  const origSrRepSave = window.srReportsSave;
-  window.srReportsSave = async function(list){
-    origSrRepSave?.(list);
-    if(!uid()) return;
-    try{ await fbSet('data/srReports',{reports:list,updatedAt:new Date().toISOString()}); showSyncBadge(true); }catch(e){ showSyncBadge(false); }
-  };
+    _extractedRates = rates;
+    renderExtractedRates(rates);
+
+    if(statusEl){ statusEl.textContent=`✅ พบ ${rates.length} routes จาก ${_imgFiles.length} รูป`; statusEl.style.color='var(--green)'; }
+  }catch(e){
+    if(statusEl){ statusEl.textContent='❌ Error: '+e.message; statusEl.style.color='var(--red)'; }
+    console.error(e);
+  }
 }
+
+function renderExtractedRates(rates){
+  const tbody = g('img_rate_tbody');
+  const result = g('img_rate_result');
+  if(!tbody||!result) return;
+  result.style.display = '';
+
+  if(!rates.length){
+    tbody.innerHTML='<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">ไม่พบ Laem Chabang rates ในรูปนี้</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rates.map((r,i)=>`<tr>
+    <td style="padding:6px 8px;font-size:11px">
+      <input type="text" value="${r.carrier||''}" onchange="_extractedRates[${i}].carrier=this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--cyan);font-family:var(--mono);font-size:11px;width:80px;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;color:var(--muted)">LAEM CHABANG</td>
+    <td style="padding:6px 8px;font-size:11px">
+      <input type="text" value="${r.pod||''}" onchange="_extractedRates[${i}].pod=this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;width:120px;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:right">
+      <input type="number" value="${r.gp20||0}" onchange="_extractedRates[${i}].gp20=+this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:right">
+      <input type="number" value="${r.gp40||0}" onchange="_extractedRates[${i}].gp40=+this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:right">
+      <input type="number" value="${r.hc40||0}" onchange="_extractedRates[${i}].hc40=+this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px">
+      <input type="date" value="${r.valid_from||''}" onchange="_extractedRates[${i}].valid_from=this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px">
+      <input type="date" value="${r.valid_to||''}" onchange="_extractedRates[${i}].valid_to=this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;outline:none">
+    </td>
+    <td style="padding:6px 8px;text-align:center">
+      <input type="checkbox" checked data-idx="${i}" style="accent-color:var(--cyan);cursor:pointer">
+    </td>
+  </tr>`).join('');
+}
+
+function importExtractedRates(){
+  const checks = [...document.querySelectorAll('#img_rate_tbody input[type=checkbox]')];
+  const toImport = checks.filter(c=>c.checked).map(c=>_extractedRates[+c.dataset.idx]).filter(Boolean);
+  if(!toImport.length){ toast('⚠️ ไม่มี rate ที่เลือก'); return; }
+
+  const converted = toImport.map(r=>({
+    carrier: r.carrier||'UNKNOWN',
+    pol:     'LAEM CHABANG',
+    pod:     r.pod||'',
+    gp20:    r.gp20||0,
+    gp40:    r.gp40||0,
+    hc40:    r.hc40||0,
+    date_from:   r.valid_from||'',
+    date_to:     r.valid_to||'',
+    valid_status: r.valid_to && r.valid_to >= new Date().toISOString().slice(0,10) ? 'valid' : 'expired',
+    source:  'image_upload',
+  }));
+
+  ALL_RATES = ALL_RATES.concat(converted);
+  buildFilters(); applyFilter(); storageSave();
+  toast(`✅ Imported ${converted.length} rates from image`);
+  clearImgExtract();
+  g('upload_panel').style.display='none';
+  hideLoadRatesPrompt();
+}
+
+function clearImgExtract(){
+  _extractedRates=[];_imgFiles=[];
+  const p=g('img_rate_preview'); if(p) p.innerHTML='';
+  const s=g('img_rate_status'); if(s) s.textContent='';
+  const r=g('img_rate_result'); if(r) r.style.display='none';
+  const inp=g('img_rate_inp'); if(inp) inp.value='';
+}
+
+// ── OFFLINE MODE: load from localStorage directly ──
+document.addEventListener('DOMContentLoaded', ()=>{
+  initCtnRows();
+  storageLoad();
+  renderShipments();
+  renderTodos();
+  fetchRate();
+  updateAlertCount();
+  updateRateCacheBadge();
+});
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
