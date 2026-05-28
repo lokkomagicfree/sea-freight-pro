@@ -215,6 +215,12 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:11px" id="load_rates_btn">📂 Load Rates</button>
     <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:11px">+ Add File</button>
     <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:11px">⚖ Compare</button>
+    <div id="fb_user_badge" style="display:none;align-items:center;gap:8px;margin-left:4px">
+      <img id="fb_avatar" src="" width="26" height="26" style="border-radius:50%;border:2px solid var(--cyan);object-fit:cover">
+      <span id="fb_name" style="font-size:11px;color:var(--text);font-family:var(--mono);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button onclick="signOutUser()" class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--muted)">Sign out</button>
+    </div>
+    <div id="fb_sync_badge" style="display:none;font-size:10px;font-family:var(--mono);color:var(--green);padding:3px 8px;background:rgba(34,197,94,.1);border-radius:5px">☁ Synced</div>
   </div>
 </div>
 <!-- Mobile floating load button (shows only when no rates) -->
@@ -4300,18 +4306,175 @@ function clearImgExtract(){
   const inp=g('img_rate_inp'); if(inp) inp.value='';
 }
 
-// ── OFFLINE MODE: load from localStorage directly ──
-document.addEventListener('DOMContentLoaded', ()=>{
-  initCtnRows();
-  storageLoad();
-  renderShipments();
-  renderTodos();
-  fetchRate();
-  updateAlertCount();
-  updateRateCacheBadge();
-  // Load saved API key
-  const saved = localStorage.getItem('sfp_akey');
-  if(saved){ const el=document.getElementById('anthropic_key_inp'); if(el) el.value=saved; }
+// ── ONLINE MODE ──
+</script>
+
+<!-- ═══ LOGIN OVERLAY ═══ -->
+<div id="login_overlay" style="position:fixed;inset:0;z-index:9000;background:rgba(6,9,15,.97);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:340px;width:90%">
+    <img src="LOGO.jpg" style="width:110px;height:110px;border-radius:24px;object-fit:cover;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,180,216,.3)" onerror="this.style.display='none'">
+    <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan);margin-bottom:4px">Sea Freight Pro</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:28px">Designed by LOKKO</div>
+    <button onclick="signInWithGoogle()"
+      style="display:flex;align-items:center;gap:12px;background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .15s"
+      onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2c-7.6 0-14.2 4.1-17.7 10.3z" transform="translate(0,5)"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-1.9 14.5-5.2l-6.7-5.5C29.9 36.9 27.1 38 24 38c-6.1 0-11.2-4-13.1-9.5l-7 5.4C7.6 41.9 15.2 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.5 2.4-1.9 4.5-3.8 6l6.7 5.5C42.3 36.6 45 30.8 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
+      Sign in with Google
+    </button>
+    <div id="login_status" style="font-size:11px;color:var(--muted);margin-top:16px;min-height:20px"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
+  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc }
+  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD7uD5a2HnYuBeX0pkL17-H8hf2ZTybb6s",
+  authDomain: "sea-freight-pro.firebaseapp.com",
+  projectId: "sea-freight-pro",
+  storageBucket: "sea-freight-pro.firebasestorage.app",
+  messagingSenderId: "513112241807",
+  appId: "1:513112241807:web:3c4c43616f94c9577022fa"
+};
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+let _currentUser = null;
+
+// Remember login for 30 days
+setPersistence(auth, browserLocalPersistence);
+
+window.signInWithGoogle = async function(){
+  const s=document.getElementById('login_status');
+  if(s){ s.textContent='กำลัง Sign in...'; s.style.color='var(--cyan)'; }
+  try{ await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch(e){ if(s){ s.textContent='❌ '+e.message; s.style.color='var(--red)'; } }
+};
+
+window.signOutUser = async function(){
+  if(!confirm('Sign out?')) return;
+  await signOut(auth);
+  toast('👋 Signed out');
+};
+
+function uid(){ return _currentUser?.uid; }
+
+async function fbSet(path, data){
+  if(!uid()) return;
+  try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
+  catch(e){ console.warn('fbSet',e); }
+}
+
+async function fbGet(path){
+  if(!uid()) return null;
+  try{
+    const snap = await getDoc(doc(db,'users',uid(),...path.split('/')));
+    return snap.exists() ? snap.data() : null;
+  }catch(e){ return null; }
+}
+
+function showSyncBadge(ok){
+  const el=document.getElementById('fb_sync_badge'); if(!el) return;
+  el.style.display=''; el.textContent=ok?'☁ Synced':'⚠ Sync error';
+  el.style.color=ok?'var(--green)':'var(--red)';
+  el.style.background=ok?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none', 3000);
+}
+
+onAuthStateChanged(auth, async user=>{
+  const overlay = document.getElementById('login_overlay');
+  const badge   = document.getElementById('fb_user_badge');
+  const avatar  = document.getElementById('fb_avatar');
+  const nameEl  = document.getElementById('fb_name');
+
+  if(user){
+    _currentUser = user;
+    if(overlay) overlay.style.display='none';
+    if(badge)   badge.style.display='flex';
+    if(avatar)  avatar.src = user.photoURL||'';
+    if(nameEl)  nameEl.textContent = user.displayName||user.email;
+    toast('✅ '+(user.displayName||user.email));
+    await initFirestoreSync();
+  } else {
+    _currentUser = null;
+    if(overlay) overlay.style.display='flex';
+    if(badge)   badge.style.display='none';
+  }
 });
+
+async function initFirestoreSync(){
+  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap] = await Promise.all([
+    fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
+    fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
+  ]);
+
+  if(jobsSnap?.jobs)         window.savedJobs = jobsSnap.jobs;
+  if(todosSnap?.todos)       window.todos = todosSnap.todos;
+  if(quotSnap?.quotations)   window.savedQuotations = quotSnap.quotations;
+  if(settSnap){
+    if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
+    if(settSnap.exRate!==undefined)   window.exRate   = settSnap.exRate;
+    const ci=document.getElementById('comm_rate_inp'), ei=document.getElementById('exrate_inp');
+    if(ci) ci.value=(window.commRate*100).toFixed(1);
+    if(ei) ei.value=(window.exRate).toFixed(2);
+  }
+  if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
+  if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
+
+  // Init UI
+  window.storageLoad?.();
+  window.initCtnRows?.();
+  window.renderShipments?.();
+  window.renderTodos?.();
+  window.fetchRate?.();
+  window.updateAlertCount?.();
+  window.updateRateCacheBadge?.();
+
+  // Load saved API key
+  const savedKey = localStorage.getItem('sfp_akey');
+  if(savedKey){ const el=document.getElementById('anthropic_key_inp'); if(el) el.value=savedKey; }
+
+  showSyncBadge(true);
+
+  // ── Patch storageSave → also write to Firestore ──
+  const origSave = window.storageSave;
+  window.storageSave = async function(){
+    const r = origSave?.();
+    if(!uid()) return r;
+    try{
+      await Promise.all([
+        fbSet('data/jobs',      {jobs: window.savedJobs||[],         updatedAt: new Date().toISOString()}),
+        fbSet('data/todos',     {todos: window.todos||[],            updatedAt: new Date().toISOString()}),
+        fbSet('data/settings',  {commRate: window.commRate,          exRate: window.exRate}),
+        fbSet('data/quotations',{quotations: window.savedQuotations||[], updatedAt: new Date().toISOString()}),
+      ]);
+      showSyncBadge(true);
+    }catch(e){ showSyncBadge(false); }
+    return r;
+  };
+
+  // ── Patch srSave ──
+  const origSrSave = window.srSave;
+  window.srSave = async function(data){
+    origSrSave?.(data);
+    if(!uid()) return;
+    try{ await fbSet('data/saleReport', data); showSyncBadge(true); }
+    catch(e){ showSyncBadge(false); }
+  };
+
+  // ── Patch srReportsSave ──
+  const origSrRep = window.srReportsSave;
+  window.srReportsSave = async function(list){
+    origSrRep?.(list);
+    if(!uid()) return;
+    try{ await fbSet('data/srReports', {reports:list, updatedAt:new Date().toISOString()}); showSyncBadge(true); }
+    catch(e){ showSyncBadge(false); }
+  };
+}
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
