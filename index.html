@@ -1827,7 +1827,10 @@ function applyRate(idx){
       cost = (r.gp20||0)*qty20+(r.gp40||0)*qty40+(r.hc40||0)*qty4h;
     }
   }
-  if(costInps[0]) costInps[0].value = cost.toFixed(2);
+  if(costInps[0]){
+    const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
+    costInps[0].value = (cost / totalQty).toFixed(2);
+  }
 
   const box=g('sel_rate_box'),lbl=g('sel_label');
   if(box)box.style.display='';
