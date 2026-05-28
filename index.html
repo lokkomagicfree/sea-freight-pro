@@ -1944,7 +1944,7 @@ function updateAlertCount(){checkAlerts();}
 // ── Status helpers ─────────────────────────────────────────
 const SC={pending:{cls:'st-pending',icon:'⏳'},confirmed:{cls:'st-confirmed',icon:'📋'},shipped:{cls:'st-shipped',icon:'🚢'},arrived:{cls:'st-arrived',icon:'📦'},completed:{cls:'st-completed',icon:'✅'}};
 function statusSel(cur,idx){
-  return `<select class="status-sel ${(SC[cur]||SC.pending).cls}" onchange="updateStatus(${idx},this.value)" style="font-size:10px;padding:2px 6px;border-radius:4px;border:none;cursor:pointer;outline:none">
+  return `<select class="status-sel ${(SC[cur]||SC.pending).cls}" onchange="updateStatus(${idx},this.value)" style="font-size:10px;padding:3px 8px;border-radius:4px;border:none;cursor:pointer;outline:none;width:100%;min-width:100px">
     ${Object.entries(SC).map(([k,v])=>`<option value="${k}"${k===cur?' selected':''}>${v.icon} ${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('')}
   </select>`;
 }
@@ -2114,10 +2114,9 @@ function renderShipments(){
         <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:7px 10px">${j.margin.toFixed(1)}%</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">$${j.comm.toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
-        <td style="padding:5px 8px">${statusSel(j.status,j._idx)}</td>
+        <td style="padding:5px 8px;min-width:110px">${statusSel(j.status,j._idx)}</td>
         <td style="padding:4px 8px;min-width:160px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value;storageSave()" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
-          <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
           <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
           <button onclick="openBookingPdfModal(${j._idx})" title="Booking PDF" style="border:none;background:rgba(41,128,185,.1);color:var(--cyan);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">📄 PDF</button>
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
@@ -4874,7 +4873,10 @@ function closeBookingPdfModal(){
 function gv(id){ return (document.getElementById(id)?.value||'').trim(); }
 
 function generateBookingPDF(){
+  if(!window.jspdf){ toast('⏳ jsPDF loading... please try again'); return; }
   const { jsPDF } = window.jspdf;
+  if(!jsPDF){ toast('❌ jsPDF not loaded'); return; }
+  toast('⏳ Generating PDF...');
   const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
   const W=210, H=297, LM=12, RM=198, TW=RM-LM;
 
