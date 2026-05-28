@@ -4375,6 +4375,11 @@ function clearImgExtract(){
 }
 
 // ── ONLINE MODE ──
+// Expose functions globally for onclick handlers
+window.showShipmentDetail  = function(i){ showShipmentDetail(i); };
+window.closeShipmentDetail = function(){ closeShipmentDetail(); };
+window.editShipment        = function(i){ editShipment(i); };
+window.duplicateShipment   = function(i){ duplicateShipment(i); };
 </script>
 
 <!-- ═══ LOGIN OVERLAY ═══ -->
@@ -5071,6 +5076,14 @@ function generateBookingPDF(){
   toast('📥 Downloaded: '+fname);
   closeBookingPdfModal();
 }
+
+// ── Expose all modal functions globally ──
+window.showShipmentDetail   = showShipmentDetail;
+window.closeShipmentDetail  = closeShipmentDetail;
+window.openBookingPdfModal  = openBookingPdfModal;
+window.closeBookingPdfModal = closeBookingPdfModal;
+window.generateBookingPDF   = generateBookingPDF;
+window.duplicateBookingPDF  = duplicateBookingPDF;
 
 function duplicateBookingPDF(){
   // Clear booking no so user must enter new one
