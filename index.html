@@ -1745,17 +1745,36 @@ function applyRate(idx){
   const r=ALL_RATES[idx];if(!r)return;
   const qty20=parseFloat(v('s_q20'))||1,qty40=parseFloat(v('s_q40'))||0,qty4h=parseFloat(v('s_q40hc'))||0;
   const costInps=[...document.querySelectorAll('.cost-inp')];
-  if(costInps[0])costInps[0].value=(r.gp20*qty20+r.gp40*qty40+r.hc40*qty4h).toFixed(2);
+
+  // Calculate cost — use RF prices if reefer, else GP/HC
+  let cost = 0;
+  if(r.container_type==='REEFER'){
+    cost = (r.rf20||0)*qty20 + (r.rf40||0)*(qty40+qty4h);
+  } else {
+    cost = (r.gp20||0)*qty20 + (r.gp40||0)*qty40 + (r.hc40||0)*qty4h;
+  }
+  if(costInps[0]) costInps[0].value = cost.toFixed(2);
+
   const box=g('sel_rate_box'),lbl=g('sel_label');
   if(box)box.style.display='';
   if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod;
   window._selPol=r.pol||''; window._selPod=r.pod||'';
   window._selCarrier=r.carrier||'';
   const cf=g('s_carrier'); if(cf&&!cf.value) cf.value=r.carrier||'';
+
+  // Update selected cost display
   const set20=g('sel_20'),set40=g('sel_40'),set4h=g('sel_40hc');
-  if(set20)set20.textContent='$'+r.gp20;if(set40)set40.textContent='$'+r.gp40;if(set4h)set4h.textContent='$'+r.hc40;
+  if(r.container_type==='REEFER'){
+    if(set20) set20.textContent='$'+(r.rf20||0)+' (RF)';
+    if(set40) set40.textContent='$'+(r.rf40||0)+' (RF)';
+    if(set4h) set4h.textContent='—';
+  } else {
+    if(set20) set20.textContent='$'+(r.gp20||0);
+    if(set40) set40.textContent='$'+(r.gp40||0);
+    if(set4h) set4h.textContent='$'+(r.hc40||0);
+  }
   recalc();
-  toast('✅ Cost applied: '+r.carrier+' $'+r.gp20+'/20GP');
+  toast('✅ Cost applied: '+r.carrier+(r.container_type==='REEFER'?' [REEFER]':'')+' $'+cost.toFixed(0));
   checkCtnVsRate();
 }
 
