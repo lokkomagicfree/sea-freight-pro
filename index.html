@@ -1121,25 +1121,30 @@ function storageSave(){
 
 function storageLoad(){
   try{
+    const fromFirestore = window._firestoreLoaded;
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ savedJobs = JSON.parse(raw); }
+    // Only load from localStorage if Firestore didn't already populate
+    if(raw && !fromFirestore){ savedJobs = JSON.parse(raw); }
     const cfg = localStorage.getItem(SETTINGS_KEY);
-    if(cfg){
+    if(cfg && !fromFirestore){
       const s = JSON.parse(cfg);
       if(s.commRate){ commRate=s.commRate; const ci=g('comm_rate_inp'); if(ci)ci.value=(commRate*100).toFixed(1); }
       if(s.exRate){ exRate=s.exRate; const ei=g('exrate_inp'); if(ei)ei.value=exRate.toFixed(2); }
-    }
-    // Load rates
+    } - only if Firestore didn't already load them
     const rawTodos = localStorage.getItem(TODO_KEY);
-    if(rawTodos) todos = JSON.parse(rawTodos);
+    if(rawTodos && !fromFirestore) todos = JSON.parse(rawTodos);
     const rawRates = localStorage.getItem(RATE_KEY);
-    if(rawRates){
+    if(rawRates && !fromFirestore){
       const parsed = JSON.parse(rawRates);
       ALL_RATES = expandAndFilterThaiPOL(parsed);
-      // Rebuild filters after rates loaded
       setTimeout(()=>{
         buildFilters(); applyFilter(); hideLoadRatesPrompt();
         toast('✅ Loaded '+ALL_RATES.length.toLocaleString()+' rates from cache');
+      }, 100);
+    } else if(fromFirestore && ALL_RATES.length){
+      // Rates already loaded from Firestore - just build filters
+      setTimeout(()=>{
+        buildFilters(); applyFilter(); hideLoadRatesPrompt();
       }, 100);
     }
   }catch(e){ console.warn('Load failed:',e); }
@@ -4495,8 +4500,10 @@ async function initFirestoreSync(){
     }catch(e){ console.warn('Rate load error',e); }
   }
 
-  // Init UI (after rates are ready)
+  // Init UI (after rates are ready) - pass flag to not overwrite Firestore data
+  window._firestoreLoaded = true;  // flag: data already loaded from Firestore
   window.storageLoad?.();
+  window._firestoreLoaded = false;
   window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
