@@ -4108,9 +4108,23 @@ async function extractRatesFromImages(){
   const imageContents = await Promise.all(_imgFiles.map(f => new Promise((res,rej)=>{
     const reader = new FileReader();
     reader.onload = e => {
-      const b64 = e.target.result.split(',')[1];
-      const mime = f.type || 'image/jpeg';
-      res({ type:'image', source:{ type:'base64', media_type:mime, data:b64 } });
+      const img = new Image();
+      img.onload = () => {
+        const minW = 1600;
+        const scale = img.width < minW ? minW/img.width : 1;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        const b64 = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+        res({ type:'image', source:{ type:'base64', media_type:'image/jpeg', data:b64 } });
+      };
+      img.onerror = rej;
+      img.src = e.target.result;
     };
     reader.onerror = rej;
     reader.readAsDataURL(f);
@@ -4174,7 +4188,7 @@ RULES:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages:[{
           role:'user',
           content:[
