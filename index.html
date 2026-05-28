@@ -441,8 +441,9 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">ETD</label><input type="date" class="inp" id="s_etd" style="color-scheme:dark"></div>
           <div class="inp-group"><label class="inp-lbl">ETA</label><input type="date" class="inp" id="s_eta" style="color-scheme:dark"></div>
           <div class="inp-group"><label class="inp-lbl">Vessel</label><input spellcheck="false" class="inp" id="s_vessel" placeholder="Vessel name"></div>
+          <div class="inp-group"><label class="inp-lbl">Voy (Vessel)</label><input spellcheck="false" class="inp" id="s_voyage" placeholder="Voyage no."></div>
           <div class="inp-group"><label class="inp-lbl">Mother Vessel</label><input spellcheck="false" class="inp" id="s_mother_vessel" placeholder="Mother vessel name"></div>
-          <div class="inp-group"><label class="inp-lbl">Voyage</label><input spellcheck="false" class="inp" id="s_voyage" placeholder="Voyage no."></div>
+          <div class="inp-group"><label class="inp-lbl">Voy (Mother)</label><input spellcheck="false" class="inp" id="s_mother_voy" placeholder="Mother voyage no."></div>
           <div class="inp-group"><label class="inp-lbl">Type</label>
             <select class="inp" id="s_type" onchange="buildCharges()"><option>FCL</option><option>LCL</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Job Type</label>
@@ -1609,10 +1610,11 @@ function recalc(){
   const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   let ts=0,tc=0;
-  sells.forEach((s,i)=>{const c=costs[i]||0,pr=(s-c)*totalQty,mg=s>0?(s-c)/s*100:0;ts+=s*totalQty;tc+=c*totalQty;
+  sells.forEach((s,i)=>{const c=costs[i]||0,pr=s-c,mg=s>0?pr/s*100:0;ts+=s;tc+=c;
     const rows=document.querySelectorAll('#charge_body tr');
     if(rows[i]){rows[i].querySelector('.row-profit').textContent=(s||c)?'$'+pr.toFixed(2):'—';rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';}
   });
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
@@ -1971,13 +1973,14 @@ function saveShipment(){
   const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
-  let ts=0,tc=0;sells.forEach((s,i)=>{ts+=s*totalQty;tc+=(costs[i]||0)*totalQty;});
+  let ts=0,tc=0;sells.forEach((s,i)=>{ts+=s;tc+=costs[i]||0;});
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const jobData={
     no:v('s_bkgno')||('BKG-'+String(savedJobs.length+1).padStart(3,'0')),
     refno:v('s_refno'),customer:v('s_customer'),shipper:v('s_shipper'),
     etd:etdVal,eta:etaVal,etdMonth:etdVal?etdVal.slice(0,7):'Unknown',etaMonth:etaVal?etaVal.slice(0,7):'Unknown',
-    jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),remarks:v('s_remarks'),
+    jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),motherVoy:v('s_mother_voy'),remarks:v('s_remarks'),
     status:v('s_status')||'pending',chargeType:v('s_type'),
     sells,costs,sell:ts,cost:tc,profit,margin,comm,commThb:comm*exRate,commRate,rate:exRate,
     carrier:v2('s_carrier'),incoterm:v2('s_incoterm'),consignee:v2('s_consignee'),
@@ -2015,7 +2018,7 @@ function editShipment(idx){
   window._editIdx=idx;
   const set=(id,val)=>{const e=g(id);if(e)e.value=val||'';};
   set('s_bkgno',j.no);set('s_refno',j.refno);set('s_customer',j.customer);set('s_shipper',j.shipper);
-  set('s_etd',j.etd);set('s_eta',j.eta);set('s_vessel',j.vessel);set('s_mother_vessel',j.motherVessel||'');set('s_voyage',j.voyage);
+  set('s_etd',j.etd);set('s_eta',j.eta);set('s_vessel',j.vessel);set('s_mother_vessel',j.motherVessel||'');set('s_voyage',j.voyage);set('s_mother_voy',j.motherVoy||'');
   set('s_remarks',j.remarks);set('s_status',j.status);set('s_jobtype',j.jobType);
   // Extra email fields
   set('s_carrier',j.carrier);set('s_incoterm',j.incoterm);set('s_consignee',j.consignee);
@@ -2065,7 +2068,7 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_remarks','s_cy_date','s_rtn_date'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
@@ -4726,7 +4729,7 @@ function showShipmentDetail(idx){
       ['ETD', fmt(j.etd)],
       ['ETA', fmt(j.eta)],
       ['Vessel / Voyage', fmt(j.vessel) + (j.voyage ? ' / '+j.voyage : '')],
-      ['Mother Vessel', fmt(j.motherVessel)],
+      ['Mother Vessel / Voy', fmt(j.motherVessel) + (j.motherVoy ? ' / '+j.motherVoy : '')],
       ['Container', ctns],
       ['CY Date', fmt(j.cyDate||'')],
       ['RTN Date', fmt(j.rtnDate||'')],
