@@ -269,10 +269,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       <div id="img_rate_result" style="display:none;margin-top:12px">
         <div style="font-size:11px;font-weight:700;color:var(--purple);margin-bottom:8px;font-family:var(--mono)">EXTRACTED RATES (LAEM CHABANG ONLY)</div>
         <div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">
-          <table class="tbl" style="min-width:500px">
+          <table class="tbl" style="min-width:600px">
             <thead><tr>
-              <th>Carrier</th><th>POL</th><th>POD</th>
+              <th>Carrier</th><th>POL</th><th>POD</th><th>Type</th>
               <th style="text-align:right">20GP</th><th style="text-align:right">40GP</th><th style="text-align:right">40HC</th>
+              <th style="text-align:right">20RF</th><th style="text-align:right">40RF</th>
               <th>Valid From</th><th>Valid To</th><th style="text-align:center">✓</th>
             </tr></thead>
             <tbody id="img_rate_tbody"></tbody>
@@ -3970,16 +3971,20 @@ RULES:
    - Origin country listed as "Thailand" even if port name differs
    - Table headers showing "Thailand" as origin region
 2. For EACH destination found with Thai origin, create one rate entry
-3. Extract: carrier name (infer from document if not explicit), POD (destination port/city/country), 20GP price, 40GP price, 40HC price (or 40RQ for reefer), valid_from date, valid_to date
-4. Set POL = "LAEM CHABANG" for ALL extracted routes regardless of what the image says
-5. If 40GP not shown but 40HC is, use 0 for 40GP
-6. If dates not visible, use ""
-7. For carrier: look for company name, logo, or sender name in the document
-8. Return ONLY a raw JSON array — no explanation, no markdown, no code blocks, no backticks
-9. Format exactly: [{"carrier":"XXX","pol":"LAEM CHABANG","pod":"CITY, COUNTRY","gp20":1000,"gp40":1200,"hc40":1200,"valid_from":"2026-06-01","valid_to":"2026-06-30"}]
-10. POD should be clean: "LOS ANGELES, CA" or "MANZANILLO, MX" not raw codes
+3. Detect container type from the document:
+   - If document mentions "Reefer", "RF", "RQ", "20RF", "40RF", "20RQ", "40RQ", "Live Reefer", "Reefer Rate", "Reefer Guidelines" → set container_type to "REEFER"
+   - Otherwise set container_type to "DRY"
+4. Extract prices based on container type:
+   - DRY: gp20 (20GP), gp40 (40GP), hc40 (40HC) — set others to 0
+   - REEFER: rf20 (20RF/20RQ price), rf40 (40RF/40RQ price) — set gp20/gp40/hc40 to 0
+5. Set POL = "LAEM CHABANG" for ALL routes
+6. If dates not visible use ""
+7. For carrier: look for company name or logo in document
+8. Return ONLY a raw JSON array — no explanation, no markdown, no backticks
+9. Format: [{"carrier":"XXX","pol":"LAEM CHABANG","pod":"CITY, COUNTRY","container_type":"DRY","gp20":1000,"gp40":0,"hc40":1200,"rf20":0,"rf40":0,"valid_from":"2026-06-01","valid_to":"2026-06-30"}]
+10. POD should be clean city name: "LOS ANGELES, CA" not raw codes
 11. If image has zero Thai/Laem Chabang routes, return []
-12. If there are surcharges noted per port (like +USD300), IGNORE them — extract base rate only`;
+12. Ignore surcharges — extract base rate only`;
 
   try{
   const apiKey = localStorage.getItem('sfp_akey') || g('anthropic_key_inp')?.value || '';
@@ -4056,7 +4061,10 @@ function renderExtractedRates(rates){
     return;
   }
 
-  tbody.innerHTML = rates.map((r,i)=>`<tr>
+  tbody.innerHTML = rates.map((r,i)=>{
+    const isReefer = (r.container_type||'DRY')==='REEFER';
+    const typeColor = isReefer ? 'var(--cyan)' : 'var(--green)';
+    return `<tr>
     <td style="padding:6px 8px;font-size:11px">
       <input type="text" value="${r.carrier||''}" onchange="_extractedRates[${i}].carrier=this.value"
         style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--cyan);font-family:var(--mono);font-size:11px;width:80px;outline:none">
@@ -4066,17 +4074,32 @@ function renderExtractedRates(rates){
       <input type="text" value="${r.pod||''}" onchange="_extractedRates[${i}].pod=this.value"
         style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;width:120px;outline:none">
     </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:center">
+      <select onchange="_extractedRates[${i}].container_type=this.value"
+        style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;color:${typeColor};font-size:10px;font-family:var(--mono);padding:2px 4px;outline:none">
+        <option value="DRY"${!isReefer?' selected':''}>🟢 DRY</option>
+        <option value="REEFER"${isReefer?' selected':''}>🔵 REEFER</option>
+      </select>
+    </td>
     <td style="padding:6px 8px;font-size:11px;text-align:right">
       <input type="number" value="${r.gp20||0}" onchange="_extractedRates[${i}].gp20=+this.value"
-        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:55px;text-align:right;outline:none">
     </td>
     <td style="padding:6px 8px;font-size:11px;text-align:right">
       <input type="number" value="${r.gp40||0}" onchange="_extractedRates[${i}].gp40=+this.value"
-        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:55px;text-align:right;outline:none">
     </td>
     <td style="padding:6px 8px;font-size:11px;text-align:right">
       <input type="number" value="${r.hc40||0}" onchange="_extractedRates[${i}].hc40=+this.value"
-        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:60px;text-align:right;outline:none">
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--green);font-family:var(--mono);font-size:11px;width:55px;text-align:right;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:right">
+      <input type="number" value="${r.rf20||0}" onchange="_extractedRates[${i}].rf20=+this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--cyan);font-family:var(--mono);font-size:11px;width:55px;text-align:right;outline:none">
+    </td>
+    <td style="padding:6px 8px;font-size:11px;text-align:right">
+      <input type="number" value="${r.rf40||0}" onchange="_extractedRates[${i}].rf40=+this.value"
+        style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--cyan);font-family:var(--mono);font-size:11px;width:55px;text-align:right;outline:none">
     </td>
     <td style="padding:6px 8px;font-size:11px">
       <input type="date" value="${r.valid_from||''}" onchange="_extractedRates[${i}].valid_from=this.value"
@@ -4089,7 +4112,7 @@ function renderExtractedRates(rates){
     <td style="padding:6px 8px;text-align:center">
       <input type="checkbox" checked data-idx="${i}" style="accent-color:var(--cyan);cursor:pointer">
     </td>
-  </tr>`).join('');
+  </tr>`;}).join('');
 }
 
 function importExtractedRates(){
@@ -4098,16 +4121,19 @@ function importExtractedRates(){
   if(!toImport.length){ toast('⚠️ ไม่มี rate ที่เลือก'); return; }
 
   const converted = toImport.map(r=>({
-    carrier: r.carrier||'UNKNOWN',
-    pol:     'LAEM CHABANG',
-    pod:     r.pod||'',
-    gp20:    r.gp20||0,
-    gp40:    r.gp40||0,
-    hc40:    r.hc40||0,
-    date_from:   r.valid_from||'',
-    date_to:     r.valid_to||'',
+    carrier:      r.carrier||'UNKNOWN',
+    pol:          'LAEM CHABANG',
+    pod:          r.pod||'',
+    container_type: r.container_type||'DRY',
+    gp20:         r.gp20||0,
+    gp40:         r.gp40||0,
+    hc40:         r.hc40||0,
+    rf20:         r.rf20||0,
+    rf40:         r.rf40||0,
+    date_from:    r.valid_from||'',
+    date_to:      r.valid_to||'',
     valid_status: r.valid_to && r.valid_to >= new Date().toISOString().slice(0,10) ? 'valid' : 'expired',
-    source:  'image_upload',
+    source:       'image_upload',
   }));
 
   ALL_RATES = ALL_RATES.concat(converted);
