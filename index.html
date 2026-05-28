@@ -1614,6 +1614,7 @@ function recalc(){
     const rows=document.querySelectorAll('#charge_body tr');
     if(rows[i]){rows[i].querySelector('.row-profit').textContent=(s||c)?'$'+pr.toFixed(2):'—';rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';}
   });
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
@@ -1973,6 +1974,7 @@ function saveShipment(){
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
   let ts=0,tc=0;sells.forEach((s,i)=>{ts+=s;tc+=costs[i]||0;});
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const jobData={
     no:v('s_bkgno')||('BKG-'+String(savedJobs.length+1).padStart(3,'0')),
