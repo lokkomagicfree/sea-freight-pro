@@ -4900,14 +4900,23 @@ function openBookingPdfModal(idx){
 
   // Pre-fill from shipment data
   const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+
+  // Format ISO date (YYYY-MM-DD) → "29-May-2026"
+  const fmtDate = iso => {
+    if(!iso) return '';
+    const d=new Date(iso+'T00:00:00');
+    if(isNaN(d)) return iso;
+    return d.getDate()+'-'+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+'-'+d.getFullYear();
+  };
+
   set('bpdf_shipper',       j.customer || j.shipper || '');
-  set('bpdf_shipper_ref',   j.refNo || '');
+  set('bpdf_shipper_ref',   j.refno || j.refNo || '');                          // 1. REF NO.
   set('bpdf_bkgno',         j.no || j.bookingNo || '');
   set('bpdf_carrier',       j.carrier || j.selCarrier || '');
-  set('bpdf_vsl',           j.vessel || '');
-  set('bpdf_mother_vsl',    j.motherVsl || '');
-  set('bpdf_etd',           j.etd || '');
-  set('bpdf_eta',           j.eta || '');
+  set('bpdf_vsl',           [j.vessel, j.voyage].filter(Boolean).join(' / '));  // 5. Vessel + Voy
+  set('bpdf_mother_vsl',    [j.motherVessel, j.motherVoy].filter(Boolean).join(' / ')); // 2. Mother VSL + Voy
+  set('bpdf_etd',           j.etd || '');                                       // 3. ETD
+  set('bpdf_eta',           j.eta || '');                                       // 3. ETA
   set('bpdf_port_receive',  j.pol || '');
   set('bpdf_port_discharge',j.pod || '');
   set('bpdf_port_loading',  j.pol || 'LAEM CHABANG,THAILAND');
@@ -4920,11 +4929,11 @@ function openBookingPdfModal(idx){
   set('bpdf_gate_closing',  j.gateClosing || '');
   set('bpdf_paperless',     j.paperlessCode || '');
   set('bpdf_pu_ref',        j.no || j.bookingNo || '');
-  set('bpdf_pu_date',       j.pickupDate || '');
+  set('bpdf_pu_date',       fmtDate(j.cyDate) || j.pickupDate || '');          // 4. CY Date
   set('bpdf_pu_place',      j.pickupPlace || '');
   set('bpdf_pu_pic',        j.pickupPic || '');
   set('bpdf_ti_ref',        j.no || j.bookingNo || '');
-  set('bpdf_ti_date',       j.turninDate || '');
+  set('bpdf_ti_date',       fmtDate(j.rtnDate) || j.turninDate || '');         // 4. RTN Date
   set('bpdf_ti_at',         j.turninAt || '');
   set('bpdf_ti_pic',        j.turninPic || '');
   set('bpdf_commodity',     j.commodity || '');
