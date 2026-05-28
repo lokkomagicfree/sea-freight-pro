@@ -246,6 +246,15 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
         <input type="file" id="img_rate_inp" accept="image/*" multiple style="display:none" onchange="handleRateImages(this.files)">
         <button onclick="g('img_rate_inp').click()" class="btn btn-ghost" style="margin-left:auto;font-size:11px;padding:5px 14px;border-color:var(--purple);color:var(--purple)">📷 Select Images</button>
       </div>
+      <!-- API Key input -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:var(--s2);border-radius:7px;padding:8px 12px">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">🔑 API KEY:</span>
+        <input type="password" id="anthropic_key_inp" placeholder="sk-ant-api03-..."
+          style="flex:1;min-width:180px;background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--cyan);font-family:var(--mono);font-size:11px;padding:3px 4px;outline:none"
+          onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border2)'"
+          oninput="localStorage.setItem('sfp_akey',this.value)">
+        <span style="font-size:9px;color:var(--muted);opacity:.7">เก็บใน browser เท่านั้น</span>
+      </div>
       <div id="img_rate_preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
       <div id="img_rate_status" style="font-size:11px;color:var(--muted);font-family:var(--mono)"></div>
       <!-- Manual valid date input -->
@@ -3973,11 +3982,20 @@ RULES:
 12. If there are surcharges noted per port (like +USD300), IGNORE them — extract base rate only`;
 
   try{
+  const apiKey = localStorage.getItem('sfp_akey') || g('anthropic_key_inp')?.value || '';
+  if(!apiKey){ 
+    if(statusEl){ statusEl.textContent='❌ กรุณาใส่ Anthropic API Key ก่อนครับ'; statusEl.style.color='var(--red)'; }
+    return;
+  }
+  // Pre-fill input if key exists
+  const keyInp = g('anthropic_key_inp');
+  if(keyInp && !keyInp.value && apiKey) keyInp.value = apiKey;
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'x-api-key':'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',
+        'x-api-key': apiKey,
         'anthropic-version':'2023-06-01',
         'anthropic-dangerous-direct-browser-access':'true'
       },
@@ -4117,6 +4135,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   fetchRate();
   updateAlertCount();
   updateRateCacheBadge();
+  // Load saved API key
+  const saved = localStorage.getItem('sfp_akey');
+  if(saved){ const el=document.getElementById('anthropic_key_inp'); if(el) el.value=saved; }
 });
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
