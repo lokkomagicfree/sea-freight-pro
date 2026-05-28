@@ -415,7 +415,7 @@ body{font-size:14px;font-weight:450}
         <th style="text-align:right">40'HC ⇅</th>
         <th style="text-align:right;color:var(--cyan)">20'RF ⇅</th>
         <th style="text-align:right;color:var(--cyan)">40'RF ⇅</th>
-        <th>STATUS</th><th>VALID PERIOD</th><th>SHEET</th>
+        <th>STATUS</th><th>VALID PERIOD</th><th>SHEET</th><th></th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
     </table>
@@ -1518,6 +1518,7 @@ function renderTable(filtered){
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
     const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
+    const realIdx = ALL_RATES.indexOf(r);
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
@@ -1534,6 +1535,9 @@ function renderTable(filtered){
     <td>${vBadge(r.valid_status)}</td>
     <td>${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
+    <td style="padding:4px 6px;text-align:center">
+      <button onclick="deleteRate(${realIdx})" title="Delete rate" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
+    </td>
   </tr>`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
@@ -1543,6 +1547,14 @@ function renderTable(filtered){
     if(curPage<pages)h+=`<button class="btn btn-ghost" style="font-size:10px;padding:3px 10px" onclick="curPage++;applyFilter()">▶</button>`;
     btns.innerHTML=h;
   }
+}
+
+function deleteRate(idx){
+  if(idx < 0 || idx >= ALL_RATES.length) return;
+  const r = ALL_RATES[idx];
+  ALL_RATES.splice(idx, 1);
+  buildFilters(); applyFilter(); storageSave();
+  toast(`🗑 Deleted: ${r.carrier||''} ${r.pol||''}→${r.pod||''}`);
 }
 
 function renderCompare(filtered){
@@ -1995,8 +2007,15 @@ function saveShipment(){
   const etdVal=v('s_etd'),etaVal=v('s_eta'),jobType=v('s_jobtype');
   const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
+  const chargeRows=[...document.querySelectorAll('#charge_body tr')];
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
-  let ts=0,tc=0;sells.forEach((s,i)=>{ts+=s;tc+=costs[i]||0;});
+  let ts=0,tc=0;
+  sells.forEach((s,i)=>{
+    const c=costs[i]||0;
+    const isTHB=chargeRows[i]?.dataset?.thb==='true';
+    const rate=isTHB?(exRate||35):1;
+    ts+=s/rate; tc+=c/rate;
+  });
   ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const jobData={
