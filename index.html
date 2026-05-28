@@ -1123,14 +1123,14 @@ function storageLoad(){
   try{
     const fromFirestore = window._firestoreLoaded;
     const raw = localStorage.getItem(STORAGE_KEY);
-    // Only load from localStorage if Firestore didn't already populate
     if(raw && !fromFirestore){ savedJobs = JSON.parse(raw); }
     const cfg = localStorage.getItem(SETTINGS_KEY);
     if(cfg && !fromFirestore){
       const s = JSON.parse(cfg);
       if(s.commRate){ commRate=s.commRate; const ci=g('comm_rate_inp'); if(ci)ci.value=(commRate*100).toFixed(1); }
       if(s.exRate){ exRate=s.exRate; const ei=g('exrate_inp'); if(ei)ei.value=exRate.toFixed(2); }
-    } - only if Firestore didn't already load them
+    } 
+    // Load rates - only if Firestore didn't already load them
     const rawTodos = localStorage.getItem(TODO_KEY);
     if(rawTodos && !fromFirestore) todos = JSON.parse(rawTodos);
     const rawRates = localStorage.getItem(RATE_KEY);
@@ -2430,12 +2430,10 @@ async function fetchRate(){
 }
 
 // ── Init ───────────────────────────────────────────────────
-storageLoad();
 buildCharges();
 fetchRate();
 setInterval(fetchRate,60000);
 showLoadRatesPrompt();
-if(savedJobs.length){renderShipments();updateAlertCount();}setTimeout(initExportDates,200);renderTodos();qLoadFromStorage();
 
 
 // ── Email Generator ────────────────────────────────────────
@@ -4500,15 +4498,16 @@ async function initFirestoreSync(){
     }catch(e){ console.warn('Rate load error',e); }
   }
 
-  // Init UI (after rates are ready) - pass flag to not overwrite Firestore data
-  window._firestoreLoaded = true;  // flag: data already loaded from Firestore
-  window.storageLoad?.();
+  // Init UI — Firestore data already in window.savedJobs & window.ALL_RATES
+  window._firestoreLoaded = true;
+  window.storageLoad?.();   // load settings/todos only (jobs+rates already set)
   window._firestoreLoaded = false;
   window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
+  setTimeout(()=>{ window.initExportDates?.(); window.qLoadFromStorage?.(); }, 200);
 
   // Build rate filters after everything loaded
   if(window.ALL_RATES?.length){
@@ -4705,18 +4704,6 @@ function closeShipmentDetail(){
 document.addEventListener('DOMContentLoaded', ()=>{
   const modal = document.getElementById('shipment_detail_modal');
   if(modal) modal.addEventListener('click', e=>{ if(e.target===modal) closeShipmentDetail(); });
-});
-document.addEventListener('DOMContentLoaded', ()=>{
-  initCtnRows();
-  storageLoad();
-  renderShipments();
-  renderTodos();
-  fetchRate();
-  updateAlertCount();
-  updateRateCacheBadge();
-  // Load saved API key
-  const saved = localStorage.getItem('sfp_akey');
-  if(saved){ const el=document.getElementById('anthropic_key_inp'); if(el) el.value=saved; }
 });
 
 </script>
