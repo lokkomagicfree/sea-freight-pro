@@ -4909,7 +4909,7 @@ function openBookingPdfModal(idx){
     return d.getDate()+'-'+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+'-'+d.getFullYear();
   };
 
-  set('bpdf_shipper',       j.customer || j.shipper || '');
+  set('bpdf_shipper',       j.shipper || j.customer || '');
   set('bpdf_shipper_ref',   j.refno || j.refNo || '');                          // 1. REF NO.
   set('bpdf_bkgno',         j.no || j.bookingNo || '');
   set('bpdf_carrier',       j.carrier || j.selCarrier || '');
@@ -5181,7 +5181,7 @@ function generateBookingPDF(){
   });
 
   // Download
-  const fname = `BookingConfirmation_${gv('bpdf_bkgno')||'draft'}.pdf`;
+  const fname = `BOOKINGCONFIRMATION_${(gv('bpdf_bkgno')||'DRAFT').toUpperCase()}.pdf`;
   doc.save(fname);
   toast('📥 Downloaded: '+fname);
   closeBookingPdfModal();
