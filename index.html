@@ -1121,30 +1121,23 @@ function storageSave(){
 
 function storageLoad(){
   try{
-    const fromFirestore = window._firestoreLoaded;
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw && !fromFirestore){ savedJobs = JSON.parse(raw); }
+    if(raw){ savedJobs = JSON.parse(raw); }
     const cfg = localStorage.getItem(SETTINGS_KEY);
-    if(cfg && !fromFirestore){
+    if(cfg){
       const s = JSON.parse(cfg);
       if(s.commRate){ commRate=s.commRate; const ci=g('comm_rate_inp'); if(ci)ci.value=(commRate*100).toFixed(1); }
       if(s.exRate){ exRate=s.exRate; const ei=g('exrate_inp'); if(ei)ei.value=exRate.toFixed(2); }
-    } 
-    // Load rates - only if Firestore didn't already load them
+    }
     const rawTodos = localStorage.getItem(TODO_KEY);
-    if(rawTodos && !fromFirestore) todos = JSON.parse(rawTodos);
+    if(rawTodos) todos = JSON.parse(rawTodos);
     const rawRates = localStorage.getItem(RATE_KEY);
-    if(rawRates && !fromFirestore){
+    if(rawRates){
       const parsed = JSON.parse(rawRates);
       ALL_RATES = expandAndFilterThaiPOL(parsed);
       setTimeout(()=>{
         buildFilters(); applyFilter(); hideLoadRatesPrompt();
         toast('✅ Loaded '+ALL_RATES.length.toLocaleString()+' rates from cache');
-      }, 100);
-    } else if(fromFirestore && ALL_RATES.length){
-      // Rates already loaded from Firestore - just build filters
-      setTimeout(()=>{
-        buildFilters(); applyFilter(); hideLoadRatesPrompt();
       }, 100);
     }
   }catch(e){ console.warn('Load failed:',e); }
@@ -2431,9 +2424,14 @@ async function fetchRate(){
 
 // ── Init ───────────────────────────────────────────────────
 buildCharges();
+storageLoad();   // load from localStorage first (fallback before Firebase)
+initCtnRows();
+renderShipments();
+renderTodos();
 fetchRate();
 setInterval(fetchRate,60000);
 showLoadRatesPrompt();
+setTimeout(()=>{ initExportDates?.(); qLoadFromStorage?.(); updateAlertCount(); updateRateCacheBadge(); },200);
 
 
 // ── Email Generator ────────────────────────────────────────
@@ -4470,9 +4468,10 @@ async function initFirestoreSync(){
     fbGet('data/rateMeta'),
   ]);
 
-  if(jobsSnap?.jobs)         window.savedJobs = jobsSnap.jobs;
-  if(todosSnap?.todos)       window.todos = todosSnap.todos;
-  if(quotSnap?.quotations)   window.savedQuotations = quotSnap.quotations;
+  // ── Set data from Firestore (override localStorage) ──
+  if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; }
+  if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
+  if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; }
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
     if(settSnap.exRate!==undefined)   window.exRate   = settSnap.exRate;
@@ -4483,7 +4482,7 @@ async function initFirestoreSync(){
   if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
   if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
 
-  // Load rates from Firestore chunks FIRST (await before init UI)
+  // Load rates from Firestore chunks
   if(rateMetaSnap?.chunks > 0){
     try{
       const chunkPromises = [];
@@ -4493,32 +4492,24 @@ async function initFirestoreSync(){
       if(allRates.length){
         window.ALL_RATES = allRates;
         try{ localStorage.setItem('seafreight_rates_v1', JSON.stringify(allRates)); }catch(e){}
-        console.log('✅ Loaded '+allRates.length+' rates from Firestore');
       }
     }catch(e){ console.warn('Rate load error',e); }
   }
 
-  // Init UI — Firestore data already in window.savedJobs & window.ALL_RATES
-  window._firestoreLoaded = true;
-  window.storageLoad?.();   // load settings/todos only (jobs+rates already set)
-  window._firestoreLoaded = false;
+  // Re-render UI with Firestore data
   window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
-  setTimeout(()=>{ window.initExportDates?.(); window.qLoadFromStorage?.(); }, 200);
 
-  // Build rate filters after everything loaded
   if(window.ALL_RATES?.length){
     setTimeout(()=>{
       window.buildFilters?.();
       window.applyFilter?.();
       window.hideLoadRatesPrompt?.();
-      toast('✅ Loaded '+window.ALL_RATES.length.toLocaleString()+' rates from cloud ☁');
-    }, 300);
-  } else {
-    window.fetchRate?.();
+      toast('✅ Loaded '+window.ALL_RATES.length.toLocaleString()+' rates ☁');
+    }, 200);
   }
 
   // Load saved API key
