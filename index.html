@@ -1324,6 +1324,8 @@ function parseFile(buffer,filename){
       const removed=newRates.length-kept.length;
       toast('✅ Added '+kept.length.toLocaleString()+' Thai POL routes'+(removed?' ('+removed+' filtered/old removed)':''));
       storageSave();
+      // Explicitly sync rates to cloud
+      if(typeof syncRatesToCloud === 'function') syncRatesToCloud();
     } else toast('❌ No Thai POL rates found (LCB/BKK/LKB/Songkhla only)');
   }catch(e){toast('❌ '+e.message);console.error(e);}
 }
@@ -4477,7 +4479,7 @@ async function initFirestoreSync(){
   if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
   if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
 
-  // Load rates from Firestore chunks
+  // Load rates from Firestore chunks FIRST (await before init UI)
   if(rateMetaSnap?.chunks > 0){
     try{
       const chunkPromises = [];
@@ -4487,26 +4489,55 @@ async function initFirestoreSync(){
       if(allRates.length){
         window.ALL_RATES = allRates;
         try{ localStorage.setItem('seafreight_rates_v1', JSON.stringify(allRates)); }catch(e){}
-        setTimeout(()=>{ buildFilters(); applyFilter(); hideLoadRatesPrompt();
-          toast('✅ Loaded '+allRates.length.toLocaleString()+' rates from cloud'); }, 200);
+        console.log('✅ Loaded '+allRates.length+' rates from Firestore');
       }
     }catch(e){ console.warn('Rate load error',e); }
   }
 
-  // Init UI
+  // Init UI (after rates are ready)
   window.storageLoad?.();
   window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
-  window.fetchRate?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
+
+  // Build rate filters after everything loaded
+  if(window.ALL_RATES?.length){
+    setTimeout(()=>{
+      window.buildFilters?.();
+      window.applyFilter?.();
+      window.hideLoadRatesPrompt?.();
+      toast('✅ Loaded '+window.ALL_RATES.length.toLocaleString()+' rates from cloud ☁');
+    }, 300);
+  } else {
+    window.fetchRate?.();
+  }
 
   // Load saved API key
   const savedKey = localStorage.getItem('sfp_akey');
   if(savedKey){ const el=document.getElementById('anthropic_key_inp'); if(el) el.value=savedKey; }
 
   showSyncBadge(true);
+
+  // ── Exposed sync function for rates ──
+  window.syncRatesToCloud = async function(){
+    if(!uid()) return;
+    const rates = window.ALL_RATES||[];
+    if(!rates.length) return;
+    try{
+      const CHUNK = 500;
+      const numChunks = Math.ceil(rates.length/CHUNK);
+      const promises = [];
+      for(let i=0;i<numChunks;i++){
+        promises.push(fbSet(`data/rates_${i}`, {rates: rates.slice(i*CHUNK,(i+1)*CHUNK)}));
+      }
+      promises.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt:new Date().toISOString()}));
+      await Promise.all(promises);
+      showSyncBadge(true);
+      toast('☁ Rates synced to cloud ('+rates.length+' routes)');
+    }catch(e){ showSyncBadge(false); console.warn('Rate sync error',e); }
+  };
 
   // ── Patch storageSave → also write to Firestore ──
   const origSave = window.storageSave;
