@@ -1075,8 +1075,8 @@ let curPage    = 1;
 const PER_PAGE = 50;
 let sortField  = 'gp20'; let sortAsc = true;
 
-const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Doc Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Others'];
-const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Doc Fee','Inland Haulage','AMS/ENS','Others'];
+const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Others'];
+const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Surrender Fee','Inland Haulage','AMS/ENS','Others'];
 
 const MN = {'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
 
@@ -1590,16 +1590,25 @@ document.addEventListener('click',e=>{
 });
 
 // ── Charges ────────────────────────────────────────────────
+const THB_CHARGES = ['THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee'];
+function isThbCharge(name){ return THB_CHARGES.some(t=>name===t); }
+
 function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
-  tbody.innerHTML=items.map((name,i)=>`<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}">
-    <td style="font-size:12px;padding:6px 10px">${name}</td>
+  tbody.innerHTML=items.map((name,i)=>{
+    const isTHB=isThbCharge(name);
+    const ccy=isTHB
+      ? `<span style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(183,128,10,.15);color:var(--gold);border:1px solid rgba(183,128,10,.3);border-radius:4px;padding:1px 5px;margin-left:5px">THB</span>`
+      : `<span style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(41,128,185,.1);color:var(--cyan);border:1px solid rgba(41,128,185,.25);border-radius:4px;padding:1px 5px;margin-left:5px">USD</span>`;
+    return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}">
+    <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
     <td style="padding:4px 6px"><input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px"></td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
   recalc();
 }
 
@@ -1610,12 +1619,20 @@ function recalc(){
     const label = (_ctnRows||[]).filter(r=>r.qty>0).map(r=>r.qty+'×'+r.type).join(', ') || '1×20GP';
     badge.textContent = label;
   }
+  const rows=[...document.querySelectorAll('#charge_body tr')];
   const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   let ts=0,tc=0;
-  sells.forEach((s,i)=>{const c=costs[i]||0,pr=s-c,mg=s>0?pr/s*100:0;ts+=s;tc+=c;
-    const rows=document.querySelectorAll('#charge_body tr');
-    if(rows[i]){rows[i].querySelector('.row-profit').textContent=(s||c)?'$'+pr.toFixed(2):'—';rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';}
+  sells.forEach((s,i)=>{
+    const c=costs[i]||0,pr=s-c,mg=s>0?pr/s*100:0;
+    const isTHB=rows[i]?.dataset?.thb==='true';
+    const rate=isTHB?(exRate||35):1;
+    // Summary uses USD equivalent
+    ts+=s/rate; tc+=c/rate;
+    if(rows[i]){
+      rows[i].querySelector('.row-profit').textContent=(s||c)?(isTHB?'฿'+pr.toLocaleString('th-TH',{maximumFractionDigits:0}):'$'+pr.toFixed(2)):'—';
+      rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';
+    }
   });
   ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
@@ -2511,14 +2528,14 @@ function showEmailPreview(emailType){
   // Build sell charges list (non-zero)
   const sellLines = chargeNames.map((name,i)=>{
     if(!sellVals[i]) return null;
-    const isThb = ['THC Origin','THC Dest','Seal Fee','Doc Fee','Surrender','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
+    const isThb = ['THC Origin','THC Dest','Seal Fee','Surrender Fee','B/L Fee','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
     const unit = i===0 ? '/'+volStr.split(',')[0]?.trim().replace(/^\d+x/,'') : '';
     return `  ${name.padEnd(18)} : ${isThb?sellVals[i].toFixed(0)+' THB':('USD '+sellVals[i].toFixed(0))}${unit ? ' '+unit : ''}`;
   }).filter(Boolean).join('\n');
 
   const costLines = chargeNames.map((name,i)=>{
     if(!costVals[i]) return null;
-    const isThb = ['THC Origin','THC Dest','Seal Fee','Doc Fee','Surrender','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
+    const isThb = ['THC Origin','THC Dest','Seal Fee','Surrender Fee','B/L Fee','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
     return `  ${name.padEnd(18)} : ${isThb?costVals[i].toFixed(0)+' THB':('USD '+costVals[i].toFixed(0))}`;
   }).filter(Boolean).join('\n');
 
@@ -2739,7 +2756,7 @@ function showGroupEmail(){
     const chargeNames = [...document.querySelectorAll('#charge_body tr td:first-child')].map(e=>e.textContent.trim());
     const sellVals  = j0.sells||[];
     const costVals  = j0.costs||[];
-    const thbNames  = ['THC Origin','THC Dest','Seal Fee','Doc Fee','Surrender','HDL','B/L Fee'];
+    const thbNames  = ['THC Origin','THC Dest','Seal Fee','Surrender Fee','B/L Fee','HDL','B/L Fee'];
     const sellLines = sellVals.map((val,i)=>{if(!val)return null;const n=chargeNames[i]||'Charge '+(i+1);const isTHB=thbNames.some(t=>n.includes(t.split(' ')[0]));return`  ${n.padEnd(18)}: ${isTHB?val.toFixed(0)+' THB':'USD '+val.toFixed(0)}`;}).filter(Boolean).join('\n');
     const costLines = costVals.map((val,i)=>{if(!val)return null;const n=chargeNames[i]||'Charge '+(i+1);const isTHB=thbNames.some(t=>n.includes(t.split(' ')[0]));return`  ${n.padEnd(18)}: ${isTHB?val.toFixed(0)+' THB':'USD '+val.toFixed(0)}`;}).filter(Boolean).join('\n');
 
