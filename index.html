@@ -129,6 +129,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .src-iaeu{background:rgba(251,146,60,.15);color:#fb923c}
 .src-import{background:rgba(100,116,139,.15);color:#94a3b8}
 .src-bullet{background:rgba(239,68,68,.15);color:#f87171}
+.src-reefer{background:rgba(0,212,255,.15);color:#00d4ff}
 .src-food{background:rgba(16,185,129,.15);color:#34d399}
 .src-tp{background:rgba(56,189,248,.15);color:#38bdf8}
 /* Carrier colors */
@@ -368,6 +369,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <table class="tbl">
       <thead><tr>
         <th>SRC</th><th>CARRIER</th><th>POL</th><th>POD</th>
+        <th style="text-align:center">TYPE</th>
         <th style="text-align:right">20'GP ⇅</th>
         <th style="text-align:right">40'GP ⇅</th>
         <th style="text-align:right">40'HC ⇅</th>
@@ -1211,8 +1213,18 @@ function vBadge(s){
 }
 
 // ── Source badges ──────────────────────────────────────────
-function srcCls(s){const m={FIX:'src-fix',FAK:'src-wwl',BULLET:'src-bullet',FOOD:'src-food','ISC-ME':'src-isc','IA-EU':'src-iaeu',TP:'src-tp'};return m[s]||'src-import';}
-function srcLabel(s){const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','IA-EU':'IA-EU',TP:'TP',IMPORT:'IMP'};return m[s]||s||'IMP';}
+function srcCls(s,r){
+  if(r && r.container_type==='REEFER') return 'src-reefer';
+  if(s==='image_upload') return 'src-bullet';
+  const m={FIX:'src-fix',FAK:'src-wwl',BULLET:'src-bullet',FOOD:'src-food','ISC-ME':'src-isc','IA-EU':'src-iaeu',TP:'src-tp'};
+  return m[s]||'src-import';
+}
+function srcLabel(s,r){
+  if(r && r.container_type==='REEFER') return 'RF';
+  if(s==='image_upload') return 'BUL';
+  const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','IA-EU':'IA-EU',TP:'TP',IMPORT:'IMP'};
+  return m[s]||s||'IMP';
+}
 
 // ── File handling ──────────────────────────────────────────
 function toggleUpload(){const p=g('upload_panel');if(p)p.style.display=p.style.display==='none'?'block':'none';}
@@ -1438,19 +1450,28 @@ function renderTable(filtered){
   const total=filtered.length,pages=Math.ceil(total/PER_PAGE);
   const slice=filtered.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
   const tbody=g('rate_body');if(!tbody)return;
-  if(!slice.length){tbody.innerHTML=`<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
-  tbody.innerHTML=slice.map(r=>`<tr>
-    <td><span class="src-badge ${srcCls(r.source)}">${srcLabel(r.source)}</span></td>
+  if(!slice.length){tbody.innerHTML=`<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
+  tbody.innerHTML=slice.map(r=>{
+    const isReefer = r.container_type==='REEFER';
+    const price1 = isReefer ? (r.rf20?'$'+r.rf20.toLocaleString():'—') : (r.gp20?'$'+r.gp20.toLocaleString():'—');
+    const price2 = isReefer ? (r.rf40?'$'+r.rf40.toLocaleString():'—') : (r.gp40?'$'+r.gp40.toLocaleString():'—');
+    const price3 = isReefer ? '—' : (r.hc40?'$'+r.hc40.toLocaleString():'—');
+    const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
+    return `<tr>
+    <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pol||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pod||'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.gp40?'$'+r.gp40.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
+    <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${isReefer?'var(--cyan)':'var(--muted)'}">
+      ${isReefer?'❄️ RF':'📦 DRY'}
+    </td>
+    <td style="text-align:right;font-family:var(--mono);color:${col1};font-weight:600">${price1}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${price2}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${price3}</td>
     <td>${vBadge(r.valid_status)}</td>
     <td>${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
-  </tr>`).join('');
+  </tr>`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
