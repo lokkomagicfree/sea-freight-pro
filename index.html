@@ -4728,6 +4728,8 @@ function showShipmentDetail(idx){
 
   const modal = document.getElementById('shipment_detail_modal');
   modal.style.display = 'flex';
+  modal._justOpened = true;
+  setTimeout(()=>{ modal._justOpened = false; }, 300);
   document.body.style.overflow = 'hidden';
 }
 
@@ -4740,7 +4742,7 @@ function closeShipmentDetail(){
 // Close on backdrop click
 document.addEventListener('DOMContentLoaded', ()=>{
   const modal = document.getElementById('shipment_detail_modal');
-  if(modal) modal.addEventListener('click', e=>{ if(e.target===modal) closeShipmentDetail(); });
+  if(modal) modal.addEventListener('click', e=>{ if(e.target===modal && !modal._justOpened) closeShipmentDetail(); });
 });
 
 </script>
@@ -4811,7 +4813,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 let _bpdfIdx = null;
 
 function openBookingPdfModal(idx){
-  const j = savedJobs[idx]; if(!j) return;
+  console.log('openBookingPdfModal called, idx='+idx, 'savedJobs.length='+savedJobs?.length, 'job=', savedJobs?.[idx]);
+  const j = savedJobs[idx]; 
+  if(!j){ console.error('No job at idx', idx); toast('❌ ไม่พบข้อมูล shipment'); return; }
   _bpdfIdx = idx;
 
   // Build volume string from ctnRows
@@ -4852,16 +4856,20 @@ function openBookingPdfModal(idx){
   set('bpdf_special_remark',j.specialRemark || '');
 
   const modal = document.getElementById('booking_pdf_modal');
-  // Reset title
   const titleEl = modal?.querySelector('.bpdf-title');
   if(titleEl) titleEl.textContent = '📄 Generate Booking Confirmation PDF';
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  // Prevent click event from immediately closing modal
+  modal._justOpened = true;
+  setTimeout(()=>{ modal._justOpened = false; }, 300);
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
   const m=document.getElementById('booking_pdf_modal');
-  if(m) m.addEventListener('click',e=>{ if(e.target===m) closeBookingPdfModal(); });
+  if(m) m.addEventListener('click',e=>{
+    if(e.target===m && !m._justOpened) closeBookingPdfModal();
+  });
 });
 
 function closeBookingPdfModal(){
