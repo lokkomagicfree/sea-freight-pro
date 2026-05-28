@@ -2106,6 +2106,7 @@ function renderShipments(){
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
           <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
           <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
+          <button onclick="openBookingPdfModal(${j._idx})" title="Booking PDF" style="border:none;background:rgba(41,128,185,.1);color:var(--cyan);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">📄 PDF</button>
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
           <button onclick="duplicateShipment(${j._idx})" title="Duplicate" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-right:2px">📋</button>
           <button onclick="savedJobs.splice(${j._idx},1);renderShipments();updateAlertCount()" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:12px">✕</button>
@@ -4723,3 +4724,338 @@ document.addEventListener('DOMContentLoaded', ()=>{
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div id="sdm_status" style="padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.2);color:#fff"></div>
+<div id="booking_pdf_modal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;width:min(640px,96vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.3)">
+    <div style="background:var(--cyan);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div class="bpdf-title" style="font-size:15px;font-weight:800;color:#fff;font-family:var(--mono)">📄 Generate Booking Confirmation PDF</div>
+      <button onclick="closeBookingPdfModal()" style="border:none;background:rgba(255,255,255,.2);color:#fff;cursor:pointer;font-size:16px;width:28px;height:28px;border-radius:50%">✕</button>
+    </div>
+    <div style="overflow-y:auto;padding:18px;flex:1">
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:12px;letter-spacing:.08em">ข้อมูลจากระบบจะถูก pre-fill อัตโนมัติ — กรอกเพิ่มเติมในส่วนที่ยังขาด</div>
+      <div class="two-col" style="gap:10px">
+        <div class="inp-group"><label class="inp-lbl">Shipper Name</label><input class="inp" id="bpdf_shipper"></div>
+        <div class="inp-group"><label class="inp-lbl">Shipper Ref (SBKK...)</label><input class="inp" id="bpdf_shipper_ref"></div>
+        <div class="inp-group"><label class="inp-lbl">Booking No.</label><input class="inp" id="bpdf_bkgno"></div>
+        <div class="inp-group"><label class="inp-lbl">Shipping Line</label><input class="inp" id="bpdf_carrier"></div>
+        <div class="inp-group"><label class="inp-lbl">VSL Name / Voy</label><input class="inp" id="bpdf_vsl"></div>
+        <div class="inp-group"><label class="inp-lbl">Mother VSL Name</label><input class="inp" id="bpdf_mother_vsl"></div>
+        <div class="inp-group"><label class="inp-lbl">ETD</label><input class="inp" id="bpdf_etd" type="date"></div>
+        <div class="inp-group"><label class="inp-lbl">ETA</label><input class="inp" id="bpdf_eta" type="date"></div>
+        <div class="inp-group"><label class="inp-lbl">Port of Receive</label><input class="inp" id="bpdf_port_receive"></div>
+        <div class="inp-group"><label class="inp-lbl">Port of Discharge</label><input class="inp" id="bpdf_port_discharge"></div>
+        <div class="inp-group"><label class="inp-lbl">Port of Loading</label><input class="inp" id="bpdf_port_loading"></div>
+        <div class="inp-group"><label class="inp-lbl">Final Destination</label><input class="inp" id="bpdf_final_dest"></div>
+        <div class="inp-group"><label class="inp-lbl">Port of Transit</label><input class="inp" id="bpdf_port_transit"></div>
+        <div class="inp-group"><label class="inp-lbl">Volume</label><input class="inp" id="bpdf_volume"></div>
+        <div class="inp-group"><label class="inp-lbl">SI Cut-Off time</label><input class="inp" id="bpdf_si_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
+        <div class="inp-group"><label class="inp-lbl">Dead Line CFM BL</label><input class="inp" id="bpdf_cfm_bl" placeholder="05/JUN/2026 15:00 HRS."></div>
+        <div class="inp-group"><label class="inp-lbl">VGM Cut-Off time</label><input class="inp" id="bpdf_vgm_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
+        <div class="inp-group"><label class="inp-lbl">Gate Closing Date</label><input class="inp" id="bpdf_gate_closing" placeholder="02/JUN/2026 20:00 HRS."></div>
+        <div class="inp-group"><label class="inp-lbl">Paperless Code</label><input class="inp" id="bpdf_paperless"></div>
+        <div class="inp-group"><label class="inp-lbl">Pick up Ref</label><input class="inp" id="bpdf_pu_ref"></div>
+        <div class="inp-group"><label class="inp-lbl">Pick up Date</label><input class="inp" id="bpdf_pu_date" placeholder="29-May-2026"></div>
+        <div class="inp-group"><label class="inp-lbl">Pick up PIC. Tel.</label><input class="inp" id="bpdf_pu_pic"></div>
+        <div class="inp-group full-col"><label class="inp-lbl">Pick up Place</label><textarea class="inp" id="bpdf_pu_place" rows="2"></textarea></div>
+        <div class="inp-group"><label class="inp-lbl">Turn-In Ref</label><input class="inp" id="bpdf_ti_ref"></div>
+        <div class="inp-group"><label class="inp-lbl">Turn-In Date</label><input class="inp" id="bpdf_ti_date" placeholder="31-May-2026"></div>
+        <div class="inp-group"><label class="inp-lbl">Turn-In PIC. Tel.</label><input class="inp" id="bpdf_ti_pic"></div>
+        <div class="inp-group full-col"><label class="inp-lbl">Turn-In At</label><textarea class="inp" id="bpdf_ti_at" rows="2"></textarea></div>
+        <div class="inp-group"><label class="inp-lbl">Commodity</label><input class="inp" id="bpdf_commodity"></div>
+        <div class="inp-group"><label class="inp-lbl">Weight (KGS)</label><input class="inp" id="bpdf_weight"></div>
+        <div class="inp-group"><label class="inp-lbl">HS. Code</label><input class="inp" id="bpdf_hs_code"></div>
+        <div class="inp-group full-col"><label class="inp-lbl">Special Cargo Remark</label><textarea class="inp" id="bpdf_special_remark" rows="3"></textarea></div>
+      </div>
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;background:var(--s2)">
+      <button onclick="generateBookingPDF()" class="btn btn-cyan" style="font-size:12px;padding:6px 18px">📥 Download PDF</button>
+      <button onclick="duplicateBookingPDF()" class="btn btn-gold" style="font-size:12px;padding:6px 18px">📋 Duplicate & Edit</button>
+      <button onclick="closeBookingPdfModal()" class="btn btn-ghost" style="font-size:12px;padding:6px 18px">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ── Booking PDF Modal ──────────────────────────────────
+let _bpdfIdx = null;
+
+function openBookingPdfModal(idx){
+  const j = savedJobs[idx]; if(!j) return;
+  _bpdfIdx = idx;
+
+  // Build volume string from ctnRows
+  const vol = (j.ctnRows||[]).map(r=>`${r.qty}x${r.type}`).join(' + ') || j.volume || '';
+
+  // Pre-fill from shipment data
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('bpdf_shipper',       j.customer || j.shipper || '');
+  set('bpdf_shipper_ref',   j.refNo || '');
+  set('bpdf_bkgno',         j.no || j.bookingNo || '');
+  set('bpdf_carrier',       j.carrier || j.selCarrier || '');
+  set('bpdf_vsl',           j.vessel || '');
+  set('bpdf_mother_vsl',    j.motherVsl || '');
+  set('bpdf_etd',           j.etd || '');
+  set('bpdf_eta',           j.eta || '');
+  set('bpdf_port_receive',  j.pol || '');
+  set('bpdf_port_discharge',j.pod || '');
+  set('bpdf_port_loading',  j.pol || 'LAEM CHABANG,THAILAND');
+  set('bpdf_final_dest',    j.pod || '');
+  set('bpdf_port_transit',  j.portTransit || '');
+  set('bpdf_volume',        vol);
+  set('bpdf_si_cutoff',     j.siCutoff || '');
+  set('bpdf_cfm_bl',        j.cfmBl || '');
+  set('bpdf_vgm_cutoff',    j.vgmCutoff || '');
+  set('bpdf_gate_closing',  j.gateClosing || '');
+  set('bpdf_paperless',     j.paperlessCode || '');
+  set('bpdf_pu_ref',        j.no || j.bookingNo || '');
+  set('bpdf_pu_date',       j.pickupDate || '');
+  set('bpdf_pu_place',      j.pickupPlace || '');
+  set('bpdf_pu_pic',        j.pickupPic || '');
+  set('bpdf_ti_ref',        j.no || j.bookingNo || '');
+  set('bpdf_ti_date',       j.turninDate || '');
+  set('bpdf_ti_at',         j.turninAt || '');
+  set('bpdf_ti_pic',        j.turninPic || '');
+  set('bpdf_commodity',     j.commodity || '');
+  set('bpdf_weight',        j.weight || '');
+  set('bpdf_hs_code',       j.hsCode || 'Please advise');
+  set('bpdf_special_remark',j.specialRemark || '');
+
+  const modal = document.getElementById('booking_pdf_modal');
+  // Reset title
+  const titleEl = modal?.querySelector('.bpdf-title');
+  if(titleEl) titleEl.textContent = '📄 Generate Booking Confirmation PDF';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const m=document.getElementById('booking_pdf_modal');
+  if(m) m.addEventListener('click',e=>{ if(e.target===m) closeBookingPdfModal(); });
+});
+
+function closeBookingPdfModal(){
+  const m = document.getElementById('booking_pdf_modal');
+  if(m) m.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function gv(id){ return (document.getElementById(id)?.value||'').trim(); }
+
+function generateBookingPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+  const W=210, H=297, LM=12, RM=198, TW=RM-LM;
+
+  const BLK=[0,0,0], RED=[192,0,0], BLUE=[0,90,192], DKBLUE=[0,51,153];
+  const LGRAY=[224,224,224], LBLUE=[191,222,242], YELLOW=[255,255,153];
+
+  function hline(y, x1, x2, w=0.3){ doc.setDrawColor(...BLK); doc.setLineWidth(w); doc.line(x1||LM,y,x2||RM,y); }
+  function vline(x,y1,y2,w=0.3){ doc.setDrawColor(...BLK); doc.setLineWidth(w); doc.line(x,y1,x,y2); }
+  function rect(x,y,w,h,fc=null,stroke=true,lw=0.3){
+    if(fc){ doc.setFillColor(...fc); doc.rect(x,y,w,h,'F'); }
+    if(stroke){ doc.setDrawColor(...BLK); doc.setLineWidth(lw); doc.rect(x,y,w,h,'S'); }
+  }
+  function t(text, x, y, sz=8, bold=false, col=BLK, align='left'){
+    doc.setFontSize(sz); doc.setFont('helvetica', bold?'bold':'normal');
+    doc.setTextColor(...col);
+    if(align==='center') doc.text(String(text||''), x, y, {align:'center'});
+    else if(align==='right') doc.text(String(text||''), x, y, {align:'right'});
+    else doc.text(String(text||''), x, y);
+  }
+  function wrapLines(text, maxW, sz){
+    doc.setFontSize(sz);
+    return doc.splitTextToSize(String(text||''), maxW);
+  }
+
+  let y = 10;
+  const HEADER_H = 26;
+
+  // Logo placeholder
+  t('Worldwide', LM+8, y+8, 7, true, BLUE, 'center');
+  t('Logistics', LM+8, y+13, 7, false, BLUE, 'center');
+  t('Group', LM+8, y+18, 6, false, BLUE, 'center');
+
+  // Company info
+  const co = [
+    [gv('bpdf_shipper') ? 'Worldwide Logistics Services (Thailand) Co.,Ltd.' : 'Worldwide Logistics Services (Thailand) Co.,Ltd.', 9, true],
+    ['191 SILOM COMPLEX BUILDING, 16TH FLOOR, UNIT 4, SILOM ROAD,', 7.5, false],
+    ['KWAENG SILOM, KHET BANGRAK, BANGKOK 10500 THAILAND', 7.5, false],
+    ['Tel no. 02-0042071  Tax ID 0105561014225 (Head Quarter)', 7.5, false],
+  ];
+  let coY = y + 5;
+  co.forEach(([txt,sz,bold])=>{ t(txt, LM+TW/2, coY, sz, bold, BLK, 'center'); coY+=5; });
+
+  y += HEADER_H;
+
+  // Booking Confirmation bar
+  const BAR_H=7;
+  rect(LM, y, TW, BAR_H, LGRAY);
+  t('Booking Confirmation', LM+TW/2, y+4.5, 10, true, BLK, 'center');
+  y += BAR_H;
+
+  // Shipper / Booking No
+  const SEC_H=28;
+  rect(LM, y, TW, SEC_H, null, true, 0.3);
+  const MID = LM+TW*0.52;
+  t('Shipper Name :', LM+3, y+7, 8, true);
+  t(gv('bpdf_shipper'), LM+40, y+7, 8);
+  if(gv('bpdf_shipper_ref')) t(gv('bpdf_shipper_ref'), LM+40, y+13, 7.5);
+  t('Booking No.', MID+4, y+5, 8, true);
+  t(gv('bpdf_bkgno'), RM-4, y+13, 14, true, BLK, 'right');
+  t('Shipping Line :', MID+4, y+18, 8, true);
+  t(gv('bpdf_carrier'), RM-4, y+26, 17, true, BLK, 'right');
+  y += SEC_H;
+
+  // Schedule section
+  const SH=5.5, RH=5.5;
+  const schedTop=y;
+  rect(LM, y, TW*0.52, SH, LBLUE, false);
+  hline(y);
+  t('Schedule Informtion', LM+3, y+3.8, 8, true);
+  y += SH;
+  const C1=LM+3, C2=LM+35, C3=LM+100, C4=LM+128;
+
+  const srows=[
+    ['VSL Name / Voy :', gv('bpdf_vsl'), DKBLUE, true, 'MOTHER VSL Name :', gv('bpdf_mother_vsl'), BLUE, true],
+    ['ETD :', gv('bpdf_etd'), BLUE, true, 'ETA :', gv('bpdf_eta'), BLUE, true],
+    ['Port of Receive :', gv('bpdf_port_receive'), BLK, false, 'Port of Discharge :', gv('bpdf_port_discharge'), BLK, false],
+    ['Port of Loading :', gv('bpdf_port_loading'), BLK, false, 'Final Destination :', gv('bpdf_final_dest'), BLK, false],
+    ['Port of Transit :', gv('bpdf_port_transit'), BLK, false, '', '', BLK, false],
+    ['Volume :', gv('bpdf_volume'), BLK, true, '', '', BLK, false],
+    ['SI Cut-Off time :', gv('bpdf_si_cutoff'), BLK, true, 'Dead Line CFM BL :', gv('bpdf_cfm_bl'), BLK, true],
+    ['VGM Cut-Off time :', gv('bpdf_vgm_cutoff'), BLK, true, 'Gate Closing Date :', gv('bpdf_gate_closing'), RED, true],
+  ];
+  srows.forEach(([l1,v1,c1,b1,l2,v2,c2_,b2])=>{
+    t(l1,C1,y+RH-1.5,8,true); t(v1,C2,y+RH-1.5,8,b1,c1);
+    if(l2){ t(l2,C3,y+RH-1.5,8,true); t(v2,C4,y+RH-1.5,8,b2,c2_); }
+    y+=RH;
+  });
+  rect(LM, schedTop, TW, y-schedTop, null, true, 0.3);
+  y+=2;
+
+  // Conveyance section
+  const convTop=y;
+  rect(LM, y, TW*0.52, SH, LBLUE, false);
+  hline(y);
+  t('Conveyance & Cargo Information', LM+3, y+3.8, 8, true);
+  y+=SH;
+
+  t('Paperless Code :', C1, y+RH-1.5, 8, true);
+  t(gv('bpdf_paperless'), C2, y+RH-1.5, 8, true, RED);
+  y+=RH+2;
+
+  // Pickup
+  const puRows=[
+    ['Pick up Ref :', gv('bpdf_pu_ref'), true],
+    ['Pick up Date :', gv('bpdf_pu_date'), false],
+    ['Pick up Place :', gv('bpdf_pu_place'), false],
+    ['Pick up PIC.:', gv('bpdf_pu_pic'), false],
+  ];
+  puRows.forEach(([lbl,val,bv])=>{
+    const lines = wrapLines(val, TW-40, 8);
+    const rh2 = Math.max(RH, lines.length*4.5);
+    const vy = y+rh2/2-1;
+    t(lbl, C1, vy, 8, true);
+    lines.forEach((ln,i)=>{ doc.setFont('helvetica',bv?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(...BLK); doc.text(ln,C2,y+4+i*4.5); });
+    y+=rh2;
+  });
+  y+=1;
+
+  // Turn-in
+  const tiRows=[
+    ['Turn-In Ref :', gv('bpdf_ti_ref'), true],
+    ['Turn-In Date :', gv('bpdf_ti_date'), false],
+    ['Turn-In At :', gv('bpdf_ti_at'), false],
+    ['', '', false],
+    ['Turn-In PIC.:', gv('bpdf_ti_pic'), false],
+    ['', '', false],
+  ];
+  tiRows.forEach(([lbl,val,bv])=>{
+    if(lbl){ t(lbl,C1,y+RH-1.5,8,true); t(val,C2,y+RH-1.5,8,bv); }
+    y+=RH;
+  });
+  y+=1;
+
+  // Commodity
+  [['Commodity :',gv('bpdf_commodity'),'Weight:',gv('bpdf_weight')],
+   ['HS. Code :',gv('bpdf_hs_code'),'','']].forEach(([l1,v1,l2,v2])=>{
+    t(l1,C1,y+RH-1.5,8,true); t(v1,C2,y+RH-1.5,8);
+    if(l2){ t(l2,LM+128,y+RH-1.5,8,true); t(v2,LM+143,y+RH-1.5,8); }
+    y+=RH;
+  });
+  rect(LM, convTop, TW, y-convTop, null, true, 0.3);
+  y+=2;
+
+  // Special Cargo Remark
+  const srTop=y;
+  hline(y);
+  t('Special Cargo Remark', LM+3, y+3.8, 8, true);
+  y+=SH;
+  const srText = gv('bpdf_special_remark');
+  const srLines = wrapLines(srText, TW-6, 7.5);
+  const srH = Math.max(14, srLines.length*4.5+8);
+  // yellow bg
+  doc.setFillColor(...YELLOW);
+  doc.rect(LM, y, TW, srH, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...RED);
+  srLines.forEach((ln,i)=>doc.text(ln, C1, y+4+i*4.5));
+  y+=srH;
+  rect(LM, srTop, TW, y-srTop, null, true, 0.3);
+  y+=2;
+
+  // Remarks
+  const remarks=[
+    "A): Customer can revise volume / postpone shipment more than twice times, there will be amendment charge USD50",
+    "B). THB 1500 per TEU for failure to cancel booking 7 days before CY date at loading port.",
+    "C).USD100/set for failure to submit shipping particular 3 days prior SI cut off time. The container will be shut out (for those booking which is missing S/I)",
+    "D). USD 100/Set for failure to submit shipping particular 4 days (shipment involved with ENS /AMS /AFR submission) prior feeder cut off at loading port.",
+    "E). Customer has to confirm Bill of Lading as per Deadline CFM BL and if have any amendment after deadline there will be amendment charge incur @ THB1500 per set but for Europe, USA, CA and CN that has to submit Manifest have, there will be amendment charge incur @ THB1500 per set and manifest amendment USD50",
+    "F): If customer request to Re-issue/Re Print Bill of Lading, there is Re-Print fee @ THB1700",
+    "G). Customer should pick up B/L within 7 days after vessel departure otherwise there is Late pick up B/L fee THB1500",
+  ];
+  let allLines=[];
+  remarks.forEach(r=>{ allLines.push(...wrapLines(r,TW-6,7)); });
+  const remH = allLines.length*3.8+12;
+  const remTop=y;
+  doc.setDrawColor(...BLK); doc.setLineWidth(0.3);
+  doc.rect(LM, y, TW, remH, 'S');
+  t('Remark:-', C1, y+5, 8, true);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...BLK);
+  let ry=y+9;
+  remarks.forEach(r=>{
+    const lines=wrapLines(r,TW-6,7);
+    lines.forEach(ln=>{ doc.text(ln,C1,ry); ry+=3.8; });
+  });
+
+  // Download
+  const fname = `BookingConfirmation_${gv('bpdf_bkgno')||'draft'}.pdf`;
+  doc.save(fname);
+  toast('📥 Downloaded: '+fname);
+  closeBookingPdfModal();
+}
+
+function duplicateBookingPDF(){
+  // Clear booking no so user must enter new one
+  const bkgEl = document.getElementById('bpdf_bkgno');
+  const oldBkg = bkgEl?.value || '';
+  if(bkgEl) bkgEl.value = '';
+  bkgEl?.focus();
+
+  // Update modal title
+  const titleEl = document.querySelector('#booking_pdf_modal .bpdf-title');
+  if(titleEl) titleEl.textContent = '📋 Duplicate Booking Confirmation — กรอก Booking No. ใหม่';
+
+  // Highlight booking no field
+  if(bkgEl){
+    bkgEl.style.borderColor = 'var(--gold)';
+    bkgEl.style.background = 'rgba(183,128,10,.08)';
+    bkgEl.placeholder = '⚠️ กรอก Booking No. ใหม่ก่อน Download';
+    setTimeout(()=>{
+      bkgEl.style.borderColor = '';
+      bkgEl.style.background = '';
+      bkgEl.placeholder = '';
+    }, 4000);
+  }
+  toast('📋 Duplicate — กรอก Booking No. ใหม่แล้ว Download PDF ได้เลยครับ');
+}
+</script>
