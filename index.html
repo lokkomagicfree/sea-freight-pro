@@ -247,6 +247,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
         <input type="file" id="img_rate_inp" accept="image/*" multiple style="display:none" onchange="handleRateImages(this.files)">
         <button onclick="g('img_rate_inp').click()" class="btn btn-ghost" style="margin-left:auto;font-size:11px;padding:5px 14px;border-color:var(--purple);color:var(--purple)">📷 Select Images</button>
       </div>
+      <!-- Carrier name input -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;background:var(--s2);border-radius:7px;padding:8px 12px">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">🚢 CARRIER:</span>
+        <input type="text" id="img_carrier_inp" placeholder="e.g. CMA, ONE, YML, OOCL…"
+          style="flex:1;min-width:160px;background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--yellow);font-family:var(--mono);font-size:12px;font-weight:600;padding:3px 4px;outline:none"
+          onfocus="this.style.borderBottomColor='var(--yellow)'" onblur="this.style.borderBottomColor='var(--border2)'">
+        <span style="font-size:9px;color:var(--muted);opacity:.7">กรอกก่อน upload เพื่อ override carrier จากรูป</span>
+      </div>
       <!-- API Key input -->
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:var(--s2);border-radius:7px;padding:8px 12px">
         <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">🔑 API KEY:</span>
@@ -3976,6 +3984,7 @@ async function extractRatesFromImages(){
 
   const validFrom = g('img_rate_from')?.value || '';
   const validTo   = g('img_rate_to')?.value || '';
+  const carrierOverride = (g('img_carrier_inp')?.value||'').trim().toUpperCase();
 
   // Convert all images to base64
   const imageContents = await Promise.all(_imgFiles.map(f => new Promise((res,rej)=>{
@@ -4058,9 +4067,10 @@ RULES:
       if(match) rates = JSON.parse(match[0]);
     }catch(e){ console.error('Parse error',e,text); }
 
-    // Apply manual dates if not in image
+    // Apply carrier override + manual dates if not in image
     rates = rates.map(r=>({
       ...r,
+      carrier:    carrierOverride || r.carrier || 'UNKNOWN',
       valid_from: r.valid_from || validFrom,
       valid_to:   r.valid_to   || validTo,
       pol: 'LAEM CHABANG',
