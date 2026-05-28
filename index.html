@@ -4132,41 +4132,35 @@ async function extractRatesFromImages(){
 
   const prompt = `You are a freight rate extraction assistant. Extract shipping rates from these rate sheet images.
 
+IMPORTANT: This could be any format — Excel spreadsheet, rate table, or a rate LETTER/EMAIL. Read ALL text carefully.
+
 RULES:
-1. Look for ANY route that includes Thailand as origin. This includes:
-   - "Laem Chabang", "Laem ChaBang", "LCB", "THBC", "Thailand", "Bangkok", "BKK", "LKB", "Lat Krabang", "Songkhla"
-   - Complex strings like "Laem ChaBang / Lat Krabang (+US$150) / Bangkok (+US$500)" — counts as Laem Chabang
-   - "Thailand - Laem Chabang / Bangkok" format
-   - Any cell containing "Laem" or "Thailand" as origin/territory
+1. Look for ANY mention of Thailand as origin. Formats include:
+   - Table with "Laem Chabang", "LCB", "Thailand" in origin/POL column
+   - Letter format: "Thailand - Laem Chabang / Bangkok" as Port of Loading
+   - "Port of Loading" section listing "Thailand - Laem Chabang"
+   - Any line mentioning "Laem Chabang" as a loading port
 
-2. POD extraction — use the most readable destination name available:
-   - If there is a "Destination" column with city names (Los Angeles, Oakland etc) → USE THAT as POD
-   - If POD column has codes like USLAX/USLGB → decode: USLAX=Los Angeles CA, USLGB=Long Beach CA, USOAK=Oakland CA, USSEA=Seattle WA, USNYC=New York NY, USIAH=Houston TX, USSAV=Savannah GA, USCHS=Charleston SC, USJAX=Jacksonville FL, USNFK=Norfolk VA, USTPA=Tampa FL, USMOB=Mobile AL, CAHAL=Halifax, CAVAN=Vancouver BC, CATOR=Toronto, CAMTR=Montreal, CACAL=Calgary, BRSSZ=Santos Brazil, BRPNG=Paranagua, ARBUE=Buenos Aires, UYMVD=Montevideo, BRNVT=Navegantes, CLSAI=San Antonio Chile, CLVAP=Valparaiso, MXZLO=Manzanillo Mexico, MXLZC=Lazaro Cardenas, PECLL=Callao Peru, ECGYE=Guayaquil, GTPRQ=Puerto Quetzal, MXESE=Ensenada
-   - If multiple codes in one cell like "USLAX/USLGB" → create ONE entry using first code city name
-   - Use "Destination" column city name as POD whenever available
+2. For RATE LETTERS (paragraph/list format):
+   - "BRSSZ/RIO    USD4760/5320 per 20/40'" means: POD=Santos Brazil, gp20=4760, gp40=5320, hc40=5320
+   - "BRPNG/ARBUE/UYMVD    USD4760/5320 per 20/40'" = create 3 entries: Paranagua, Buenos Aires, Montevideo
 
-3. Container type detection:
-   - Columns named "20RF", "40RQ", "40RF", "20RQ" → REEFER
-   - Title contains "Reefer" → REEFER
-   - Otherwise → DRY
+3. Port code decoder: BRSSZ=Santos Brazil, BRPNG=Paranagua Brazil, ARBUE=Buenos Aires Argentina, UYMVD=Montevideo Uruguay, BRNVT=Navegantes Brazil, CLSAI=San Antonio Chile, CLVAP=Valparaiso Chile, MXZLO=Manzanillo Mexico, MXLZC=Lazaro Cardenas Mexico, PECLL=Callao Peru, ECGYE=Guayaquil Ecuador, GTPRQ=Puerto Quetzal Guatemala, MXESE=Ensenada Mexico, USLAX=Los Angeles CA, USOAK=Oakland CA, USSEA=Seattle WA, USNYC=New York NY, USIAH=Houston TX, USSAV=Savannah GA, USCHS=Charleston SC, USJAX=Jacksonville FL, USNFK=Norfolk VA, USLGB=Long Beach CA, USTPA=Tampa FL, USMOB=Mobile AL, CAHAL=Halifax, CAVAN=Vancouver BC, CATOR=Toronto, CAMTR=Montreal, CACAL=Calgary
 
-4. Price extraction:
-   - REEFER: rf20 from 20RF column, rf40 from 40RQ/40RF column
-   - If a cell has "$" sign, extract the number only
-   - Empty/dash cells → 0
+4. Container type: "per 20/40'" = DRY. "20RF/40RQ" or "Reefer" in title = REEFER
 
-5. Set POL = "LAEM CHABANG" for ALL routes
+5. Set POL = "LAEM CHABANG" for ALL extracted routes
 
-6. Extract valid dates from header (e.g. "Rate Validity from 1st June 2026" and "Rate Validity to 14th June 2026")
+6. Validity: "Validity - 1 - 14 June 2026" = valid_from:2026-06-01, valid_to:2026-06-14
 
-7. Carrier: use carrier name input if provided, else look in title/header
+7. Carrier: use carrier override if provided; else find in letterhead or document header
 
-8. Return ONLY raw JSON array — no explanation, no markdown, no backticks
-   Format: [{"carrier":"ONE","pol":"LAEM CHABANG","pod":"LOS ANGELES, CA","container_type":"REEFER","gp20":0,"gp40":0,"hc40":0,"rf20":5750,"rf40":4800,"valid_from":"2026-06-01","valid_to":"2026-06-14"}]
+8. Return ONLY a raw JSON array — NO explanation, NO markdown, NO backticks, NO code fences
+   [{"carrier":"PIL","pol":"LAEM CHABANG","pod":"SANTOS, BRAZIL","container_type":"DRY","gp20":4760,"gp40":5320,"hc40":5320,"rf20":0,"rf40":0,"valid_from":"2026-06-01","valid_to":"2026-06-14"}]
 
-9. If zero Thai routes found, return []
-10. Ignore surcharges — extract base rate only
-11. Create one JSON entry per destination row`;
+9. Multiple codes on one line like "BRPNG/ARBUE/UYMVD" = create ONE entry PER port code with same rate
+10. Return [] ONLY if there is truly ZERO Thailand/Laem Chabang origin in the entire image
+11. Ignore surcharges — extract base rate only`;
 
   try{
   const apiKey = localStorage.getItem('sfp_akey') || g('anthropic_key_inp')?.value || '';
