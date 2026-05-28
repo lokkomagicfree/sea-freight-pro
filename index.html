@@ -4375,11 +4375,8 @@ function clearImgExtract(){
 }
 
 // ── ONLINE MODE ──
-// Expose functions globally for onclick handlers
-window.showShipmentDetail  = function(i){ showShipmentDetail(i); };
-window.closeShipmentDetail = function(){ closeShipmentDetail(); };
-window.editShipment        = function(i){ editShipment(i); };
-window.duplicateShipment   = function(i){ duplicateShipment(i); };
+// NOTE: showShipmentDetail, closeShipmentDetail, editShipment, duplicateShipment
+// are exposed to window inside the module script block below.
 </script>
 
 <!-- ═══ LOGIN OVERLAY ═══ -->
@@ -4749,6 +4746,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(modal) modal.addEventListener('click', e=>{ if(e.target===modal && !modal._justOpened) closeShipmentDetail(); });
 });
 
+// Expose module-scoped functions to window for onclick handlers
+window.showShipmentDetail  = showShipmentDetail;
+window.closeShipmentDetail = closeShipmentDetail;
+
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
 <div id="shipment_detail_modal" style="display:none;position:fixed;inset:0;z-index:700;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
@@ -5078,8 +5079,6 @@ function generateBookingPDF(){
 }
 
 // ── Expose all modal functions globally ──
-window.showShipmentDetail   = showShipmentDetail;
-window.closeShipmentDetail  = closeShipmentDetail;
 window.openBookingPdfModal  = openBookingPdfModal;
 window.closeBookingPdfModal = closeBookingPdfModal;
 window.generateBookingPDF   = generateBookingPDF;
