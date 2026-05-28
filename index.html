@@ -4728,15 +4728,14 @@ function showShipmentDetail(idx){
 
   const modal = document.getElementById('shipment_detail_modal');
   modal.style.display = 'flex';
+  modal.style.zIndex = '9999';
   modal._justOpened = true;
   setTimeout(()=>{ modal._justOpened = false; }, 300);
-  document.body.style.overflow = 'hidden';
 }
 
 function closeShipmentDetail(){
   const modal = document.getElementById('shipment_detail_modal');
   if(modal) modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 // Close on backdrop click
@@ -4813,12 +4812,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
 let _bpdfIdx = null;
 
 function openBookingPdfModal(idx){
-  console.log('openBookingPdfModal called, idx='+idx, 'savedJobs.length='+savedJobs?.length, 'job=', savedJobs?.[idx]);
-  const j = savedJobs[idx]; 
-  if(!j){ console.error('No job at idx', idx); toast('❌ ไม่พบข้อมูล shipment'); return; }
+  console.log('openBookingPdfModal called, idx='+idx, 'savedJobs.length='+savedJobs?.length);
+  const j = savedJobs[idx];
+  if(!j){ toast('❌ ไม่พบข้อมูล shipment'); return; }
   _bpdfIdx = idx;
 
-  // Build volume string from ctnRows
   const vol = (j.ctnRows||[]).map(r=>`${r.qty}x${r.type}`).join(' + ') || j.volume || '';
 
   // Pre-fill from shipment data
@@ -4859,8 +4857,7 @@ function openBookingPdfModal(idx){
   const titleEl = modal?.querySelector('.bpdf-title');
   if(titleEl) titleEl.textContent = '📄 Generate Booking Confirmation PDF';
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  // Prevent click event from immediately closing modal
+  modal.style.zIndex = '9999';
   modal._justOpened = true;
   setTimeout(()=>{ modal._justOpened = false; }, 300);
 }
@@ -4875,7 +4872,6 @@ document.addEventListener('DOMContentLoaded',()=>{
 function closeBookingPdfModal(){
   const m = document.getElementById('booking_pdf_modal');
   if(m) m.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function gv(id){ return (document.getElementById(id)?.value||'').trim(); }
