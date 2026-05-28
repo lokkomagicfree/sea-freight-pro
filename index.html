@@ -211,7 +211,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       USD/THB <strong id="rate_disp">35.50</strong>
     </div>
     <button class="btn btn-ghost" onclick="fetchRate()" style="font-size:11px;padding:4px 10px">🔄</button>
-    <button id="alert_btn" class="btn btn-ghost" onclick="checkAlerts()" style="font-size:12px">🔔</button>
+    <button id="alert_btn" class="btn btn-ghost" onclick="showAlertPanel()" style="font-size:12px">🔕</button>
     <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:11px" id="load_rates_btn">📂 Load Rates</button>
     <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:11px">+ Add File</button>
     <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:11px">⚖ Compare</button>
@@ -1574,7 +1574,7 @@ function recalc(){
 }
 
 // ── Container Row Manager ──────────────────────────────────
-const CTN_TYPES = ['20GP','40GP','40HC','45HC','20RF','40RF','20OT','40OT','20FR','40FR'];
+const CTN_TYPES = ['20GP','40GP','40HC','45HC','20RF','40RF','20RQ','40RQ','20OT','40OT','20FR','40FR'];
 
 let _ctnRows = []; // [{type:'20GP', qty:1}]
 
@@ -1743,15 +1743,33 @@ function filterRoutes(){
 
 function applyRate(idx){
   const r=ALL_RATES[idx];if(!r)return;
-  const qty20=parseFloat(v('s_q20'))||1,qty40=parseFloat(v('s_q40'))||0,qty4h=parseFloat(v('s_q40hc'))||0;
   const costInps=[...document.querySelectorAll('.cost-inp')];
 
-  // Calculate cost — use RF prices if reefer, else GP/HC
+  // Calculate cost from actual _ctnRows
   let cost = 0;
   if(r.container_type==='REEFER'){
-    cost = (r.rf20||0)*qty20 + (r.rf40||0)*(qty40+qty4h);
+    // rf20 for 20RF, rf40 for all 40s
+    (_ctnRows||[]).forEach(row=>{
+      if(row.type==='20GP'||row.type==='20RF') cost += (r.rf20||0)*row.qty;
+      else cost += (r.rf40||0)*row.qty; // 40RF/40GP/40HC/40RQ all use rf40
+    });
+    // fallback if _ctnRows empty
+    if(!(_ctnRows||[]).length){
+      const qty20=parseFloat(v('s_q20'))||0;
+      const qty4x=(parseFloat(v('s_q40'))||0)+(parseFloat(v('s_q40hc'))||0);
+      cost = (r.rf20||0)*qty20 + (r.rf40||0)*qty4x;
+      if(!cost) cost = (r.rf40||r.rf20||0); // at least 1 unit
+    }
   } else {
-    cost = (r.gp20||0)*qty20 + (r.gp40||0)*qty40 + (r.hc40||0)*qty4h;
+    (_ctnRows||[]).forEach(row=>{
+      if(row.type==='20GP') cost += (r.gp20||0)*row.qty;
+      else if(row.type==='40GP') cost += (r.gp40||0)*row.qty;
+      else cost += (r.hc40||0)*row.qty;
+    });
+    if(!(_ctnRows||[]).length){
+      const qty20=parseFloat(v('s_q20'))||1,qty40=parseFloat(v('s_q40'))||0,qty4h=parseFloat(v('s_q40hc'))||0;
+      cost = (r.gp20||0)*qty20+(r.gp40||0)*qty40+(r.hc40||0)*qty4h;
+    }
   }
   if(costInps[0]) costInps[0].value = cost.toFixed(2);
 
@@ -1762,19 +1780,18 @@ function applyRate(idx){
   window._selCarrier=r.carrier||'';
   const cf=g('s_carrier'); if(cf&&!cf.value) cf.value=r.carrier||'';
 
-  // Update selected cost display
   const set20=g('sel_20'),set40=g('sel_40'),set4h=g('sel_40hc');
   if(r.container_type==='REEFER'){
-    if(set20) set20.textContent='$'+(r.rf20||0)+' (RF)';
-    if(set40) set40.textContent='$'+(r.rf40||0)+' (RF)';
-    if(set4h) set4h.textContent='—';
+    if(set20) set20.textContent = r.rf20 ? '$'+r.rf20+' (20RF)' : '—';
+    if(set40) set40.textContent = r.rf40 ? '$'+r.rf40+' (40RF)' : '—';
+    if(set4h) set4h.textContent = '—';
   } else {
     if(set20) set20.textContent='$'+(r.gp20||0);
     if(set40) set40.textContent='$'+(r.gp40||0);
     if(set4h) set4h.textContent='$'+(r.hc40||0);
   }
   recalc();
-  toast('✅ Cost applied: '+r.carrier+(r.container_type==='REEFER'?' [REEFER]':'')+' $'+cost.toFixed(0));
+  toast('✅ Cost applied: '+r.carrier+(r.container_type==='REEFER'?' ❄️ REEFER':'')+' $'+cost.toFixed(0));
   checkCtnVsRate();
 }
 
@@ -1797,8 +1814,84 @@ function checkAlerts(){
     if(j.status==='arrived'&&j.eta){const diff=Math.ceil((new Date(today)-new Date(j.eta))/86400000);if(diff>3)return true;}
     return false;
   });
-  const btn=g('alert_btn');if(btn){btn.textContent=alerts.length?'🔔 '+alerts.length+' Alerts':'🔕';btn.style.color=alerts.length?'var(--yellow)':'var(--muted)';}
+  const btn=g('alert_btn');
+  if(btn){
+    btn.textContent=alerts.length?'🔔':'🔕';
+    btn.style.color=alerts.length?'var(--yellow)':'var(--muted)';
+    btn.style.background=alerts.length?'rgba(251,191,36,.15)':'';
+    // show badge count
+    if(alerts.length) btn.setAttribute('data-count', alerts.length);
+    else btn.removeAttribute('data-count');
+  }
   return alerts;
+}
+
+function showAlertPanel(){
+  const alerts = checkAlerts();
+  // Remove old panel if exists
+  const old = document.getElementById('alert_panel');
+  if(old){ old.remove(); return; }
+
+  const today = new Date().toISOString().slice(0,10);
+  const panel = document.createElement('div');
+  panel.id = 'alert_panel';
+  panel.style.cssText = 'position:fixed;top:56px;right:12px;z-index:5000;width:360px;max-height:70vh;overflow-y:auto;background:var(--s1);border:1px solid var(--border2);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+
+  if(!alerts.length){
+    panel.innerHTML=`
+      <div style="padding:20px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">✅</div>
+        <div style="font-size:13px;color:var(--green)">ไม่มี alerts ตอนนี้</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Shipments ทุกใบอยู่ในสถานะปกติ</div>
+      </div>`;
+  } else {
+    panel.innerHTML=`
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:700;color:var(--yellow)">🔔 Alerts</span>
+        <span style="background:var(--red);color:#fff;font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:10px">${alerts.length}</span>
+        <button onclick="document.getElementById('alert_panel')?.remove()" style="margin-left:auto;border:none;background:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button>
+      </div>
+      <div style="padding:8px">
+        ${alerts.map(j=>{
+          let msg='', color='var(--yellow)', icon='⚠️';
+          const etdD = j.etd ? Math.ceil((new Date(j.etd)-new Date(today))/86400000) : null;
+          const etaD = j.eta ? Math.ceil((new Date(j.eta)-new Date(today))/86400000) : null;
+          if(['pending','confirmed'].includes(j.status) && etdD!==null && etdD<=3){
+            msg = etdD<0 ? `ETD เลยกำหนดไป ${Math.abs(etdD)} วัน` : etdD===0 ? 'ETD วันนี้!' : `ETD อีก ${etdD} วัน`;
+            color = etdD<=0?'var(--red)':'var(--yellow)'; icon = etdD<=0?'🚨':'⏰';
+          } else if(['shipped','arrived'].includes(j.status) && etaD!==null && etaD<=2){
+            msg = etaD<0 ? `ETA เลยกำหนดไป ${Math.abs(etaD)} วัน` : etaD===0 ? 'ETA วันนี้!' : `ETA อีก ${etaD} วัน`;
+            color = etaD<=0?'var(--red)':'var(--cyan)'; icon = '📦';
+          } else if(j.status==='arrived' && j.eta){
+            const over = Math.ceil((new Date(today)-new Date(j.eta))/86400000);
+            msg = `ค้างอยู่ที่ Arrived ${over} วัน`;
+            color='var(--orange)'; icon='⚠️';
+          }
+          return `<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border);align-items:flex-start">
+            <span style="font-size:18px">${icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:var(--cyan)">${j.no||'—'}</div>
+              <div style="font-size:11px;color:var(--text)">${j.customer||j.shipper||'—'} · ${j.pod||'—'}</div>
+              <div style="font-size:11px;color:${color};font-weight:600;margin-top:2px">${msg}</div>
+              <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">ETD: ${j.etd||'—'} · ETA: ${j.eta||'—'} · ${j.status}</div>
+            </div>
+            <button onclick="editShipment(${j._idx});document.getElementById('alert_panel')?.remove();showPage('shipments')"
+              class="btn btn-ghost" style="font-size:10px;padding:3px 8px;white-space:nowrap">Edit</button>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // Close on outside click
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(e){
+      if(!panel.contains(e.target) && e.target.id!=='alert_btn'){
+        panel.remove(); document.removeEventListener('click',handler);
+      }
+    });
+  }, 100);
+
+  document.body.appendChild(panel);
 }
 function updateAlertCount(){checkAlerts();}
 
