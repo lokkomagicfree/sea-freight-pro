@@ -373,6 +373,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
         <th style="text-align:right">20'GP ⇅</th>
         <th style="text-align:right">40'GP ⇅</th>
         <th style="text-align:right">40'HC ⇅</th>
+        <th style="text-align:right;color:var(--cyan)">20'RF ⇅</th>
+        <th style="text-align:right;color:var(--cyan)">40'RF ⇅</th>
         <th>STATUS</th><th>VALID PERIOD</th><th>SHEET</th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
@@ -469,9 +471,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
             <th style="text-align:right;color:var(--green)">20GP</th>
             <th style="text-align:right;color:var(--cyan)">40GP</th>
             <th style="text-align:right;color:var(--cyan)">40HC</th>
+            <th style="text-align:right;color:#00d4ff">20RF</th>
+            <th style="text-align:right;color:#00d4ff">40RF</th>
             <th>Valid</th><th></th>
           </tr></thead>
-          <tbody id="route_body"><tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
+          <tbody id="route_body"><tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
           </table>
         </div>
         <div id="sel_rate_box" style="display:none;margin-top:8px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.2);border-radius:7px;padding:10px 12px">
@@ -1450,12 +1454,9 @@ function renderTable(filtered){
   const total=filtered.length,pages=Math.ceil(total/PER_PAGE);
   const slice=filtered.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
   const tbody=g('rate_body');if(!tbody)return;
-  if(!slice.length){tbody.innerHTML=`<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
+  if(!slice.length){tbody.innerHTML=`<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
-    const price1 = isReefer ? (r.rf20?'$'+r.rf20.toLocaleString():'—') : (r.gp20?'$'+r.gp20.toLocaleString():'—');
-    const price2 = isReefer ? (r.rf40?'$'+r.rf40.toLocaleString():'—') : (r.gp40?'$'+r.gp40.toLocaleString():'—');
-    const price3 = isReefer ? '—' : (r.hc40?'$'+r.hc40.toLocaleString():'—');
     const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
@@ -1465,9 +1466,11 @@ function renderTable(filtered){
     <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${isReefer?'var(--cyan)':'var(--muted)'}">
       ${isReefer?'❄️ RF':'📦 DRY'}
     </td>
-    <td style="text-align:right;font-family:var(--mono);color:${col1};font-weight:600">${price1}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${price2}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${price3}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.gp40?'$'+r.gp40.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
     <td>${vBadge(r.valid_status)}</td>
     <td>${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
@@ -1723,9 +1726,11 @@ function filterRoutes(){
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:6px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.gp40?'$'+r.gp40:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
+    <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf20?'$'+r.rf20:'-'}</td>
+    <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf40?'$'+r.rf40:'-'}</td>
     <td>${vBadge(r.valid_status)}</td>
     <td style="padding:4px 6px"><button class="btn btn-cyan" style="font-size:10px;padding:3px 8px" onclick="applyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
-  </tr>`).join(''):'<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
+  </tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
 }
 
 function applyRate(idx){
