@@ -246,6 +246,7 @@ body{font-size:14px;font-weight:450}
       <button onclick="signOutUser()" class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--muted)">Sign out</button>
     </div>
     <div id="fb_sync_badge" style="display:none;font-size:10px;font-family:var(--mono);color:var(--green);padding:3px 8px;background:rgba(34,197,94,.1);border-radius:5px">☁ Synced</div>
+    <button id="fb_force_sync" onclick="forceSyncAll()" style="display:none;font-size:10px;font-family:var(--mono);background:rgba(41,128,185,.15);border:1px solid rgba(41,128,185,.4);color:var(--cyan);padding:3px 10px;border-radius:5px;cursor:pointer" title="Force sync to cloud">⬆ Sync</button>
   </div>
 </div>
 <!-- Mobile floating load button (shows only when no rates) -->
@@ -4452,6 +4453,8 @@ onAuthStateChanged(auth, async user=>{
     if(badge)   badge.style.display='flex';
     if(avatar)  avatar.src = user.photoURL||'';
     if(nameEl)  nameEl.textContent = user.displayName||user.email;
+    const fsBtn = document.getElementById('fb_force_sync');
+    if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
     await initFirestoreSync();
   } else {
@@ -4469,6 +4472,12 @@ async function initFirestoreSync(){
   ]);
 
   // ── Set data from Firestore (override localStorage) ──
+  console.log('🔥 Firestore data:', {
+    jobs: jobsSnap?.jobs?.length||0,
+    todos: todosSnap?.todos?.length||0,
+    rateMeta: rateMetaSnap,
+    hasJobs: !!jobsSnap?.jobs,
+  });
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; }
@@ -4549,7 +4558,6 @@ async function initFirestoreSync(){
         fbSet('data/settings',  {commRate: window.commRate,          exRate: window.exRate}),
         fbSet('data/quotations',{quotations: window.savedQuotations||[], updatedAt: new Date().toISOString()}),
       ];
-      // Sync rates in chunks of 500
       const rates = window.ALL_RATES||[];
       if(rates.length){
         const CHUNK = 500;
@@ -4561,8 +4569,33 @@ async function initFirestoreSync(){
       }
       await Promise.all(savePromises);
       showSyncBadge(true);
-    }catch(e){ showSyncBadge(false); }
+      console.log('☁ Saved to Firestore: jobs='+( window.savedJobs?.length||0));
+    }catch(e){ showSyncBadge(false); console.warn('Save error',e); }
     return r;
+  };
+
+  // ── Force sync all data to Firestore ──
+  window.forceSyncAll = async function(){
+    if(!uid()){ toast('❌ Not logged in'); return; }
+    toast('⬆ Syncing to cloud...');
+    try{
+      const rates = window.ALL_RATES||[];
+      const CHUNK = 500;
+      const numChunks = Math.ceil(rates.length/CHUNK)||0;
+      const promises = [
+        fbSet('data/jobs',      {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()}),
+        fbSet('data/todos',     {todos: window.todos||[], updatedAt: new Date().toISOString()}),
+        fbSet('data/settings',  {commRate: window.commRate, exRate: window.exRate}),
+        fbSet('data/quotations',{quotations: window.savedQuotations||[], updatedAt: new Date().toISOString()}),
+      ];
+      if(rates.length){
+        for(let i=0;i<numChunks;i++) promises.push(fbSet(`data/rates_${i}`,{rates:rates.slice(i*CHUNK,(i+1)*CHUNK)}));
+        promises.push(fbSet('data/rateMeta',{chunks:numChunks,total:rates.length,updatedAt:new Date().toISOString()}));
+      }
+      await Promise.all(promises);
+      showSyncBadge(true);
+      toast(`✅ Synced: ${window.savedJobs?.length||0} jobs, ${rates.length} rates ☁`);
+    }catch(e){ showSyncBadge(false); toast('❌ Sync failed: '+e.message); }
   };
 
   // ── Patch srSave ──
