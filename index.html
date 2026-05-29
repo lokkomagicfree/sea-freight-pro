@@ -4909,6 +4909,11 @@ onAuthStateChanged(auth, async user=>{
     if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
     await initFirestoreSync();
+    // Push current jobs to Firestore so CS Portal can read them
+    try{
+      await fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()});
+      console.log('☁ Auto-pushed jobs to Firestore:', window.savedJobs?.length||0);
+    }catch(e){ console.warn('Auto-push error',e); }
   } else {
     _currentUser = null;
     if(overlay) overlay.style.display='flex';
