@@ -359,45 +359,62 @@ function renderCutoffAlerts(){
 }
 
 // ── In-Transit Invoice Alerts ──────────────────────────────
+let _cbRows = [];
+
 function renderCBAlerts(rows){
+  _cbRows = rows;
   const wrap = document.getElementById('cb_alerts_wrap');
   const list = document.getElementById('cb_alerts_list');
   if(!wrap||!list) return;
-  // Filter rows assigned to this CS agent
   const mine = rows.filter(r=>(r.csAssigned||'').toLowerCase().trim()===AGENT.toLowerCase().trim());
   if(!mine.length){ wrap.style.display='none'; return; }
-  // Show invoice status
-  const pending = mine.filter(r=>!r.invoice||r.invoice!=='YES'||!r.sentToDb||r.sentToDb!=='YES');
-  if(!pending.length){ wrap.style.display='none'; return; }
   wrap.style.display='';
+
+  const badge = (done, id, field, labelDone, labelPending, colDone, colPending) => `
+    <button data-id="${id}" data-field="${field}" onclick="updateCBRow(this)"
+      style="padding:3px 12px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer;border:none;
+        ${done
+          ? `background:rgba(39,174,96,.12);color:#1a7a45;border:1px solid rgba(39,174,96,.3)`
+          : `background:rgba(192,57,43,.08);color:var(--red);border:1px solid rgba(192,57,43,.25)`}">
+      ${done ? '✅ '+labelDone : '⏳ '+labelPending}
+    </button>`;
+
   list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px">
-    <tr style="border-bottom:1px solid rgba(243,156,18,.2)">
-      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">BOOKING</th>
-      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">SHIPPER</th>
-      <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">INV TO CUSTOMER</th>
-      <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">INV FROM VENDOR</th>
-      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">INV NO.</th>
-    </tr>
-    ${pending.map(r=>{
-      const invDone = r.invoice==='YES';
-      const sentDone = r.sentToDb==='YES';
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
-        <td style="padding:6px 8px;font-family:var(--mono);color:var(--accent2)">${r.customerBooking||r.bookingNo||'—'}</td>
-        <td style="padding:6px 8px;color:var(--text)">${r.shipper||'—'}</td>
-        <td style="padding:6px 8px;text-align:center">
-          <span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);${invDone?'background:rgba(39,174,96,.15);color:#27ae60;border:1px solid rgba(39,174,96,.3)':'background:rgba(220,80,80,.15);color:var(--accent2);border:1px solid rgba(220,80,80,.3)'}">
-            ${invDone?'✅ Done':'⏳ Pending'}
-          </span>
-        </td>
-        <td style="padding:6px 8px;text-align:center">
-          <span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);${sentDone?'background:rgba(39,174,96,.15);color:#27ae60;border:1px solid rgba(39,174,96,.3)':'background:rgba(243,156,18,.15);color:var(--gold);border:1px solid rgba(243,156,18,.3)'}">
-            ${sentDone?'✅ Received':'⏳ Waiting'}
-          </span>
-        </td>
-        <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
-      </tr>`;
-    }).join('')}
+    <thead><tr style="border-bottom:1px solid var(--border2)">
+      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Booking</th>
+      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Shipper</th>
+      <th style="padding:8px 10px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv to Customer</th>
+      <th style="padding:8px 10px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv from Vendor</th>
+      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
+    </tr></thead>
+    <tbody>
+    ${mine.map(r=>`<tr style="border-bottom:1px solid var(--border)" data-row-id="${r.id}">
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${r.customerBooking||r.bookingNo||'—'}</td>
+      <td style="padding:8px 10px;font-size:12px">${r.shipper||'—'}</td>
+      <td style="padding:6px 10px;text-align:center">${badge(r.invoice==='YES', r.id, 'invoice', 'Sent', 'Pending', 'green','red')}</td>
+      <td style="padding:6px 10px;text-align:center">${badge(r.sentToDb==='YES', r.id, 'sentToDb', 'Received', 'Waiting', 'green','gold')}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
+    </tr>`).join('')}
+    </tbody>
   </table>`;
+}
+
+async function updateCBRow(btn){
+  const id = parseInt(btn.dataset.id);
+  const field = btn.dataset.field;
+  const row = _cbRows.find(r=>r.id===id);
+  if(!row) return;
+  // Toggle
+  row[field] = row[field]==='YES' ? 'NO' : 'YES';
+  // Write back to Firestore
+  try{
+    await fbSet('data/dbIntransit', {rows: _cbRows, updatedAt: new Date().toISOString()});
+    toast('✅ Updated!');
+  }catch(e){
+    toast('❌ Error: '+e.message);
+    row[field] = row[field]==='YES' ? 'NO' : 'YES'; // revert
+  }
+  renderCBAlerts(_cbRows);
 }
 
 // ── Build month filter ─────────────────────────────────────
