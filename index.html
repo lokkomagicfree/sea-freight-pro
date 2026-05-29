@@ -220,12 +220,13 @@ body{font-size:14px;font-weight:450}
 <div class="topbar">
   <div class="logo"><img src="LOGO.jpg" style="height:32px;width:32px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:6px">Sea Freight Pro</div>
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showPage('rates')">📋 Rates</button>
+    <button class="nav-tab" onclick="showPage('rates')">📋 Rates</button>
     <button class="nav-tab" onclick="showPage('shipments')">🚢 Shipments</button>
     <button class="nav-tab" onclick="showPage('quotation')">💰 Quotation</button>
     <button class="nav-tab" onclick="showPage('todo')">✅ To Do</button>
     <button class="nav-tab" onclick="showPage('news')">📰 Market News</button>
     <button class="nav-tab" onclick="showPage('salereport');renderSaleReport()">📊 Sale Report</button>
+    <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 In-Transit/Cross Border</button>
   </div>
   <div class="topbar-right">
     <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 8px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">
@@ -428,6 +429,7 @@ body{font-size:14px;font-weight:450}
 
 <!-- ═══ SHIPMENTS PAGE ═══ -->
 <div id="page-shipments" class="page">
+
   <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;align-items:start">
     <!-- LEFT: Form -->
     <div>
@@ -606,30 +608,6 @@ body{font-size:14px;font-weight:450}
       </div>
     </div>
 
-    <!-- Monthly Summary -->
-    <div id="monthly_wrap" style="display:none;margin-bottom:14px">
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
-        <div style="overflow-x:auto">
-          <table class="tbl" style="min-width:900px">
-            <thead><tr>
-              <th>Month</th><th style="text-align:right">Jobs</th>
-              <th style="text-align:right">Sell (USD)</th><th style="text-align:right">Cost (USD)</th>
-              <th style="text-align:right;color:var(--green)">Profit (USD)</th>
-              <th style="text-align:right">Margin</th>
-              <th style="text-align:right;color:var(--gold)">Commission (USD)</th>
-              <th style="text-align:right;color:var(--gold)">Commission (THB)</th>
-              <th style="text-align:right;color:var(--cyan);min-width:130px">Profit THB <span style="font-size:9px;opacity:.7">(ใส่เอง)</span></th>
-              <th style="text-align:right;color:var(--gold);min-width:120px">Comm จาก THB</th>
-              <th style="text-align:center;color:var(--muted);min-width:90px">Comm Due</th>
-            </tr></thead>
-            <tbody id="monthly_body"></tbody>
-            <tfoot id="monthly_foot"></tfoot>
-          </table>
-        </div>
-      </div>
-    </div>
-
     <!-- Filters -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:140px;font-size:11px;padding:4px 8px">
@@ -672,6 +650,32 @@ body{font-size:14px;font-weight:450}
       </table>
     </div>
   </div>
+
+    <!-- Monthly Summary -->
+    <div id="monthly_wrap" style="display:none;margin-bottom:14px">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:900px">
+            <thead><tr>
+              <th>Month</th><th style="text-align:right">Jobs</th>
+              <th style="text-align:right">Sell (USD)</th><th style="text-align:right">Cost (USD)</th>
+              <th style="text-align:right;color:var(--green)">Profit (USD)</th>
+              <th style="text-align:right">Margin</th>
+              <th style="text-align:right;color:var(--gold)">Commission (USD)</th>
+              <th style="text-align:right;color:var(--gold)">Commission (THB)</th>
+              <th style="text-align:right;color:var(--cyan);min-width:110px">🚛 CB Profit (฿)</th>
+              <th style="text-align:right;color:var(--cyan);min-width:130px">Profit THB <span style="font-size:9px;opacity:.7">(ใส่เอง)</span></th>
+              <th style="text-align:right;color:var(--gold);min-width:120px">Comm จาก THB</th>
+              <th style="text-align:center;color:var(--muted);min-width:90px">Comm Due</th>
+            </tr></thead>
+            <tbody id="monthly_body"></tbody>
+            <tfoot id="monthly_foot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
 </div>
 
 <!-- ═══ QUOTATION PAGE ═══ -->
@@ -925,6 +929,54 @@ body{font-size:14px;font-weight:450}
         <div style="font-size:11px;opacity:.5">ดึงจาก Google News RSS · ไม่ต้อง API Key</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══ IN-TRANSIT/CROSS BORDER PAGE ═══ -->
+<div id="page-dbintransit" class="page">
+  <div style="max-width:1300px;margin:0 auto">
+
+    <!-- Header bar -->
+    <div class="card" style="margin-bottom:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--cyan)">🚛 IN-TRANSIT / CROSS BORDER TRACKING</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="dbit_month_filter" class="inp" style="font-size:11px;padding:4px 8px;width:130px" onchange="renderDbIntransit()">
+          <option value="">All Months</option>
+        </select>
+        <button onclick="addDbRow()" class="btn btn-cyan" style="font-size:11px;padding:5px 14px">+ Add Row</button>
+        <button onclick="exportDbCsv()" class="btn btn-ghost" style="font-size:11px;padding:5px 14px">📥 Export CSV</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="tbl-wrap">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--s3);border-bottom:2px solid var(--border2)">
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap">CUSTOMER BOOKING</th>
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap">BOOKING NO.</th>
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--cyan)">SHIPPER</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--cyan)">VOLUME</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">CY DATE</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">LOAD DATE</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INVOICE</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO DB</th>
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--green)">INV NO.</th>
+              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--red)">COST (฿)</th>
+              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">SELL (฿)</th>
+              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--cyan)">PROFIT (฿)</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">CLOSED</th>
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">REMARKS</th>
+              <th style="padding:10px 6px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">DEL</th>
+            </tr>
+          </thead>
+          <tbody id="dbit_body"></tbody>
+          <tfoot id="dbit_foot"></tfoot>
+        </table>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2193,48 +2245,153 @@ function renderShipments(){
 }
 
 // ── Monthly Summary ────────────────────────────────────────
+// ══════════════════════════════════════════════════
+// IN-TRANSIT / CROSS BORDER
+// ══════════════════════════════════════════════════
+let dbRows = [];
+function dbStorageSave(){ try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){} }
+function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
+dbStorageLoad();
+
+function addDbRow(){
+  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', cyDate:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, remarks:'', month:'' });
+  dbStorageSave(); renderDbIntransit();
+  setTimeout(()=>{ const t=document.getElementById('dbit_body'); if(t&&t.lastElementChild) t.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'}); },100);
+}
+window.addDbRow = addDbRow;
+
+function deleteDbRow(id){ dbRows=dbRows.filter(r=>r.id!==id); dbStorageSave(); renderDbIntransit(); renderShipments(); }
+window.deleteDbRow = deleteDbRow;
+
+function updateDbRow(id, field, value){
+  const r=dbRows.find(r=>r.id===id); if(!r) return;
+  if(field==='cost'||field==='sell') r[field]=parseFloat(value)||0;
+  else if(field==='closed') r[field]=value;
+  else r[field]=value;
+  const ds=r.cyDate||''; if(ds) r.month=ds.slice(0,7); else r.month='';
+  dbStorageSave(); renderDbIntransit(); renderShipments();
+}
+window.updateDbRow = updateDbRow;
+
+function getDbProfitByMonth(){
+  const map={};
+  dbRows.forEach(r=>{ const m=r.month||''; if(!m) return; if(!map[m]) map[m]=0; map[m]+=(r.sell||0)-(r.cost||0); });
+  return map;
+}
+window.getDbProfitByMonth = getDbProfitByMonth;
+
+function renderDbIntransit(){
+  const tbody=document.getElementById('dbit_body'), tfoot=document.getElementById('dbit_foot'), mSel=document.getElementById('dbit_month_filter');
+  if(!tbody) return;
+  const months=[...new Set(dbRows.map(r=>r.month).filter(Boolean))].sort();
+  if(mSel){ const prev=mSel.value; mSel.innerHTML='<option value="">All Months</option>'+months.map(m=>{ const[y,mo]=m.split('-'); return `<option value="${m}" ${m===prev?'selected':''}>${(MN[mo]||mo)} ${y}</option>`; }).join(''); mSel.value=prev; }
+  const curMth=mSel?.value||'';
+  const filtered=curMth?dbRows.filter(r=>r.month===curMth):dbRows;
+  const fmtT=n=>n?n.toLocaleString('th-TH',{maximumFractionDigits:0}):'—';
+
+  const ddSel=(id,field,val,opts)=>`<select onchange="updateDbRow(${id},'${field}',this.value)" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:${val==='YES'?'var(--green)':'var(--muted)'};font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none">${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('')}</select>`;
+  const inp=(id,field,val,type='text')=>`<input type="${type}" value="${String(val||'').replace(/"/g,'&quot;')}" onchange="updateDbRow(${id},'${field}',this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none;text-align:${type==='number'?'right':'left'}">`;
+  const dateInp=(id,field,val,col='var(--gold)')=>`<input type="date" value="${val||''}" onchange="updateDbRow(${id},'${field}',this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:${col};font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none;color-scheme:light">`;
+
+  tbody.innerHTML=filtered.map((r,i)=>{
+    const profit=(r.sell||0)-(r.cost||0);
+    const pc=profit>0?'var(--green)':profit<0?'var(--red)':'var(--muted)';
+    const bg=i%2===0?'':'background:var(--s2)';
+    return `<tr style="border-bottom:1px solid var(--border);${bg}">
+      <td style="padding:4px 6px;min-width:110px">${inp(r.id,'customerBooking',r.customerBooking)}</td>
+      <td style="padding:4px 6px;min-width:130px">${inp(r.id,'bookingNo',r.bookingNo)}</td>
+      <td style="padding:4px 6px;min-width:180px">${inp(r.id,'shipper',r.shipper)}</td>
+      <td style="padding:4px 6px;min-width:80px">${inp(r.id,'volume',r.volume)}</td>
+      <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'cyDate',r.cyDate)}</td>
+      <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'loadDate',r.loadDate)}</td>
+      <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
+      <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
+      <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
+      <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
+      <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
+      <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
+      <td style="padding:4px 6px;text-align:center"><input type="checkbox" ${r.closed?'checked':''} onchange="updateDbRow(${r.id},'closed',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+      <td style="padding:4px 6px;min-width:150px">${inp(r.id,'remarks',r.remarks)}</td>
+      <td style="padding:4px 6px;text-align:center"><button onclick="deleteDbRow(${r.id})" style="border:none;background:rgba(192,57,43,.12);color:var(--red);cursor:pointer;width:24px;height:24px;border-radius:5px;font-size:13px" onmouseover="this.style.background='rgba(192,57,43,.3)'" onmouseout="this.style.background='rgba(192,57,43,.12)'">🗑</button></td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="15" style="padding:32px;text-align:center;color:var(--muted)">ยังไม่มีข้อมูล — กด + Add Row เพื่อเพิ่ม</td></tr>`;
+
+  const tC=filtered.reduce((s,r)=>s+(r.cost||0),0), tS=filtered.reduce((s,r)=>s+(r.sell||0),0), tP=tS-tC;
+  tfoot.innerHTML=`<tr style="border-top:2px solid var(--border2);background:var(--s3)">
+    <td colspan="9" style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)">TOTAL (${filtered.length} rows)</td>
+    <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red)">${fmtT(tC)} ฿</td>
+    <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green)">${fmtT(tS)} ฿</td>
+    <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:800;color:${tP>=0?'var(--green)':'var(--red)'}">${fmtT(tP)} ฿</td>
+    <td colspan="3"></td>
+  </tr>`;
+}
+window.renderDbIntransit = renderDbIntransit;
+
+function exportDbCsv(){
+  const h=['Customer Booking','Booking No','Shipper','Volume','CY Date','Load Date','Invoice','Sent To DB','Inv No','Cost (THB)','Sell (THB)','Profit (THB)','Closed','Remarks'];
+  const rows=dbRows.map(r=>[r.customerBooking,r.bookingNo,r.shipper,r.volume,r.cyDate,r.loadDate,r.invoice,r.sentToDb,r.invNo,r.cost,r.sell,(r.sell||0)-(r.cost||0),r.closed?'YES':'NO',r.remarks].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(','));
+  const csv=[h.join(','),...rows].join('\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='DB_INTRANSIT_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+}
+window.exportDbCsv = exportDbCsv;
+
 function renderMonthlySummary(groups,sortedKeys){
   const wrap=g('monthly_wrap');const tbody=g('monthly_body');const tfoot=g('monthly_foot');
-  if(!wrap||!savedJobs.length){if(wrap)wrap.style.display='none';return;}
+  if(!wrap){if(wrap)wrap.style.display='none';return;}
+  const dbByMonth = (typeof getDbProfitByMonth==='function') ? getDbProfitByMonth() : {};
+
+  // Merge months from both Shipments and In-Transit
+  const allMonthSet = new Set([...sortedKeys, ...Object.keys(dbByMonth)]);
+  const mergedKeys = [...allMonthSet].filter(k=>k&&k!=='Unknown').sort();
+  if(!mergedKeys.length && !sortedKeys.length){wrap.style.display='none';return;}
   wrap.style.display='';
-  let gS=0,gC=0,gP=0,gCo=0,gT=0,gJ=0;
-  tbody.innerHTML=sortedKeys.map((key,i)=>{
-    const jobs=groups[key];
+
+  let gS=0,gC=0,gP=0,gCo=0,gT=0,gJ=0,gDb=0;
+  tbody.innerHTML=mergedKeys.map((key)=>{
+    const jobs=(groups[key])||[];
     const mS=jobs.reduce((s,j)=>s+j.sell,0),mC=jobs.reduce((s,j)=>s+j.cost,0),mP=jobs.reduce((s,j)=>s+j.profit,0);
     const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
-    const mM=mS>0?mP/mS*100:0,avgR=jobs.reduce((s,j)=>s+(j.rate||35.5),0)/jobs.length;
-    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mT;gJ+=jobs.length;
+    const mDb=dbByMonth[key]||0;
+    // Commission base = shipment profit THB + CB profit THB
+    const mM=mS>0?mP/mS*100:0;
+    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mT;gJ+=jobs.length;gDb+=mDb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
     const mthKey=key.replace('-','_');
+    const dbCol=mDb>0?'var(--cyan)':mDb<0?'var(--red)':'var(--muted)';
+    // Pre-fill comm input with mDb so commission is auto-calculated from CB profit
+    const commInputVal = mDb>0 ? mDb : '';
+    const commInputDisplay = mDb>0 ? (mDb*commRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿' : '—';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:9px 12px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">${label}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)">${jobs.length}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">$${mS.toFixed(0)}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">$${mC.toFixed(0)}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mP>=0?'var(--green)':'var(--red)'}">$${mP.toFixed(0)}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mM.toFixed(1)}%</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mCo<0?'var(--red)':'var(--gold)'}">$${mCo.toFixed(2)}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mT<0?'var(--red)':'var(--gold)'}">$${mT<0?'-':''}${Math.abs(mT).toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)">${jobs.length||'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?'$'+mS.toFixed(0):'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mC?'$'+mC.toFixed(0):'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mP>=0?'var(--green)':'var(--red)'}">${mS||mC?'$'+mP.toFixed(0):'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?mM.toFixed(1)+'%':'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mCo<0?'var(--red)':'var(--gold)'}">${mCo?'$'+mCo.toFixed(2):'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mT<0?'var(--red)':'var(--gold)'}">${mT?(mT<0?'-':'')+Math.abs(mT).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${dbCol}">${mDb?mDb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
       <td style="padding:5px 8px;text-align:right">
-        <input type="number" min="0" step="100" placeholder="฿ profit" data-month="${key}" oninput="recalcMonthlyComm(this)"
+        <input type="number" min="0" step="100" placeholder="฿ profit" data-month="${key}" value="${commInputVal}" oninput="recalcMonthlyComm(this)"
           style="width:110px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:4px 6px;text-align:right;outline:none"
           onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
       </td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold)" id="mcomm_${mthKey}">—</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold)" id="mcomm_${mthKey}">${commInputDisplay}</td>
       <td style="padding:9px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:${commDueCol}">${commDue}</td>
     </tr>`;
   }).join('');
   tfoot.innerHTML=`<tr style="border-top:2px solid var(--border2)">
     <td style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700">TOTAL</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:11px">${gJ}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">$${gS.toFixed(0)}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">$${gC.toFixed(0)}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gP>=0?'var(--green)':'var(--red)'}">$${gP.toFixed(0)}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:11px">${gJ||'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">${gS?'$'+gS.toFixed(0):'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">${gC?'$'+gC.toFixed(0):'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gP>=0?'var(--green)':'var(--red)'}">${gS||gC?'$'+gP.toFixed(0):'—'}</td>
     <td></td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gCo<0?'var(--red)':'var(--gold)'}">$${gCo.toFixed(2)}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gT<0?'var(--red)':'var(--gold)'}">$${gT<0?'-':''}${Math.abs(gT).toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gCo<0?'var(--red)':'var(--gold)'}">${gCo?'$'+gCo.toFixed(2):'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gT<0?'var(--red)':'var(--gold)'}">${gT?(gT<0?'-':'')+Math.abs(gT).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gDb>=0?'var(--cyan)':'var(--red)'}">${gDb?gDb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
     <td></td><td></td><td></td>
   </tr>`;
 }
@@ -4809,6 +4966,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // Expose module-scoped functions to window for onclick handlers
 window.showShipmentDetail  = showShipmentDetail;
 window.closeShipmentDetail = closeShipmentDetail;
+
 
 </script>
 <div style="text-align:center;padding:20px;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:.08em;border-top:1px solid var(--border);margin-top:20px">Designed &amp; Developed by <span style="color:#ffffff;font-weight:700;letter-spacing:.08em">LOKKO</span></div>
