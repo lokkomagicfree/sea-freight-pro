@@ -2284,9 +2284,8 @@ function renderShipments(){
 let dbRows = [];
 function dbStorageSave(){
   try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){}
-  // Sync to Firestore if online
-  if(typeof fbSet === 'function'){
-    fbSet('data/dbIntransit', {rows: dbRows}).catch(()=>{});
+  if(typeof window.fbSet === 'function'){
+    window.fbSet('data/dbIntransit', {rows: dbRows, updatedAt: new Date().toISOString()}).catch(()=>{});
   }
 }
 function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
@@ -4875,6 +4874,7 @@ async function fbSet(path, data){
   try{ await setDoc(doc(db,'users',uid(),...path.split('/')), data, {merge:true}); }
   catch(e){ console.warn('fbSet',e); }
 }
+window.fbSet = fbSet;
 
 async function fbGet(path){
   if(!uid()) return null;
@@ -4912,7 +4912,8 @@ onAuthStateChanged(auth, async user=>{
     // Push current jobs to Firestore so CS Portal can read them
     try{
       await fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()});
-      console.log('☁ Auto-pushed jobs to Firestore:', window.savedJobs?.length||0);
+      await fbSet('data/dbIntransit', {rows: window.dbRows||[], updatedAt: new Date().toISOString()});
+      console.log('☁ Auto-pushed to Firestore: jobs=', window.savedJobs?.length||0, 'dbRows=', window.dbRows?.length||0);
     }catch(e){ console.warn('Auto-push error',e); }
   } else {
     _currentUser = null;
