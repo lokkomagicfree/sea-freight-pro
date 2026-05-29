@@ -1728,7 +1728,7 @@ function recalc(){
       rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';
     }
   });
-  // ไม่คูณจำนวนตู้ — แสดง per container
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
@@ -2098,7 +2098,7 @@ function saveShipment(){
     const rate=isTHB?(exRate||35):1;
     ts+=s/rate; tc+=c/rate;
   });
-  // ไม่คูณจำนวนตู้ — แสดง per container
+  ts*=totalQty; tc*=totalQty;
   const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
   const jobData={
     no:v('s_bkgno')||('BKG-'+String(savedJobs.length+1).padStart(3,'0')),
