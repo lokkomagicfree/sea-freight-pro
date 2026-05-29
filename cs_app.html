@@ -305,7 +305,16 @@ function startLiveSync(){
   }, (err) => {
     console.error('Firestore error:', err);
     document.getElementById('loading').style.display = 'none';
-    toast('❌ Connection error: '+err.message);
+    const isPermission = err.code==='permission-denied' || err.message?.includes('400') || err.message?.includes('PERMISSION_DENIED');
+    if(isPermission){
+      toast('❌ Firestore: Permission denied — กรุณาตรวจสอบ Rules ใน Firebase Console');
+      const banner = document.getElementById('debug_banner');
+      if(banner) banner.innerHTML = `⚠️ <b style="color:var(--red)">Firestore Permission Error</b> — ไปที่ Firebase Console → Firestore → Rules แล้วเปิดสิทธิ์ให้ authenticated users อ่านได้ครับ`;
+    } else {
+      toast('❌ Connection error: '+err.message);
+      // Auto-retry after 5 seconds
+      setTimeout(()=>{ if(!_unsubscribe) startLiveSync(); }, 5000);
+    }
   });
 
   // Listen to In-Transit data for invoice alerts
@@ -324,7 +333,11 @@ function startLiveSync(){
 }
 
 async function loadData(){ startLiveSync(); }
-window.refreshData = function(){ toast('🔄 Live sync active — ข้อมูลอัพเดต real-time'); };
+window.refreshData = function(){
+  if(_unsubscribe){ _unsubscribe(); _unsubscribe=null; }
+  toast('🔄 Reconnecting…');
+  setTimeout(()=>startLiveSync(), 300);
+};
 
 // ── Cutoff Done State ──────────────────────────────────────
 let _csDone = {};
