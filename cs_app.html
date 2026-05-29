@@ -422,7 +422,9 @@ function renderCBAlerts(rows){
   if(!mine.length){ wrap.style.display='none'; return; }
   wrap.style.display='';
 
-  const badge = (done, id, field, labelDone, labelPending, colDone, colPending) => `
+  const MN={'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
+
+  const badge = (done, id, field, labelDone, labelPending) => `
     <button data-id="${id}" data-field="${field}" onclick="updateCBRow(this)"
       style="padding:3px 12px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer;border:none;
         ${done
@@ -431,24 +433,44 @@ function renderCBAlerts(rows){
       ${done ? '✅ '+labelDone : '⏳ '+labelPending}
     </button>`;
 
-  list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px">
-    <thead><tr style="border-bottom:1px solid var(--border2)">
-      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Booking</th>
-      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Shipper</th>
-      <th style="padding:8px 10px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">INV From Vendor</th>
-      <th style="padding:8px 10px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sent to Customer</th>
-      <th style="padding:8px 10px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
-    </tr></thead>
-    <tbody>
-    ${mine.map(r=>`<tr style="border-bottom:1px solid var(--border)" data-row-id="${r.id}">
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${r.customerBooking||r.bookingNo||'—'}</td>
-      <td style="padding:8px 10px;font-size:12px">${r.shipper||'—'}</td>
-      <td style="padding:6px 10px;text-align:center">${badge(r.invoice==='YES', r.id, 'invoice', 'Received', 'Waiting', 'green','red')}</td>
-      <td style="padding:6px 10px;text-align:center">${badge(r.sentToDb==='YES', r.id, 'sentToDb', 'Sent', 'Pending', 'green','gold')}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
-    </tr>`).join('')}
-    </tbody>
-  </table>`;
+  // Group by CY month
+  const groups = {};
+  mine.forEach(r=>{
+    const m = r.month || (r.cyDate ? r.cyDate.slice(0,7) : '') || 'Unknown';
+    if(!groups[m]) groups[m]=[];
+    groups[m].push(r);
+  });
+  const sortedMonths = Object.keys(groups).sort().reverse();
+
+  list.innerHTML = sortedMonths.map(mkey=>{
+    const monthRows = groups[mkey];
+    const [y,mo] = mkey.split('-');
+    const label = mkey==='Unknown' ? 'Unknown Month' : `${MN[mo]||mo} ${y}`;
+    return `
+      <div style="margin-bottom:12px">
+        <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;padding:4px 0 6px;border-bottom:1px solid var(--border2);margin-bottom:6px">
+          📅 ${label} — ${monthRows.length} job${monthRows.length>1?'s':''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr>
+            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Booking</th>
+            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Shipper</th>
+            <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">INV From Vendor</th>
+            <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sent to Customer</th>
+            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
+          </tr></thead>
+          <tbody>
+            ${monthRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:7px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${r.customerBooking||r.bookingNo||'—'}</td>
+              <td style="padding:7px 10px;font-size:12px">${r.shipper||'—'}</td>
+              <td style="padding:5px 10px;text-align:center">${badge(r.invoice==='YES',r.id,'invoice','Received','Waiting')}</td>
+              <td style="padding:5px 10px;text-align:center">${badge(r.sentToDb==='YES',r.id,'sentToDb','Sent','Pending')}</td>
+              <td style="padding:7px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }).join('');
 }
 
 async function updateCBRow(btn){
