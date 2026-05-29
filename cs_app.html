@@ -179,6 +179,8 @@ select.inp{cursor:pointer}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyD7uD5a2HnYuBeX0pkL17-H8hf2ZTybb6s",
@@ -189,8 +191,9 @@ const firebaseConfig = {
   appId: "1:513112241807:web:3c4c43616f94c9577022fa"
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
 
 // ── URL params ─────────────────────────────────────────────
 const params  = new URLSearchParams(location.search);
@@ -467,8 +470,16 @@ function toast(msg){
   setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),300); }, 2500);
 }
 
-// ── Init ───────────────────────────────────────────────────
-loadData();
+// ── Init: sign in anonymously then start live sync ─────────
+signInAnonymously(auth)
+  .then(() => loadData())
+  .catch(err => {
+    document.getElementById('loading').innerHTML = `
+      <div style="text-align:center;color:#e8eaf0;font-family:'DM Mono',monospace">
+        <div style="font-size:14px;color:#c0392b;margin-bottom:8px">❌ Auth Error</div>
+        <div style="font-size:11px;color:#6b7a99">${err.message}</div>
+      </div>`;
+  });
 </script>
 </body>
 </html>
