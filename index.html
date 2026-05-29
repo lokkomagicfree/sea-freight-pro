@@ -241,6 +241,7 @@ body{font-size:14px;font-weight:450}
     <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:10px;padding:4px 10px" id="load_rates_btn">📂 Rates</button>
     <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:10px;padding:4px 10px">+ File</button>
     <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:10px;padding:4px 10px">⚖</button>
+    <button onclick="openCSPortal()" style="font-size:10px;padding:4px 10px;background:rgba(39,174,96,.15);border:1px solid rgba(39,174,96,.35);color:var(--green);border-radius:7px;cursor:pointer;font-weight:700;font-family:var(--sans)">🔗 CS Portal</button>
     <div id="fb_user_badge" style="display:none;align-items:center;gap:6px">
       <img id="fb_avatar" src="" width="24" height="24" style="border-radius:50%;border:2px solid rgba(255,255,255,.6);object-fit:cover;flex-shrink:0">
       <span id="fb_name" style="font-size:10px;color:#fff;font-family:var(--mono);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
@@ -2400,6 +2401,14 @@ function renderMonthlySummary(groups,sortedKeys){
     <td></td><td></td><td></td>
   </tr>`;
 }
+
+function openCSPortal(){
+  const uid = window._currentUid || '';
+  const base = location.href.replace('index.html','').replace(/[?#].*$/,'');
+  const link = base + 'cs_app.html' + (uid ? '?owner='+uid : '');
+  window.open(link, '_blank');
+}
+window.openCSPortal = openCSPortal;
 
 function copyCSLink(csName){
   if(!csName){ toast('⚠ ยังไม่ได้ assign CS'); return; }
