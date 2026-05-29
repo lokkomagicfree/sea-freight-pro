@@ -2397,6 +2397,10 @@ function renderMonthlySummary(groups,sortedKeys){
   if(!wrap){if(wrap)wrap.style.display='none';return;}
   const dbByMonth = (typeof getDbProfitByMonth==='function') ? getDbProfitByMonth() : {};
 
+  // Count In-Transit jobs per month
+  const dbCountByMonth = {};
+  dbRows.forEach(r=>{ const m=r.month||''; if(m){ dbCountByMonth[m]=(dbCountByMonth[m]||0)+1; } });
+
   // Merge months from both Shipments and In-Transit
   const allMonthSet = new Set([...sortedKeys, ...Object.keys(dbByMonth)]);
   const mergedKeys = [...allMonthSet].filter(k=>k&&k!=='Unknown').sort();
@@ -2409,9 +2413,10 @@ function renderMonthlySummary(groups,sortedKeys){
     const mS=jobs.reduce((s,j)=>s+j.sell,0),mC=jobs.reduce((s,j)=>s+j.cost,0),mP=jobs.reduce((s,j)=>s+j.profit,0);
     const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
     const mDb=dbByMonth[key]||0;
-    // Commission base = shipment profit THB + CB profit THB
+    const mDbCount=dbCountByMonth[key]||0;
+    const totalJobs = jobs.length + mDbCount;
     const mM=mS>0?mP/mS*100:0;
-    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mT;gJ+=jobs.length;gDb+=mDb;
+    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mT;gJ+=totalJobs;gDb+=mDb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
@@ -2422,7 +2427,9 @@ function renderMonthlySummary(groups,sortedKeys){
     const commInputDisplay = mDb>0 ? (mDb*commRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿' : '—';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:9px 12px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">${label}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)">${jobs.length||'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)" title="${jobs.length} Shipments + ${mDbCount} CB">
+        ${totalJobs||'—'}${mDbCount>0?`<span style="font-size:9px;color:var(--cyan);margin-left:3px">(+${mDbCount}🚛)</span>`:''}
+      </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?'$'+mS.toFixed(0):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mC?'$'+mC.toFixed(0):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mP>=0?'var(--green)':'var(--red)'}">${mS||mC?'$'+mP.toFixed(0):'—'}</td>

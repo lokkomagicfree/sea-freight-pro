@@ -404,18 +404,17 @@ async function updateCBRow(btn){
   const field = btn.dataset.field;
   const row = _cbRows.find(r=>r.id===id);
   if(!row) return;
-  // Toggle
   row[field] = row[field]==='YES' ? 'NO' : 'YES';
-  // Write back to Firestore
   try{
     await fbSet('data/dbIntransit', {rows: _cbRows, updatedAt: new Date().toISOString()});
     toast('✅ Updated!');
   }catch(e){
     toast('❌ Error: '+e.message);
-    row[field] = row[field]==='YES' ? 'NO' : 'YES'; // revert
+    row[field] = row[field]==='YES' ? 'NO' : 'YES';
   }
   renderCBAlerts(_cbRows);
 }
+window.updateCBRow = updateCBRow;
 
 // ── Build month filter ─────────────────────────────────────
 function buildMonthFilter(){
