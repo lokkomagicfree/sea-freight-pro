@@ -554,6 +554,12 @@ function renderTable(){
       if(!tasks.length || tasks.every(t=>t.done)) return false;
     }
     return true;
+  }).sort((a,b)=>{
+    // Sort: has lastRemarked first (most recent), then by ETD
+    if(a.lastRemarked && b.lastRemarked) return b.lastRemarked.localeCompare(a.lastRemarked);
+    if(a.lastRemarked) return -1;
+    if(b.lastRemarked) return 1;
+    return (b.etd||'').localeCompare(a.etd||'');
   });
 
   const statusBadge = s=>{
@@ -586,6 +592,10 @@ function renderTable(){
     const etd = j.etd ? new Date(j.etd+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
     const eta = j.eta ? new Date(j.eta+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
     const remark = (j.remarks||'').trim();
+    const remarkTime = j.lastRemarked
+      ? new Date(j.lastRemarked).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+      : '';
+    const isRecent = j.lastRemarked && (Date.now()-new Date(j.lastRemarked).getTime()) < 24*60*60*1000;
 
     return `<tr>
       <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${j.no||'—'}</span></td>
@@ -597,7 +607,11 @@ function renderTable(){
       <td>${statusBadge(j.status||'pending')}</td>
       <td>${tasksHtml}</td>
       <td>
-        <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข">${remark||'<span style="color:var(--muted)">—</span>'}</div>
+        <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
+          style="${isRecent?'border-color:var(--red);background:rgba(192,57,43,.05)':''}">
+          ${remark||'<span style="color:var(--muted)">—</span>'}
+          ${remarkTime?`<div style="font-size:9px;color:var(--muted);margin-top:3px;font-family:var(--mono)">${isRecent?'🔴 ':''} ${remarkTime}</div>`:''}
+        </div>
       </td>
       <td style="text-align:center">
         <button class="btn btn-cyan" style="font-size:10px;padding:4px 10px" onclick="openModal(${j._idx})">✏ Edit</button>
@@ -648,21 +662,26 @@ window.removeTask = function(i){ taskList.splice(i,1); renderTaskList(); };
 window.saveChanges = async function(){
   if(editIdx === null) return;
   const j = allJobs[editIdx];
+  const prevRemarks = j.remarks || '';
   j.status  = document.getElementById('m_status').value;
   j.remarks = document.getElementById('m_remarks').value;
   j.csTasks = serializeTasks(taskList);
 
-  // Write back to Firestore
-  // Need to find job in full savedJobs array and update
+  // Stamp lastRemarked if remark changed
+  if(j.remarks !== prevRemarks && j.remarks.trim()){
+    j.lastRemarked = new Date().toISOString();
+  }
+
   try{
     const snap = await fbGet('data/jobs');
     if(snap?.jobs){
       const fullJobs = snap.jobs;
       const target = fullJobs.find(x=>x.no===j.no);
       if(target){
-        target.status  = j.status;
-        target.remarks = j.remarks;
-        target.csTasks = j.csTasks;
+        target.status       = j.status;
+        target.remarks      = j.remarks;
+        target.csTasks      = j.csTasks;
+        target.lastRemarked = j.lastRemarked || target.lastRemarked || '';
         if(!target.statusHistory) target.statusHistory = [];
         target.statusHistory.push({status:j.status, date:new Date().toISOString(), note:'Updated by CS: '+AGENT});
         await fbSet('data/jobs', {jobs: fullJobs});
