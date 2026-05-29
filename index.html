@@ -675,9 +675,7 @@ body{font-size:14px;font-weight:450}
         <tfoot id="saved_foot"></tfoot>
       </table>
     </div>
-  </div>
-
-    <!-- Monthly Summary -->
+<!-- Monthly Summary -->
     <div id="monthly_wrap" style="display:none;margin-bottom:14px">
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
@@ -701,6 +699,8 @@ body{font-size:14px;font-weight:450}
         </div>
       </div>
     </div>
+
+  </div>
 
 </div>
 
@@ -968,7 +968,6 @@ body{font-size:14px;font-weight:450}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span id="dbit_sync_badge" style="font-size:10px;font-family:var(--mono);color:var(--muted)"></span>
         <button onclick="dbStorageSave();toast('⬆ Syncing to CS Portal…')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">☁ Sync to CS</button>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <select id="dbit_month_filter" class="inp" style="font-size:11px;padding:4px 8px;width:130px" onchange="renderDbIntransit()">
           <option value="">All Months</option>
         </select>
