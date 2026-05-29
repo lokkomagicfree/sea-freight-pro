@@ -8,17 +8,18 @@
 <style>
 :root{
   --red:#c0392b;--cyan:#00b4d8;--green:#27ae60;--gold:#f39c12;--orange:#e67e22;
-  --bg:#060a0f;--s1:#0d1520;--s2:#111d2e;--s3:#162035;
-  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
-  --text:#e8eaf0;--muted:#6b7a99;
+  --bg:#0f0808;--s1:#1a0d0d;--s2:#201010;--s3:#2a1414;
+  --border:rgba(255,180,180,.08);--border2:rgba(255,180,180,.16);
+  --text:#f0e8e8;--muted:#8a6666;
   --mono:'DM Mono',monospace;--sans:'DM Sans','Sarabun',sans-serif;
+  --accent:#e05555;--accent2:#ff8080;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
-.topbar{background:linear-gradient(135deg,#0d1520,#162035);border-bottom:1px solid var(--border2);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar{background:linear-gradient(135deg,#1a0d0d,#2d1010);border-bottom:1px solid rgba(220,80,80,.25);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .logo{font-family:var(--mono);font-weight:700;font-size:15px;color:#fff;display:flex;align-items:center;gap:10px}
-.logo span{color:var(--cyan)}
-.agent-badge{background:rgba(0,180,216,.15);border:1px solid rgba(0,180,216,.35);color:var(--cyan);font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px}
+.logo span{color:var(--accent2)}
+.agent-badge{background:rgba(220,80,80,.2);border:1px solid rgba(220,80,80,.45);color:var(--accent2);font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px}
 .page{padding:20px;max-width:1400px;margin:0 auto}
 .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
 .card-title{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:12px}
@@ -93,6 +94,22 @@ select.inp{cursor:pointer}
 
   <!-- Stats -->
   <div class="stat-grid" id="stat_grid"></div>
+
+  <!-- Cutoff Alerts -->
+  <div id="cutoff_alerts" style="margin-bottom:14px;display:none">
+    <div class="card" style="padding:12px 16px;border-color:rgba(220,80,80,.3)">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);letter-spacing:.08em;margin-bottom:8px">⏰ UPCOMING CUTOFFS</div>
+      <div id="cutoff_list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+  </div>
+
+  <!-- In-Transit Alerts -->
+  <div id="cb_alerts_wrap" style="margin-bottom:14px;display:none">
+    <div class="card" style="padding:12px 16px;border-color:rgba(243,156,18,.3)">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:.08em;margin-bottom:8px">🚛 IN-TRANSIT / CROSS BORDER — INVOICE ALERTS</div>
+      <div id="cb_alerts_list"></div>
+    </div>
+  </div>
 
   <!-- Filter -->
   <div class="filter-bar">
@@ -261,6 +278,7 @@ function startLiveSync(){
     document.getElementById('loading').style.display = 'none';
     buildMonthFilter();
     renderStats();
+    renderCutoffAlerts();
     renderTable();
     // Show live badge
     const badge = document.getElementById('live_badge');
@@ -270,10 +288,98 @@ function startLiveSync(){
     document.getElementById('loading').style.display = 'none';
     toast('❌ Connection error: '+err.message);
   });
+
+  // Listen to In-Transit data for invoice alerts
+  const cbRef = doc(db, 'users', ownerUid, 'data', 'dbIntransit');
+  onSnapshot(cbRef, (snap) => {
+    const data = snap.exists() ? snap.data() : null;
+    renderCBAlerts(data?.rows || []);
+  }, ()=>{});
 }
 
 async function loadData(){ startLiveSync(); }
 window.refreshData = function(){ toast('🔄 Live sync active — ข้อมูลอัพเดต real-time'); };
+
+// ── Cutoff Alerts ──────────────────────────────────────────
+function renderCutoffAlerts(){
+  const wrap = document.getElementById('cutoff_alerts');
+  const list = document.getElementById('cutoff_list');
+  if(!wrap||!list) return;
+  const alerts = [];
+  const now = new Date();
+  allJobs.forEach(j=>{
+    const fields = [
+      {label:'SI Cut-Off', val:j.siCutoff, bkgno:j.no},
+      {label:'VGM Cut-Off', val:j.vgmCutoff, bkgno:j.no},
+      {label:'Doc Cut-Off', val:j.docCutoff, bkgno:j.no},
+      {label:'Gate Closing', val:j.gateClosing, bkgno:j.no},
+    ];
+    fields.forEach(f=>{
+      if(!f.val) return;
+      // Try to parse date from string like "02/JUN/2026 17:00 HRS."
+      const dm = f.val.match(/(\d{1,2})[\/\-]([A-Za-z]+|\d{1,2})[\/\-](\d{4})/);
+      if(!dm) return;
+      const months={'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11};
+      const mo = isNaN(dm[2]) ? (months[dm[2].toUpperCase()]??-1) : parseInt(dm[2])-1;
+      if(mo<0) return;
+      const d = new Date(parseInt(dm[3]), mo, parseInt(dm[1]));
+      const diff = Math.ceil((d-now)/86400000);
+      if(diff >= 0 && diff <= 5) alerts.push({...f, diff, dateStr:f.val});
+    });
+  });
+  if(!alerts.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  list.innerHTML = alerts.sort((a,b)=>a.diff-b.diff).map(a=>{
+    const col = a.diff===0?'rgba(220,80,80,.8)':a.diff<=2?'rgba(230,120,0,.8)':'rgba(243,156,18,.7)';
+    return `<div style="background:rgba(0,0,0,.3);border:1px solid ${col};border-radius:8px;padding:6px 12px;font-size:11px;font-family:var(--mono)">
+      <div style="color:${col};font-weight:700">${a.diff===0?'⚡ TODAY':a.diff===1?'⚠ TOMORROW':'📅 '+a.diff+' days'}</div>
+      <div style="color:var(--text);margin-top:2px">${a.bkgno} — ${a.label}</div>
+      <div style="color:var(--muted);font-size:10px">${a.dateStr}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── In-Transit Invoice Alerts ──────────────────────────────
+function renderCBAlerts(rows){
+  const wrap = document.getElementById('cb_alerts_wrap');
+  const list = document.getElementById('cb_alerts_list');
+  if(!wrap||!list) return;
+  // Filter rows assigned to this CS agent
+  const mine = rows.filter(r=>(r.csAssigned||'').toLowerCase().trim()===AGENT.toLowerCase().trim());
+  if(!mine.length){ wrap.style.display='none'; return; }
+  // Show invoice status
+  const pending = mine.filter(r=>!r.invoice||r.invoice!=='YES'||!r.sentToDb||r.sentToDb!=='YES');
+  if(!pending.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <tr style="border-bottom:1px solid rgba(243,156,18,.2)">
+      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">BOOKING</th>
+      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">SHIPPER</th>
+      <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">INV TO CUSTOMER</th>
+      <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">INV FROM VENDOR</th>
+      <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">INV NO.</th>
+    </tr>
+    ${pending.map(r=>{
+      const invDone = r.invoice==='YES';
+      const sentDone = r.sentToDb==='YES';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+        <td style="padding:6px 8px;font-family:var(--mono);color:var(--accent2)">${r.customerBooking||r.bookingNo||'—'}</td>
+        <td style="padding:6px 8px;color:var(--text)">${r.shipper||'—'}</td>
+        <td style="padding:6px 8px;text-align:center">
+          <span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);${invDone?'background:rgba(39,174,96,.15);color:#27ae60;border:1px solid rgba(39,174,96,.3)':'background:rgba(220,80,80,.15);color:var(--accent2);border:1px solid rgba(220,80,80,.3)'}">
+            ${invDone?'✅ Done':'⏳ Pending'}
+          </span>
+        </td>
+        <td style="padding:6px 8px;text-align:center">
+          <span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;font-family:var(--mono);${sentDone?'background:rgba(39,174,96,.15);color:#27ae60;border:1px solid rgba(39,174,96,.3)':'background:rgba(243,156,18,.15);color:var(--gold);border:1px solid rgba(243,156,18,.3)'}">
+            ${sentDone?'✅ Received':'⏳ Waiting'}
+          </span>
+        </td>
+        <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+}
 
 // ── Build month filter ─────────────────────────────────────
 function buildMonthFilter(){

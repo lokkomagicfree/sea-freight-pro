@@ -435,7 +435,13 @@ body{font-size:14px;font-weight:450}
     <!-- LEFT: Form -->
     <div>
       <div class="card" id="shipment_form_card">
-        <div class="card-title">📋 Shipment Details</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0">📋 Shipment Details</div>
+          <label style="cursor:pointer">
+            <input type="file" accept=".pdf" style="display:none" onchange="extractPdfBooking(this)">
+            <span class="btn btn-ghost" style="font-size:11px;padding:4px 12px;pointer-events:none">📄 Upload Booking PDF</span>
+          </label>
+        </div>
         <div class="four-col">
           <div class="inp-group"><label class="inp-lbl">Booking No.</label><input spellcheck="false" class="inp" id="s_bkgno" placeholder="e.g. BKG-001"></div>
           <div class="inp-group"><label class="inp-lbl">Ref No.</label><input spellcheck="false" class="inp" id="s_refno" placeholder="Ref…"></div>
@@ -479,6 +485,10 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group full-col"><label class="inp-lbl">HS Code</label><input spellcheck="false" class="inp" id="s_hscode" placeholder="e.g. 5503.20.00 & 5503.90.00"></div>
           <div class="inp-group"><label class="inp-lbl">CY Date</label><input type="date" class="inp" id="s_cy_date" style="color-scheme:light"></div>
           <div class="inp-group"><label class="inp-lbl">RTN Date</label><input type="date" class="inp" id="s_rtn_date" style="color-scheme:light"></div>
+          <div class="inp-group"><label class="inp-lbl">SI Cut-Off</label><input spellcheck="false" class="inp" id="s_si_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
+          <div class="inp-group"><label class="inp-lbl">VGM Cut-Off</label><input spellcheck="false" class="inp" id="s_vgm_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
+          <div class="inp-group"><label class="inp-lbl">Doc Cut-Off</label><input spellcheck="false" class="inp" id="s_doc_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
+          <div class="inp-group"><label class="inp-lbl">Gate Closing</label><input spellcheck="false" class="inp" id="s_gate_closing" placeholder="02/JUN/2026 20:00 HRS."></div>
           <div class="inp-group full-col">
             <label class="inp-lbl">Container Note</label>
             <input spellcheck="false" class="inp" id="s_connote" placeholder="FOOD GRADE CONTAINER ONLY">
@@ -974,6 +984,7 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap">BOOKING NO.</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--cyan)">SHIPPER</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--cyan)">VOLUME</th>
+              <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">CONTAINER NO.</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">CY DATE</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">LOAD DATE</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INVOICE</th>
@@ -983,6 +994,7 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">SELL (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--cyan)">PROFIT (฿)</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">CLOSED</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">👤 CS</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">REMARKS</th>
               <th style="padding:10px 6px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted)">DEL</th>
             </tr>
@@ -2098,6 +2110,7 @@ function saveShipment(){
     bltype:v2('s_bltype'),sc:v2('s_sc'),ams:v2('s_ams'),commodity:v2('s_commodity'),
     hscode:v2('s_hscode'),
     cyDate:v('s_cy_date'),rtnDate:v('s_rtn_date'),
+    siCutoff:v('s_si_cutoff')||'', vgmCutoff:v('s_vgm_cutoff')||'', docCutoff:v('s_doc_cutoff')||'', gateClosing:v('s_gate_closing')||'',
     cyrtn:[v('s_cy_date')?'CY '+v('s_cy_date'):'',v('s_rtn_date')?'RTN '+v('s_rtn_date'):''].filter(Boolean).join(' / '),
     connote:v2('s_connote'),
     pol:window._selPol||'',pod:window._selPod||'',
@@ -2137,6 +2150,7 @@ function editShipment(idx){
   set('s_bltype',j.bltype);set('s_sc',j.sc);set('s_ams',j.ams);
   set('s_commodity',j.commodity);set('s_hscode',j.hscode);
   set('s_cy_date',j.cyDate||'');set('s_rtn_date',j.rtnDate||'');
+  set('s_si_cutoff',j.siCutoff||'');set('s_vgm_cutoff',j.vgmCutoff||'');set('s_doc_cutoff',j.docCutoff||'');set('s_gate_closing',j.gateClosing||'');
   set('s_connote',j.connote);
   // Restore route picker
   if(j.pol){const rp=g('r_pol');if(rp)rp.value=j.pol;window._selPol=j.pol;}
@@ -2180,7 +2194,7 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_cs_assigned','s_cs_tasks'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
@@ -2268,12 +2282,18 @@ function renderShipments(){
 // IN-TRANSIT / CROSS BORDER
 // ══════════════════════════════════════════════════
 let dbRows = [];
-function dbStorageSave(){ try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){} }
+function dbStorageSave(){
+  try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){}
+  // Sync to Firestore if online
+  if(typeof fbSet === 'function'){
+    fbSet('data/dbIntransit', {rows: dbRows}).catch(()=>{});
+  }
+}
 function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
 dbStorageLoad();
 
 function addDbRow(){
-  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', cyDate:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, remarks:'', month:'' });
+  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
   dbStorageSave(); renderDbIntransit();
   setTimeout(()=>{ const t=document.getElementById('dbit_body'); if(t&&t.lastElementChild) t.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'}); },100);
 }
@@ -2321,6 +2341,7 @@ function renderDbIntransit(){
       <td style="padding:4px 6px;min-width:130px">${inp(r.id,'bookingNo',r.bookingNo)}</td>
       <td style="padding:4px 6px;min-width:180px">${inp(r.id,'shipper',r.shipper)}</td>
       <td style="padding:4px 6px;min-width:80px">${inp(r.id,'volume',r.volume)}</td>
+      <td style="padding:4px 6px;min-width:120px">${inp(r.id,'containerNo',r.containerNo||'')}</td>
       <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'cyDate',r.cyDate)}</td>
       <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'loadDate',r.loadDate)}</td>
       <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
@@ -2330,6 +2351,12 @@ function renderDbIntransit(){
       <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
       <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
       <td style="padding:4px 6px;text-align:center"><input type="checkbox" ${r.closed?'checked':''} onchange="updateDbRow(${r.id},'closed',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+      <td style="padding:4px 6px;min-width:120px">
+        <div style="display:flex;align-items:center;gap:4px">
+          ${inp(r.id,'csAssigned',r.csAssigned||'')}
+          ${r.csAssigned?`<button onclick="openCSPortalFor('${r.csAssigned}')" title="CS Portal" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;width:22px;height:22px;border-radius:4px;font-size:11px;flex-shrink:0">🔗</button>`:''}
+        </div>
+      </td>
       <td style="padding:4px 6px;min-width:150px">${inp(r.id,'remarks',r.remarks)}</td>
       <td style="padding:4px 6px;text-align:center"><button onclick="deleteDbRow(${r.id})" style="border:none;background:rgba(192,57,43,.12);color:var(--red);cursor:pointer;width:24px;height:24px;border-radius:5px;font-size:13px" onmouseover="this.style.background='rgba(192,57,43,.3)'" onmouseout="this.style.background='rgba(192,57,43,.12)'">🗑</button></td>
     </tr>`;
@@ -2337,11 +2364,11 @@ function renderDbIntransit(){
 
   const tC=filtered.reduce((s,r)=>s+(r.cost||0),0), tS=filtered.reduce((s,r)=>s+(r.sell||0),0), tP=tS-tC;
   tfoot.innerHTML=`<tr style="border-top:2px solid var(--border2);background:var(--s3)">
-    <td colspan="9" style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)">TOTAL (${filtered.length} rows)</td>
+    <td colspan="10" style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)">TOTAL (${filtered.length} rows)</td>
     <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red)">${fmtT(tC)} ฿</td>
     <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green)">${fmtT(tS)} ฿</td>
     <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:800;color:${tP>=0?'var(--green)':'var(--red)'}">${fmtT(tP)} ฿</td>
-    <td colspan="3"></td>
+    <td colspan="4"></td>
   </tr>`;
 }
 window.renderDbIntransit = renderDbIntransit;
@@ -2506,8 +2533,84 @@ function copyCSLink(csName){
 }
 window.copyCSLink = copyCSLink;
 
+// ── PDF Booking Auto-Extract (AI) ──────────────────────────
+async function extractPdfBooking(input){
+  const file = input.files[0]; if(!file) return;
+  const apiKey = localStorage.getItem('sfp_akey') || '';
+  if(!apiKey){ toast('⚠ ไม่มี API Key — ใส่ใน Settings ก่อน'); return; }
+  toast('🤖 กำลังอ่าน PDF…');
+  try{
+    // Convert PDF to base64
+    const b64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result.split(',')[1]);
+      r.onerror=rej;
+      r.readAsDataURL(file);
+    });
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514', max_tokens:1500,
+        messages:[{role:'user',content:[
+          {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+          {type:'text',text:`Extract booking confirmation data from this PDF. Return ONLY a JSON object with these exact keys (use empty string if not found):
+{
+  "bookingNo": "",
+  "shipper": "",
+  "consignee": "",
+  "pol": "",
+  "pod": "",
+  "etd": "",
+  "eta": "",
+  "vessel": "",
+  "voyage": "",
+  "carrier": "",
+  "commodity": "",
+  "containers": "",
+  "siCutoff": "",
+  "vgmCutoff": "",
+  "gateClosing": "",
+  "bltype": "",
+  "sc": ""
+}
+ETD/ETA format: YYYY-MM-DD if possible. No markdown, no explanation, just the JSON.`}
+        ]}]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.[0]?.text||'';
+    const json = JSON.parse(text.replace(/```json|```/g,'').trim());
+    // Fill form fields
+    const s=(id,val)=>{ const e=g(id); if(e&&val) e.value=val; };
+    s('s_bkgno',     json.bookingNo);
+    s('s_shipper',   json.shipper);
+    s('s_consignee', json.consignee);
+    s('s_customer',  json.shipper||json.consignee);
+    s('s_pol',       json.pol);
+    s('s_pod',       json.pod);
+    s('s_etd',       json.etd);
+    s('s_eta',       json.eta);
+    s('s_vessel',    json.vessel);
+    s('s_voyage',    json.voyage);
+    s('s_carrier',   json.carrier);
+    s('s_commodity', json.commodity);
+    s('s_si_cutoff', json.siCutoff);
+    s('s_vgm_cutoff',json.vgmCutoff);
+    s('s_gate_closing',json.gateClosing);
+    s('s_bltype',    json.bltype);
+    s('s_sc',        json.sc);
+    if(json.containers) s('s_connote', json.containers);
+    toast('✅ ดึงข้อมูลจาก PDF สำเร็จ!');
+  }catch(err){
+    toast('❌ Error: '+err.message);
+    console.error(err);
+  }
+  input.value='';
+}
+window.extractPdfBooking = extractPdfBooking;
+
 function recalcMonthlyComm(inp){
-  const fmt=n=>n.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
   const key=(inp.dataset.month||'').replace('-','_');
   const el=g('mcomm_'+key);
   if(el){el.textContent=raw>0?fmt(comm)+' ฿':'—';el.style.color=raw>0?'var(--gold)':'var(--muted)';}
