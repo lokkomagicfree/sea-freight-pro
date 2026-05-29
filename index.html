@@ -4853,7 +4853,7 @@ function clearImgExtract(){
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -4935,6 +4935,35 @@ onAuthStateChanged(auth, async user=>{
       await fbSet('data/dbIntransit', {rows: dbRowsData, updatedAt: new Date().toISOString()});
       console.log('☁ Auto-pushed to Firestore: jobs=', window.savedJobs?.length||0, 'dbRows=', dbRowsData.length);
     }catch(e){ console.warn('Auto-push error',e); }
+
+    // Listen for CS Portal changes to dbIntransit (real-time sync back)
+    const _dbRef = doc(db,'users',uid(),'data','dbIntransit');
+    onSnapshot(_dbRef, (snap)=>{
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(!data?.rows) return;
+      // Only update if changed externally (not by our own save)
+      const remote = JSON.stringify(data.rows);
+      const local  = JSON.stringify(window.__getDbRows?.() || []);
+      if(remote !== local){
+        // Merge CS updates back into dbRows
+        const remoteRows = data.rows;
+        const currentRows = window.__getDbRows?.() || [];
+        remoteRows.forEach(rr=>{
+          const local = currentRows.find(lr=>lr.id===rr.id);
+          if(local){
+            local.invoice   = rr.invoice;
+            local.sentToDb  = rr.sentToDb;
+          }
+        });
+        try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(currentRows)); }catch(e){}
+        window.renderDbIntransit?.();
+        // Show badge
+        const b = document.getElementById('dbit_sync_badge');
+        if(b){ b.textContent='🔄 CS Updated'; b.style.color='var(--cyan)'; setTimeout(()=>b.textContent='',3000); }
+        console.log('🔄 dbIntransit updated by CS Portal');
+      }
+    }, ()=>{});
   } else {
     _currentUser = null;
     if(overlay) overlay.style.display='flex';
