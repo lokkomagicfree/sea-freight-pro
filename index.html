@@ -463,6 +463,8 @@ body{font-size:14px;font-weight:450}
             <div id="ctn_warn" style="display:none;margin-top:6px;font-size:11px;color:var(--red);font-family:var(--mono);background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:6px;padding:6px 10px"></div>
           </div>
           <div class="inp-group full-col"><label class="inp-lbl">Remarks</label><input spellcheck="false" class="inp" id="s_remarks" placeholder="หมายเหตุ…" style="color:var(--text)"></div>
+          <div class="inp-group"><label class="inp-lbl">👤 CS Assigned</label><input spellcheck="false" class="inp" id="s_cs_assigned" placeholder="ชื่อ CS ที่ดูแล…"></div>
+          <div class="inp-group full-col"><label class="inp-lbl">📋 CS Tasks</label><input spellcheck="false" class="inp" id="s_cs_tasks" placeholder="งานที่ต้องทำ เช่น ส่ง SI, แจ้ง VGM, ติดตาม BL…"></div>
         </div>
         <!-- Extra email fields -->
         <div class="four-col" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
@@ -2075,6 +2077,7 @@ function saveShipment(){
     refno:v('s_refno'),customer:v('s_customer'),shipper:v('s_shipper'),
     etd:etdVal,eta:etaVal,etdMonth:etdVal?etdVal.slice(0,7):'Unknown',etaMonth:etaVal?etaVal.slice(0,7):'Unknown',
     jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),motherVoy:v('s_mother_voy'),remarks:v('s_remarks'),
+    csAssigned:v('s_cs_assigned')||'', csTasks:v('s_cs_tasks')||'',
     status:v('s_status')||'pending',chargeType:v('s_type'),
     sells,costs,sell:ts,cost:tc,profit,margin,comm,commThb:comm*exRate,commRate,rate:exRate,
     carrier:v2('s_carrier'),incoterm:v2('s_incoterm'),consignee:v2('s_consignee'),
@@ -2114,6 +2117,7 @@ function editShipment(idx){
   set('s_bkgno',j.no);set('s_refno',j.refno);set('s_customer',j.customer);set('s_shipper',j.shipper);
   set('s_etd',j.etd);set('s_eta',j.eta);set('s_vessel',j.vessel);set('s_mother_vessel',j.motherVessel||'');set('s_voyage',j.voyage);set('s_mother_voy',j.motherVoy||'');
   set('s_remarks',j.remarks);set('s_status',j.status);set('s_jobtype',j.jobType);
+  set('s_cs_assigned',j.csAssigned||'');set('s_cs_tasks',j.csTasks||'');
   // Extra email fields
   set('s_carrier',j.carrier);set('s_incoterm',j.incoterm);set('s_consignee',j.consignee);
   set('s_bltype',j.bltype);set('s_sc',j.sc);set('s_ams',j.ams);
@@ -2162,7 +2166,7 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_cs_assigned','s_cs_tasks'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
@@ -2229,6 +2233,7 @@ function renderShipments(){
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
           <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
           <button onclick="openBookingPdfModal(${j._idx})" title="Booking PDF" style="border:none;background:rgba(41,128,185,.1);color:var(--cyan);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">📄 PDF</button>
+          ${j.csAssigned?`<button onclick="copyCSLink(this.dataset.cs)" data-cs="${j.csAssigned}" title="Copy CS Link" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">🔗 CS</button>`:''}
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
           <button onclick="duplicateShipment(${j._idx})" title="Duplicate" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-right:2px">📋</button>
           <button onclick="savedJobs.splice(${j._idx},1);renderShipments();updateAlertCount()" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:12px">✕</button>
@@ -2396,8 +2401,18 @@ function renderMonthlySummary(groups,sortedKeys){
   </tr>`;
 }
 
+function copyCSLink(csName){
+  if(!csName){ toast('⚠ ยังไม่ได้ assign CS'); return; }
+  const uid = window._currentUid || '';
+  const base = location.href.replace('index.html','').replace(/[?#].*$/,'');
+  const link = base + 'cs_app.html?agent='+encodeURIComponent(csName)+'&owner='+uid;
+  navigator.clipboard.writeText(link).then(()=>toast('📋 Copied CS Link: '+csName)).catch(()=>{
+    prompt('Copy this CS link:', link);
+  });
+}
+window.copyCSLink = copyCSLink;
+
 function recalcMonthlyComm(inp){
-  const raw=parseFloat(inp.value)||0,comm=Math.max(raw,0)*commRate;
   const fmt=n=>n.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
   const key=(inp.dataset.month||'').replace('-','_');
   const el=g('mcomm_'+key);
@@ -4673,6 +4688,7 @@ function showSyncBadge(ok){
 
 onAuthStateChanged(auth, async user=>{
   const overlay = document.getElementById('login_overlay');
+  window._currentUid = user ? user.uid : '';
   const badge   = document.getElementById('fb_user_badge');
   const avatar  = document.getElementById('fb_avatar');
   const nameEl  = document.getElementById('fb_name');
