@@ -1554,7 +1554,7 @@ function parseSheetFIX(rows,sn,src){
   // Find column indices from row1
   const pc=h1.findIndex(c=>/^POL$/i.test(c));
   const dc=h1.findIndex(c=>/^POD$/i.test(c));
-  const dlvc=h1.findIndex(c=>/place.of.delivery/i.test(c));
+  const dlvc=h1.findIndex(c=>/place.of.delivery|^DEL$/i.test(c));
   const totalRateCol=h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
   // Find validity from header row — look for last date-like column name or 'Validity'
   let validityStr='';
@@ -1580,18 +1580,31 @@ function parseSheetFIX(rows,sn,src){
   const carFromSheet=sn.replace(/\s*(FIX|SP|for.*|USEC.*)/gi,'').trim()||sn.split(' ')[0];
   let lp='',ld='';
   const[dfSheet,dtSheet]=parseValidity(validityStr);
+
+  // Helper: split multi-port POL cell (newline or slash separated) → array of individual ports
+  const splitPOL=raw=>{
+    if(!raw) return [];
+    // Split by newline first, then each part by slash if it looks like port names not a route
+    const parts=raw.split(/\n/).flatMap(seg=>{
+      // Only split by / if no individual segment already looks like a full port name
+      const sub=seg.split('/').map(s=>s.trim()).filter(Boolean);
+      return sub.length>1?sub:[seg.trim()];
+    }).filter(Boolean);
+    return parts;
+  };
+
   for(let ri=hdrRow2+1;ri<rows.length;ri++){
     const row=rows[ri];if(!row||row.every(c=>!c))continue;
     const cs=row.map(S);
     // Skip sub-header rows (row2 repeats)
     if(cs[s20]&&/^(20GP|40GP|40HC|45HC|20RF)$/i.test(cs[s20])) continue;
-    let p=pc<cs.length&&cs[pc]?cs[pc].split('\n')[0].trim().slice(0,80):'';
+    let pRaw=pc<cs.length&&cs[pc]?cs[pc].trim():'';
     let d=dc>=0&&dc<cs.length&&cs[dc]?cs[dc].split('\n')[0].trim().slice(0,80):'';
     if(!d&&dlvc>=0&&dlvc<cs.length&&cs[dlvc]) d=cs[dlvc].split('\n')[0].trim().slice(0,80);
-    if(p)lp=p;else p=lp;
+    if(pRaw)lp=pRaw;else pRaw=lp;
     if(d)ld=d;else d=ld;
-    if(!p||!d)continue;
-    if(/^POL$/i.test(p)||/^POD$/i.test(p))continue;
+    if(!pRaw||!d)continue;
+    if(/^POL$/i.test(pRaw)||/^POD$/i.test(pRaw))continue;
     const g20raw=s20<row.length?row[s20]:0;
     const g40raw=s40>=0&&s40<row.length?row[s40]:0;
     const g4hraw=s4h>=0&&s4h<row.length?row[s4h]:0;
@@ -1599,7 +1612,13 @@ function parseSheetFIX(rows,sn,src){
     const g40=N(g40raw);
     const g4h=N(g4hraw);
     if(!g20&&!g40&&!g4h)continue;
-    out.push({pol:p,pod:d,gp20:g20||g40||g4h,gp40:g40||g4h||g20,hc40:g4h||g40||g20,carrier:carFromSheet,validity:validityStr,date_from:dfSheet,date_to:dtSheet,valid_status:calcStatus(dfSheet,dtSheet),sheet:sn,source:src});
+    // Split multi-port POL and emit one row per port
+    const polParts=splitPOL(pRaw);
+    const pols=polParts.length>0?polParts:[pRaw];
+    pols.forEach(p=>{
+      p=p.slice(0,80);
+      out.push({pol:p,pod:d,gp20:g20||g40||g4h,gp40:g40||g4h||g20,hc40:g4h||g40||g20,carrier:carFromSheet,validity:validityStr,date_from:dfSheet,date_to:dtSheet,valid_status:calcStatus(dfSheet,dtSheet),sheet:sn,source:src});
+    });
   }
   return out;
 }
@@ -1931,7 +1950,7 @@ function checkCtnVsRate(){
 
 // ── Route picker ───────────────────────────────────────────
 // Only show rates with Thai POL
-const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla'];
+const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla','thailand'];
 
 function isStrictThaiPOL(pol){
   // pol must be a single port (no | separator) AND be a Thai port
