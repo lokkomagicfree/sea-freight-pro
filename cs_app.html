@@ -102,7 +102,7 @@ select.inp{cursor:pointer}
   <div id="cutoff_alerts" style="margin-bottom:14px;display:none">
     <div class="card" style="padding:12px 16px;border-color:rgba(220,80,80,.3)">
       <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);letter-spacing:.08em;margin-bottom:8px">⏰ UPCOMING CUTOFFS</div>
-      <div id="cutoff_list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div id="cutoff_list" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start"></div>
     </div>
   </div>
 
@@ -314,10 +314,39 @@ function startLiveSync(){
     const data = snap.exists() ? snap.data() : null;
     renderCBAlerts(data?.rows || []);
   }, ()=>{});
+
+  // Listen to CS Done status
+  const doneRef = doc(db, 'users', ownerUid, 'data', 'csDone');
+  onSnapshot(doneRef, (snap) => {
+    _csDone = snap.exists() ? (snap.data() || {}) : {};
+    renderCutoffAlerts();
+  }, ()=>{ _csDone = {}; });
 }
 
 async function loadData(){ startLiveSync(); }
 window.refreshData = function(){ toast('🔄 Live sync active — ข้อมูลอัพเดต real-time'); };
+
+// ── Cutoff Done State ──────────────────────────────────────
+let _csDone = {};
+const doneKey = (bkgno, label) => `${bkgno}__${label.replace(/\s+/g,'_')}`;
+
+async function markCutoffDone(bkgno, label, btn){
+  const key = doneKey(bkgno, label);
+  const wasDone = !!_csDone[key];
+  _csDone[key] = wasDone ? null : {done:true, by:AGENT, at:new Date().toISOString()};
+  if(!_csDone[key]) delete _csDone[key];
+  try{
+    await fbSet('data/csDone', _csDone);
+    toast(wasDone ? '↩ Marked undone' : '✅ Marked done!');
+  }catch(e){
+    toast('❌ '+e.message);
+    // revert
+    if(wasDone) _csDone[key] = {done:true};
+    else delete _csDone[key];
+  }
+  renderCutoffAlerts();
+}
+window.markCutoffDone = markCutoffDone;
 
 // ── Cutoff Alerts ──────────────────────────────────────────
 function renderCutoffAlerts(){
@@ -326,36 +355,59 @@ function renderCutoffAlerts(){
   if(!wrap||!list) return;
   const alerts = [];
   const now = new Date();
+  const months={'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11};
+
   allJobs.forEach(j=>{
     const fields = [
-      {label:'SI Cut-Off', val:j.siCutoff, bkgno:j.no},
-      {label:'VGM Cut-Off', val:j.vgmCutoff, bkgno:j.no},
-      {label:'Doc Cut-Off', val:j.docCutoff, bkgno:j.no},
+      {label:'SI Cut-Off',   val:j.siCutoff,    bkgno:j.no},
+      {label:'VGM Cut-Off',  val:j.vgmCutoff,   bkgno:j.no},
+      {label:'Doc Cut-Off',  val:j.docCutoff,   bkgno:j.no},
       {label:'Gate Closing', val:j.gateClosing, bkgno:j.no},
     ];
     fields.forEach(f=>{
       if(!f.val) return;
-      // Try to parse date from string like "02/JUN/2026 17:00 HRS."
       const dm = f.val.match(/(\d{1,2})[\/\-]([A-Za-z]+|\d{1,2})[\/\-](\d{4})/);
       if(!dm) return;
-      const months={'JAN':0,'FEB':1,'MAR':2,'APR':3,'MAY':4,'JUN':5,'JUL':6,'AUG':7,'SEP':8,'OCT':9,'NOV':10,'DEC':11};
       const mo = isNaN(dm[2]) ? (months[dm[2].toUpperCase()]??-1) : parseInt(dm[2])-1;
       if(mo<0) return;
       const d = new Date(parseInt(dm[3]), mo, parseInt(dm[1]));
       const diff = Math.ceil((d-now)/86400000);
-      if(diff >= 0 && diff <= 5) alerts.push({...f, diff, dateStr:f.val});
+      if(diff >= -1 && diff <= 7) alerts.push({...f, diff, dateStr:f.val});
     });
   });
+
+  // Show all alerts including done ones
+  const undone = alerts.filter(a=>!_csDone[doneKey(a.bkgno,a.label)]);
+  const done   = alerts.filter(a=> _csDone[doneKey(a.bkgno,a.label)]);
+
   if(!alerts.length){ wrap.style.display='none'; return; }
   wrap.style.display='';
-  list.innerHTML = alerts.sort((a,b)=>a.diff-b.diff).map(a=>{
-    const col = a.diff===0?'rgba(220,80,80,.8)':a.diff<=2?'rgba(230,120,0,.8)':'rgba(243,156,18,.7)';
-    return `<div style="background:rgba(0,0,0,.3);border:1px solid ${col};border-radius:8px;padding:6px 12px;font-size:11px;font-family:var(--mono)">
-      <div style="color:${col};font-weight:700">${a.diff===0?'⚡ TODAY':a.diff===1?'⚠ TOMORROW':'📅 '+a.diff+' days'}</div>
-      <div style="color:var(--text);margin-top:2px">${a.bkgno} — ${a.label}</div>
-      <div style="color:var(--muted);font-size:10px">${a.dateStr}</div>
+
+  const card = (a, isDone)=>{
+    const key = doneKey(a.bkgno, a.label);
+    const col = isDone ? 'rgba(39,174,96,.6)' : a.diff<0?'rgba(150,150,150,.5)':a.diff===0?'#C0392B':a.diff<=2?'#E67E22':'#E8A838';
+    const urgency = isDone ? '✅ Done' : a.diff<0?'🕐 Overdue':a.diff===0?'⚡ TODAY':a.diff===1?'⚠ TOMORROW':'📅 '+a.diff+'d';
+    const doneInfo = isDone && _csDone[key] ? `<div style="font-size:9px;color:rgba(39,174,96,.7);margin-top:2px">by ${_csDone[key].by||AGENT}</div>` : '';
+    return `<div style="background:var(--s1);border:1.5px solid ${col};border-radius:8px;padding:10px 12px;min-width:200px;flex:0 0 auto;${isDone?'opacity:.6':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;font-family:var(--mono);color:${col}">${urgency}</span>
+        <button onclick="markCutoffDone('${a.bkgno}','${a.label}',this)"
+          style="border:none;border-radius:5px;cursor:pointer;font-size:10px;font-weight:700;padding:2px 8px;font-family:var(--mono);
+            ${isDone?'background:rgba(150,150,150,.15);color:var(--muted)':'background:rgba(39,174,96,.12);color:#1a7a45;border:1px solid rgba(39,174,96,.3)'}">
+          ${isDone?'↩ Undo':'✅ Done'}
+        </button>
+      </div>
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${a.bkgno}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:1px">${a.label}</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:2px">${a.dateStr}</div>
+      ${doneInfo}
     </div>`;
-  }).join('');
+  };
+
+  list.innerHTML =
+    (undone.sort((a,b)=>a.diff-b.diff).map(a=>card(a,false)).join('')) +
+    (done.length ? `<div style="width:1px;background:var(--border2);margin:0 4px;flex-shrink:0"></div>` : '') +
+    (done.map(a=>card(a,true)).join(''));
 }
 
 // ── In-Transit Invoice Alerts ──────────────────────────────
