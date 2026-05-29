@@ -990,8 +990,8 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">CONTAINER NO.</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">CY DATE</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">LOAD DATE</th>
-              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INVOICE</th>
-              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO DB</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INV FROM VENDOR</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO CUSTOMER</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--green)">INV NO.</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--red)">COST (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">SELL (฿)</th>
@@ -2385,7 +2385,7 @@ function renderDbIntransit(){
 window.renderDbIntransit = renderDbIntransit;
 
 function exportDbCsv(){
-  const h=['Customer Booking','Booking No','Shipper','Volume','CY Date','Load Date','Invoice','Sent To DB','Inv No','Cost (THB)','Sell (THB)','Profit (THB)','Closed','Remarks'];
+  const h=['Customer Booking','Booking No','Shipper','Volume','CY Date','Load Date','Invoice','Sent To Customer','Inv No','Cost (THB)','Sell (THB)','Profit (THB)','Closed','Remarks'];
   const rows=dbRows.map(r=>[r.customerBooking,r.bookingNo,r.shipper,r.volume,r.cyDate,r.loadDate,r.invoice,r.sentToDb,r.invNo,r.cost,r.sell,(r.sell||0)-(r.cost||0),r.closed?'YES':'NO',r.remarks].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(','));
   const csv=[h.join(','),...rows].join('\n');
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='DB_INTRANSIT_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
