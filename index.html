@@ -602,7 +602,20 @@ body{font-size:14px;font-weight:450}
 
   <!-- Saved Shipments -->
   <div id="saved_wrap" style="display:none;margin-top:20px;width:100%">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+
+    <!-- CS Team Manager -->
+    <div class="card" style="margin-bottom:12px;padding:12px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em">👥 CS TEAM</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="cs_new_inp" class="fi" placeholder="ชื่อ CS ใหม่…" style="width:140px;font-size:11px" onkeydown="if(event.key==='Enter')addCSAgent()">
+          <button onclick="addCSAgent()" class="btn btn-cyan" style="font-size:11px;padding:3px 10px">+ Add</button>
+        </div>
+      </div>
+      <div id="cs_team_list" style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">ยังไม่มี CS — กด + Add เพื่อเพิ่ม</span>
+      </div>
+    </div>
       <div class="card-title" style="margin-bottom:0">📦 Saved Shipments</div>
       <div style="display:flex;gap:6px;align-items:center">
         <span id="autosave_badge" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
@@ -2402,13 +2415,85 @@ function renderMonthlySummary(groups,sortedKeys){
   </tr>`;
 }
 
-function openCSPortal(){
-  const uid = window._currentUid || '';
+// ── CS Team Management ────────────────────────────────────
+let csTeam = [];
+function csTeamLoad(){ try{ const r=localStorage.getItem('sfp_cs_team'); if(r) csTeam=JSON.parse(r); }catch(e){ csTeam=[]; } }
+function csTeamSave(){ try{ localStorage.setItem('sfp_cs_team', JSON.stringify(csTeam)); }catch(e){} }
+csTeamLoad();
+
+function addCSAgent(){
+  const inp = document.getElementById('cs_new_inp');
+  const name = (inp?.value||'').trim();
+  if(!name) return;
+  if(csTeam.includes(name)){ toast('⚠ มีชื่อนี้อยู่แล้ว'); return; }
+  csTeam.push(name); csTeamSave();
+  if(inp) inp.value = '';
+  renderCSTeam(); renderCSDatalist();
+  toast('✅ เพิ่ม CS: '+name);
+}
+window.addCSAgent = addCSAgent;
+
+function removeCSAgent(name){
+  csTeam = csTeam.filter(n=>n!==name); csTeamSave();
+  renderCSTeam(); renderCSDatalist();
+}
+window.removeCSAgent = removeCSAgent;
+
+function renderCSTeam(){
+  const el = document.getElementById('cs_team_list');
+  if(!el) return;
+  if(!csTeam.length){ el.innerHTML='<span style="font-size:11px;color:var(--muted)">ยังไม่มี CS — กด + Add เพื่อเพิ่ม</span>'; return; }
+  el.innerHTML = csTeam.map(name=>`
+    <div style="display:flex;align-items:center;gap:5px;background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.25);border-radius:99px;padding:3px 10px 3px 12px">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--cyan);cursor:pointer" onclick="openCSPortalFor(this.dataset.name)" data-name="${name}">${name}</span>
+      <button onclick="removeCSAgent(this.dataset.name)" data-name="${name}" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px" title="ลบ">✕</button>
+    </div>`).join('');
+}
+window.renderCSTeam = renderCSTeam;
+
+function renderCSDatalist(){
+  let dl = document.getElementById('cs_datalist');
+  if(!dl){ dl=document.createElement('datalist'); dl.id='cs_datalist'; document.body.appendChild(dl); }
+  dl.innerHTML = csTeam.map(n=>`<option value="${n}">`).join('');
+  const inp = document.getElementById('s_cs_assigned');
+  if(inp) inp.setAttribute('list','cs_datalist');
+}
+window.renderCSDatalist = renderCSDatalist;
+
+function openCSPortalFor(name){
+  const uid = window._currentUid||'';
   const base = location.href.replace('index.html','').replace(/[?#].*$/,'');
-  const link = base + 'cs_app.html' + (uid ? '?owner='+uid : '');
-  window.open(link, '_blank');
+  window.open(base+'cs_app.html?agent='+encodeURIComponent(name)+(uid?'&owner='+uid:''),'_blank');
+}
+window.openCSPortalFor = openCSPortalFor;
+
+function openCSPortal(){
+  const uid = window._currentUid||'';
+  const base = location.href.replace('index.html','').replace(/[?#].*$/,'');
+  const fromJobs = savedJobs.map(j=>j.csAssigned||'').filter(Boolean);
+  const allNames = [...new Set([...csTeam,...fromJobs])].sort();
+  const existing = document.getElementById('cs_portal_modal');
+  if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cs_portal_modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px';
+  const btns = allNames.map(n=>`<button data-name="${n}" onclick="document.getElementById('cs_portal_modal').remove();openCSPortalFor(this.dataset.name)" style="background:rgba(0,180,216,.1);border:1px solid rgba(0,180,216,.3);color:var(--cyan);border-radius:7px;padding:6px 16px;font-size:12px;cursor:pointer;font-family:var(--mono);font-weight:600">${n}</button>`).join('');
+  modal.innerHTML = `<div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:min(440px,96vw);padding:22px">
+    <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:16px">🔗 เปิด CS Portal</div>
+    ${allNames.length?`<div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px">เลือก CS</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${btns}</div>`:''}
+    <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px">${allNames.length?'หรือกรอกชื่อใหม่':'กรอกชื่อ CS'}</div>
+    <div style="display:flex;gap:6px">
+      <input id="cs_agent_inp" class="inp" placeholder="ชื่อ CS…" list="cs_datalist" style="flex:1"
+        onkeydown="if(event.key==='Enter'){const n=this.value.trim();if(n){document.getElementById('cs_portal_modal').remove();openCSPortalFor(n);}}">
+      <button onclick="const n=document.getElementById('cs_agent_inp').value.trim();if(!n)return;document.getElementById('cs_portal_modal').remove();openCSPortalFor(n);" class="btn btn-cyan" style="font-size:12px">เปิด →</button>
+    </div>
+    <div style="text-align:right;margin-top:12px"><button onclick="document.getElementById('cs_portal_modal').remove()" class="btn btn-ghost" style="font-size:11px">Cancel</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  if(!allNames.length) setTimeout(()=>{ document.getElementById('cs_agent_inp')?.focus(); },50);
 }
 window.openCSPortal = openCSPortal;
+
 
 function copyCSLink(csName){
   if(!csName){ toast('⚠ ยังไม่ได้ assign CS'); return; }
@@ -2681,6 +2766,8 @@ storageLoad();   // load from localStorage first (fallback before Firebase)
 initCtnRows();
 renderShipments();
 renderTodos();
+renderCSTeam();
+renderCSDatalist();
 fetchRate();
 setInterval(fetchRate,60000);
 showLoadRatesPrompt();
@@ -4766,6 +4853,8 @@ async function initFirestoreSync(){
   window.renderTodos?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
+  window.renderCSTeam?.();
+  window.renderCSDatalist?.();
 
   if(window.ALL_RATES?.length){
     setTimeout(()=>{
