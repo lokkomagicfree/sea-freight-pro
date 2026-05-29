@@ -83,6 +83,7 @@ select.inp{cursor:pointer}
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="agent-badge" id="agent_badge">Loading…</span>
+    <span id="live_badge" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--green);opacity:.4;transition:opacity .3s">● LIVE</span>
     <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px" onclick="refreshData()">🔄 Refresh</button>
   </div>
 </div>
@@ -176,7 +177,7 @@ select.inp{cursor:pointer}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc }
+import { getFirestore, doc, getDoc, setDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -224,10 +225,11 @@ async function fbSet(path, data){
   await setDoc(doc(db,'users',ownerUid,...path.split('/')), data, {merge:true});
 }
 
-// ── Load data ──────────────────────────────────────────────
-async function loadData(){
+// ── Real-time listener ─────────────────────────────────────
+let _unsubscribe = null;
+
+function startLiveSync(){
   if(!ownerUid){
-    // If no owner param, try to find from URL or show instruction
     document.getElementById('loading').innerHTML = `
       <div style="text-align:center;color:#e8eaf0;font-family:'DM Mono',monospace;padding:20px">
         <div style="font-size:15px;margin-bottom:10px;color:#00b4d8">🔗 CS Portal — Sea Freight Pro</div>
@@ -241,21 +243,34 @@ async function loadData(){
   }
 
   document.getElementById('loading').style.display = 'flex';
-  const jobsSnap = await fbGet('data/jobs');
-  if(jobsSnap?.jobs){
-    allJobs = jobsSnap.jobs.filter(j=>
-      (j.csAssigned||'').toLowerCase().trim() === AGENT.toLowerCase().trim()
-    );
-  } else {
-    allJobs = [];
-  }
-  document.getElementById('loading').style.display = 'none';
-  buildMonthFilter();
-  renderStats();
-  renderTable();
+
+  // onSnapshot — fires immediately + every time data changes in Firestore
+  const docRef = doc(db, 'users', ownerUid, 'data', 'jobs');
+  _unsubscribe = onSnapshot(docRef, (snap) => {
+    const data = snap.exists() ? snap.data() : null;
+    if(data?.jobs){
+      allJobs = data.jobs.filter(j=>
+        (j.csAssigned||'').toLowerCase().trim() === AGENT.toLowerCase().trim()
+      );
+    } else {
+      allJobs = [];
+    }
+    document.getElementById('loading').style.display = 'none';
+    buildMonthFilter();
+    renderStats();
+    renderTable();
+    // Show live badge
+    const badge = document.getElementById('live_badge');
+    if(badge){ badge.style.opacity='1'; setTimeout(()=>badge.style.opacity='.4', 800); }
+  }, (err) => {
+    console.error('Firestore error:', err);
+    document.getElementById('loading').style.display = 'none';
+    toast('❌ Connection error: '+err.message);
+  });
 }
 
-window.refreshData = loadData;
+async function loadData(){ startLiveSync(); }
+window.refreshData = function(){ toast('🔄 Live sync active — ข้อมูลอัพเดต real-time'); };
 
 // ── Build month filter ─────────────────────────────────────
 function buildMonthFilter(){
