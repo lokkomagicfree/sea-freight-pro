@@ -77,8 +77,8 @@ select.inp{cursor:pointer}
 <!-- Topbar -->
 <div class="topbar">
   <div class="logo">
-    <span style="color:var(--red)">Sea Freight</span><span>Pro</span>
-    <span style="color:var(--muted);font-size:11px;font-weight:400">· CS Portal</span>
+    <span style="color:#fff;font-weight:800">Pro</span>
+    <span style="color:#2980B9;font-weight:800;letter-spacing:.02em">CS TRACKING</span>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="agent-badge" id="agent_badge">Loading…</span>
@@ -610,7 +610,7 @@ function renderTable(){
         <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
           style="${isRecent?'border-color:var(--red);background:rgba(192,57,43,.05)':''}">
           ${remark||'<span style="color:var(--muted)">—</span>'}
-          ${remarkTime?`<div style="font-size:9px;color:var(--muted);margin-top:3px;font-family:var(--mono)">${isRecent?'🔴 ':''} ${remarkTime}</div>`:''}
+          ${remarkTime?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);font-weight:${isRecent?'700':'400'};color:${isRecent?'var(--red)':'var(--muted)'};">${isRecent?'● UPDATED ':''} ${remarkTime}</div>`:''}
         </div>
       </td>
       <td style="text-align:center">
