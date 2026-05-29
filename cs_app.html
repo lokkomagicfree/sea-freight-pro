@@ -8,18 +8,18 @@
 <style>
 :root{
   --red:#c0392b;--cyan:#00b4d8;--green:#27ae60;--gold:#f39c12;--orange:#e67e22;
-  --bg:#0f0808;--s1:#1a0d0d;--s2:#201010;--s3:#2a1414;
-  --border:rgba(255,180,180,.08);--border2:rgba(255,180,180,.16);
-  --text:#f0e8e8;--muted:#8a6666;
+  --bg:#060a0f;--s1:#0d1520;--s2:#111d2e;--s3:#162035;
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
+  --text:#e8eaf0;--muted:#6b7a99;
   --mono:'DM Mono',monospace;--sans:'DM Sans','Sarabun',sans-serif;
-  --accent:#e05555;--accent2:#ff8080;
+  --accent:#c0392b;--accent2:#e74c3c;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
-.topbar{background:linear-gradient(135deg,#1a0d0d,#2d1010);border-bottom:1px solid rgba(220,80,80,.25);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar{background:linear-gradient(135deg,#0d1520,#162035);border-bottom:1px solid var(--border2);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .logo{font-family:var(--mono);font-weight:700;font-size:15px;color:#fff;display:flex;align-items:center;gap:10px}
-.logo span{color:var(--accent2)}
-.agent-badge{background:rgba(220,80,80,.2);border:1px solid rgba(220,80,80,.45);color:var(--accent2);font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px}
+.logo span{color:var(--red)}
+.agent-badge{background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);color:var(--accent2);font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px}
 .page{padding:20px;max-width:1400px;margin:0 auto}
 .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
 .card-title{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:12px}
@@ -93,6 +93,11 @@ select.inp{cursor:pointer}
 <div class="page">
 
   <!-- Stats -->
+  <div id="debug_banner" style="margin-bottom:12px;padding:8px 14px;background:rgba(0,180,216,.08);border:1px solid rgba(0,180,216,.2);border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--muted)">
+    🔍 กำลังดึง Shipments ที่ assign ให้ <span id="debug_agent" style="color:var(--cyan);font-weight:700"></span>
+    <span id="debug_count" style="margin-left:8px"></span>
+  </div>
+
   <div class="stat-grid" id="stat_grid"></div>
 
   <!-- Cutoff Alerts -->
@@ -268,12 +273,28 @@ function startLiveSync(){
   const docRef = doc(db, 'users', ownerUid, 'data', 'jobs');
   _unsubscribe = onSnapshot(docRef, (snap) => {
     const data = snap.exists() ? snap.data() : null;
+    console.log('📦 Firestore data:', snap.exists(), 'jobs:', data?.jobs?.length||0);
     if(data?.jobs){
       allJobs = data.jobs.filter(j=>
         (j.csAssigned||'').toLowerCase().trim() === AGENT.toLowerCase().trim()
       );
+      console.log('👤 Filtered for agent "'+AGENT+'":', allJobs.length, 'jobs');
+      // Debug: show all unique csAssigned values
+      const assigned = [...new Set(data.jobs.map(j=>j.csAssigned||'(none)'))];
+      console.log('🔍 All csAssigned values:', assigned);
+      // Update debug banner
+      const dbAgent = document.getElementById('debug_agent');
+      const dbCount = document.getElementById('debug_count');
+      if(dbAgent) dbAgent.textContent = AGENT;
+      if(dbCount) dbCount.textContent = allJobs.length
+        ? `— พบ ${allJobs.length} shipment ✅`
+        : `— ไม่พบ shipment (ค่าในระบบ: ${assigned.filter(a=>a!=='(none)').join(', ')||'ยังไม่มีค่า csAssigned'})`;
     } else {
       allJobs = [];
+      const dbAgent = document.getElementById('debug_agent');
+      const dbCount = document.getElementById('debug_count');
+      if(dbAgent) dbAgent.textContent = AGENT;
+      if(dbCount) dbCount.textContent = '— ไม่พบข้อมูลใน Firestore';
     }
     document.getElementById('loading').style.display = 'none';
     buildMonthFilter();
