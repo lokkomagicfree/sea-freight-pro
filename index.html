@@ -966,6 +966,9 @@ body{font-size:14px;font-weight:450}
     <div class="card" style="margin-bottom:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--cyan)">🚛 IN-TRANSIT / CROSS BORDER TRACKING</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span id="dbit_sync_badge" style="font-size:10px;font-family:var(--mono);color:var(--muted)"></span>
+        <button onclick="dbStorageSave();toast('⬆ Syncing to CS Portal…')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">☁ Sync to CS</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <select id="dbit_month_filter" class="inp" style="font-size:11px;padding:4px 8px;width:130px" onchange="renderDbIntransit()">
           <option value="">All Months</option>
         </select>
@@ -2282,11 +2285,20 @@ function renderShipments(){
 // IN-TRANSIT / CROSS BORDER
 // ══════════════════════════════════════════════════
 let dbRows = [];
+window.__getDbRows = () => dbRows;
 function dbStorageSave(){
   try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){}
-  if(typeof window.fbSet === 'function'){
-    window.fbSet('data/dbIntransit', {rows: dbRows, updatedAt: new Date().toISOString()}).catch(()=>{});
-  }
+  // Sync to Firestore — retry up to 5s if fbSet not ready yet
+  const doSync = (attempt) => {
+    if(typeof window.fbSet === 'function'){
+      window.fbSet('data/dbIntransit', {rows: dbRows, updatedAt: new Date().toISOString()})
+        .then(()=>{ const b=document.getElementById('dbit_sync_badge'); if(b){b.textContent='☁ Synced';b.style.color='var(--green)';setTimeout(()=>b.textContent='',2000);} })
+        .catch(e=>console.warn('dbIntransit sync error',e));
+    } else if(attempt < 10){
+      setTimeout(()=>doSync(attempt+1), 500);
+    }
+  };
+  doSync(0);
 }
 function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
 dbStorageLoad();
@@ -4912,8 +4924,9 @@ onAuthStateChanged(auth, async user=>{
     // Push current jobs to Firestore so CS Portal can read them
     try{
       await fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()});
-      await fbSet('data/dbIntransit', {rows: window.dbRows||[], updatedAt: new Date().toISOString()});
-      console.log('☁ Auto-pushed to Firestore: jobs=', window.savedJobs?.length||0, 'dbRows=', window.dbRows?.length||0);
+      const dbRowsData = window.__getDbRows?.() || [];
+      await fbSet('data/dbIntransit', {rows: dbRowsData, updatedAt: new Date().toISOString()});
+      console.log('☁ Auto-pushed to Firestore: jobs=', window.savedJobs?.length||0, 'dbRows=', dbRowsData.length);
     }catch(e){ console.warn('Auto-push error',e); }
   } else {
     _currentUser = null;
