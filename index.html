@@ -1404,7 +1404,7 @@ function parseFile(buffer,filename){
     const newRates=[];
     wb.SheetNames.forEach(sn=>{
       const ws=wb.Sheets[sn];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,cellFormula:false});
       if(!rows.length) return;
       const snl=sn.toLowerCase();
       if(/^fuel$|^contact/i.test(snl)) return;
@@ -1413,8 +1413,14 @@ function parseFile(buffer,filename){
       else if(/\bfak\b/i.test(snl)) shSrc='FAK';
       else if(/food/i.test(snl)) shSrc='FOOD';
       else if(/fix/i.test(snl)) shSrc='FIX';
+      // Detect FIX RATE format: 2-row header with "TOTAL RATE" column
+      const isFIXFormat = rows.slice(0,6).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/^TOTAL\s*RATE$/i.test(c)));
       let parsed=[];
-      if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
+      if(isFIXFormat){
+        // Re-read sheet with raw:false so formula cells show computed text values
+        const rowsEval=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+        parsed=parseSheetFIX(rowsEval,sn,shSrc);
+      } else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
       parsed.forEach(r=>newRates.push(r));
@@ -1518,6 +1524,82 @@ function parseSheet(rows,sn,src){
     const car=cc>=0&&cc<cs.length&&cs[cc]?cs[cc]:(lc||sn.split(' ')[0]);lc=car;
     const[df,dt,raw]=getDates(row,cs,efc,exc,vcList);
     out.push(mkRow(p,d,g20,g40,g4h,df,dt,raw,car,src));
+  }
+  return out;
+}
+
+// ── Parser for FIX RATE format (2-row header: TOTAL RATE + 20GP/40GP/40HC sub-columns) ──
+function parseSheetFIX(rows,sn,src){
+  const out=[],S=v=>String(v==null?'':v).trim();
+  // N: handle SheetJS raw values — numeric, string, or formula string (skip formulas)
+  const N=v=>{
+    if(v===null||v===undefined||v==='') return 0;
+    if(typeof v==='number') return v>0?v:0;
+    const s=String(v).trim();
+    if(s.startsWith('=')) return 0; // formula not evaluated — return 0
+    const x=parseFloat(s.replace(/,/g,'').replace(/[^0-9.-]/g,''));
+    return isNaN(x)||x<=0?0:x;
+  };
+  // Find the two header rows — look for row with "TOTAL RATE" or "POL"
+  let hdrRow1=-1, hdrRow2=-1;
+  for(let i=0;i<Math.min(8,rows.length);i++){
+    const cells=rows[i].map(S);
+    if(cells.some(c=>/^TOTAL\s*RATE$/i.test(c)) && cells.some(c=>/^POL$/i.test(c))){
+      hdrRow1=i; hdrRow2=i+1; break;
+    }
+  }
+  if(hdrRow1<0) return out;
+  const h1=rows[hdrRow1].map(S);
+  const h2=rows[hdrRow2]?rows[hdrRow2].map(S):[];
+  // Find column indices from row1
+  const pc=h1.findIndex(c=>/^POL$/i.test(c));
+  const dc=h1.findIndex(c=>/^POD$/i.test(c));
+  const dlvc=h1.findIndex(c=>/place.of.delivery/i.test(c));
+  const totalRateCol=h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
+  // Find validity from header row — look for last date-like column name or 'Validity'
+  let validityStr='';
+  for(let i=0;i<Math.min(8,rows.length);i++){
+    const cells=rows[i].map(S);
+    const vi=cells.findIndex(c=>/^validity$/i.test(c));
+    if(vi>=0&&vi+1<cells.length&&cells[vi+1]){validityStr=cells[vi+1];break;}
+    // Also check for date patterns in any cell
+    for(const c of cells){if(/\d+[./]\d+/.test(c)&&c.length<20&&!validityStr){validityStr=c;break;}}
+  }
+  // 20GP/40GP/40HC columns from row2, starting at totalRateCol (TOTAL RATE only)
+  let s20=-1,s40=-1,s4h=-1;
+  if(totalRateCol>=0){
+    let foundFirst=false;
+    for(let j=totalRateCol;j<h2.length;j++){
+      if(!foundFirst&&/^20\s*GP$/i.test(h2[j])){s20=j;foundFirst=true;}
+      else if(foundFirst&&s40<0&&/^40\s*GP$/i.test(h2[j])){s40=j;}
+      else if(foundFirst&&s4h<0&&/^(40\s*HC|45\s*H[CQ])$/i.test(h2[j])){s4h=j;}
+    }
+  }
+  if(pc<0||s20<0) return out;
+  // Extract carrier from sheet name
+  const carFromSheet=sn.replace(/\s*(FIX|SP|for.*|USEC.*)/gi,'').trim()||sn.split(' ')[0];
+  let lp='',ld='';
+  const[dfSheet,dtSheet]=parseValidity(validityStr);
+  for(let ri=hdrRow2+1;ri<rows.length;ri++){
+    const row=rows[ri];if(!row||row.every(c=>!c))continue;
+    const cs=row.map(S);
+    // Skip sub-header rows (row2 repeats)
+    if(cs[s20]&&/^(20GP|40GP|40HC|45HC|20RF)$/i.test(cs[s20])) continue;
+    let p=pc<cs.length&&cs[pc]?cs[pc].split('\n')[0].trim().slice(0,80):'';
+    let d=dc>=0&&dc<cs.length&&cs[dc]?cs[dc].split('\n')[0].trim().slice(0,80):'';
+    if(!d&&dlvc>=0&&dlvc<cs.length&&cs[dlvc]) d=cs[dlvc].split('\n')[0].trim().slice(0,80);
+    if(p)lp=p;else p=lp;
+    if(d)ld=d;else d=ld;
+    if(!p||!d)continue;
+    if(/^POL$/i.test(p)||/^POD$/i.test(p))continue;
+    const g20raw=s20<row.length?row[s20]:0;
+    const g40raw=s40>=0&&s40<row.length?row[s40]:0;
+    const g4hraw=s4h>=0&&s4h<row.length?row[s4h]:0;
+    const g20=N(g20raw);
+    const g40=N(g40raw);
+    const g4h=N(g4hraw);
+    if(!g20&&!g40&&!g4h)continue;
+    out.push({pol:p,pod:d,gp20:g20||g40||g4h,gp40:g40||g4h||g20,hc40:g4h||g40||g20,carrier:carFromSheet,validity:validityStr,date_from:dfSheet,date_to:dtSheet,valid_status:calcStatus(dfSheet,dtSheet),sheet:sn,source:src});
   }
   return out;
 }
