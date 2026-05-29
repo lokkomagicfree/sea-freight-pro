@@ -2536,8 +2536,15 @@ window.copyCSLink = copyCSLink;
 // ── PDF Booking Auto-Extract (AI) ──────────────────────────
 async function extractPdfBooking(input){
   const file = input.files[0]; if(!file) return;
-  const apiKey = localStorage.getItem('sfp_akey') || '';
-  if(!apiKey){ toast('⚠ ไม่มี API Key — ใส่ใน Settings ก่อน'); return; }
+  let apiKey = localStorage.getItem('sfp_akey') || document.getElementById('anthropic_key_inp')?.value || '';
+  if(!apiKey){
+    apiKey = prompt('🔑 กรอก Anthropic API Key เพื่อใช้ฟีเจอร์นี้:\n(จะบันทึกใน browser อัตโนมัติ)');
+    if(!apiKey) return;
+    localStorage.setItem('sfp_akey', apiKey.trim());
+    apiKey = apiKey.trim();
+    const inp = document.getElementById('anthropic_key_inp');
+    if(inp) inp.value = apiKey;
+  }
   toast('🤖 กำลังอ่าน PDF…');
   try{
     // Convert PDF to base64
