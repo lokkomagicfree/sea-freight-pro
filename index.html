@@ -1499,12 +1499,16 @@ function parseFile(buffer,filename){
       else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
-      // Apply detected carrier to rows that have no carrier set
+      // Apply detected carrier — override empty carriers or carriers that look like sheet names
       if(detectedCarrier){
-        parsed.forEach(r=>{ if(!r.carrier||r.carrier===sn.split(' ')[0]) r.carrier=detectedCarrier; });
+        parsed.forEach(r=>{ if(!r.carrier) r.carrier=detectedCarrier; });
       }
-      // Normalize all carrier names (strip date suffixes)
+      // Normalize all carrier names (strip suffixes like "- TH POL", dates, etc.)
       parsed.forEach(r=>{ if(r.carrier) r.carrier=normalizeCarrier(r.carrier); });
+      // Final fallback: if still no carrier after normalize, use detectedCarrier
+      if(detectedCarrier){
+        parsed.forEach(r=>{ if(!r.carrier) r.carrier=detectedCarrier; });
+      }
       parsed.forEach(r=>newRates.push(r));
     });
     const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-1);
@@ -1557,8 +1561,8 @@ function parseSheetQuotation(rows,sn,src){
   }
   if(dataStart<0) return out;
 
-  // Extract carrier from sheet name or file header
-  const car=sn.replace(/rates?|laem.*|bangkok.*/gi,'').trim()||'';
+  // Leave carrier empty — will be filled by detectCarrierFromContext in parseFile
+  const car='';
 
   // Group rows by POL+POD, accumulate 20GP and 40HC rates
   const map={};
