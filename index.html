@@ -1163,7 +1163,7 @@ Object.defineProperty(window, 'commRate', { get(){ return commRate; }, set(v){ c
 Object.defineProperty(window, 'exRate',   { get(){ return exRate; },   set(v){ exRate=v; } });
 let curPage    = 1;
 window._goPage = function(p){ curPage=p; applyFilter(); };
-const PER_PAGE = 50;
+const PER_PAGE = 20;
 let sortField  = 'gp20'; let sortAsc = true;
 
 const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Others'];
