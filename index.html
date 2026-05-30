@@ -1900,12 +1900,14 @@ function renderTable(filtered){
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
-    if(curPage>1)h+=`<button class="btn btn-ghost pag-btn" data-pg="${curPage-1}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20">◀</button>`;
-    for(let p=Math.max(1,curPage-2);p<=Math.min(pages,curPage+2);p++)h+=`<button class="btn ${p===curPage?'btn-cyan':'btn-ghost'} pag-btn" data-pg="${p}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20">${p}</button>`;
-    if(curPage<pages)h+=`<button class="btn btn-ghost pag-btn" data-pg="${curPage+1}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20">▶</button>`;
+    if(curPage>1)h+=`<button class="btn btn-ghost pag-btn" data-pg="${curPage-1}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="window._goPage(${curPage-1})">◀</button>`;
+    for(let p=Math.max(1,curPage-2);p<=Math.min(pages,curPage+2);p++)h+=`<button class="btn ${p===curPage?'btn-cyan':'btn-ghost'} pag-btn" data-pg="${p}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="window._goPage(${p})">${p}</button>`;
+    if(curPage<pages)h+=`<button class="btn btn-ghost pag-btn" data-pg="${curPage+1}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="window._goPage(${curPage+1})">▶</button>`;
     btns.innerHTML=h;
   }
 }
+
+window._goPage = function(p){ curPage=p; applyFilter(); };
 
 function deleteRate(idx){
   if(idx < 0 || idx >= ALL_RATES.length) return;
