@@ -2190,22 +2190,53 @@ function checkCtnVsRate(){
 // Only show rates with Thai POL
 const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla','thailand'];
 
-// Normalize Thai POL abbreviations → full name
+// Normalize Thai POL abbreviations → full name (only LAEM CHABANG, BANGKOK, LAT KRABANG)
 function normalizeTHPOL(pol){
   if(!pol) return pol;
   const p = pol.trim();
   const pl = p.toLowerCase();
-  if(/^(lcb|lcbg|laem\s*cha\s*bang|laemchabang|lemchabang)$/i.test(pl)) return 'Laem Chabang';
-  if(/^(bkk|bangkok)$/i.test(pl)) return 'Bangkok';
-  if(/^(lkb|latkrabang|lat\s*krabang)$/i.test(pl)) return 'Lat Krabang';
-  if(/^(skla|songkha|songkhla)$/i.test(pl)) return 'Songkhla';
-  // Partial match inside longer string — replace known abbreviations
+  if(/^(lcb|lcbg|laem\s*cha\s*bang|laemchabang|lemchabang|laem\s*chabang.*thailand.*)$/i.test(pl)) return 'Laem Chabang';
+  if(/^(bkk|bangkok.*)$/i.test(pl)) return 'Bangkok';
+  if(/^(lkb|latkrabang|lat\s*kra\s*bang|lat\s*krabang.*)$/i.test(pl)) return 'Lat Krabang';
+  // Partial replacement in longer strings
   return p
     .replace(/\bLCB\b/gi,'Laem Chabang')
     .replace(/\bLCBG\b/gi,'Laem Chabang')
     .replace(/\bBKK\b/gi,'Bangkok')
-    .replace(/\bLKB\b/gi,'Lat Krabang')
-    .replace(/\bSKLA\b/gi,'Songkhla');
+    .replace(/\bLKB\b/gi,'Lat Krabang');
+}
+
+// Normalize POD abbreviations → full port names
+// USWC → LA / Oakland, USEC → New York / Savannah / Norfolk
+function normalizePOD(pod){
+  if(!pod) return [pod];
+  const p = pod.trim();
+  // USWC / US West Coast → expand to LA + Oakland
+  if(/\bUSWC\b|\bUS\s*WEST\s*COAST\b|\bWEST\s*COAST\b/i.test(p)){
+    return ['Los Angeles, CA', 'Oakland, CA'];
+  }
+  // USEC / US East Coast → expand to New York + Savannah + Norfolk
+  if(/\bUSEC\b|\bUS\s*EAST\s*COAST\b|\bEAST\s*COAST\b/i.test(p)){
+    return ['New York, NY', 'Savannah, GA', 'Norfolk, VA'];
+  }
+  // Single port abbreviations
+  const map = {
+    'NYC':'New York, NY','NY':'New York, NY','NEW YORK':'New York, NY',
+    'SAV':'Savannah, GA','SAVANNAH':'Savannah, GA',
+    'NOR':'Norfolk, VA','NORFOLK':'Norfolk, VA',
+    'LAX':'Los Angeles, CA','LA':'Los Angeles, CA','LOS ANGELES':'Los Angeles, CA',
+    'OAK':'Oakland, CA','OAKLAND':'Oakland, CA',
+    'HOU':'Houston, TX','HOUSTON':'Houston, TX',
+    'CHI':'Chicago, IL','CHICAGO':'Chicago, IL',
+    'CHS':'Charleston, SC','CHARLESTON':'Charleston, SC',
+    'BAL':'Baltimore, MD','BALTIMORE':'Baltimore, MD',
+    'MIA':'Miami, FL','MIAMI':'Miami, FL',
+    'SEA':'Seattle, WA','SEATTLE':'Seattle, WA',
+    'TAC':'Tacoma, WA','TACOMA':'Tacoma, WA',
+  };
+  const up = p.toUpperCase().replace(/[^A-Z\s]/g,'').trim();
+  if(map[up]) return [map[up]];
+  return [p];
 }
 
 function isStrictThaiPOL(pol){
@@ -2230,14 +2261,18 @@ function expandAndFilterThaiPOL(rates){
   const result = [];
   rates.forEach(r=>{
     const pol = (r.pol||'').trim();
+    const podList = normalizePOD(r.pod||'');
+    const pushRate = (polNorm) => {
+      podList.forEach(pod => {
+        result.push({...r, pol: polNorm, pod});
+      });
+    };
     if(!pol.includes('|')){
-      if(isStrictThaiPOL(pol)) result.push({...r, pol: normalizeTHPOL(pol)});
+      if(isStrictThaiPOL(pol)) pushRate(normalizeTHPOL(pol));
     } else {
       const parts = pol.split('|').map(s=>s.trim());
       parts.forEach(p=>{
-        if(isStrictThaiPOL(p)){
-          result.push({...r, pol: normalizeTHPOL(p)});
-        }
+        if(isStrictThaiPOL(p)) pushRate(normalizeTHPOL(p));
       });
     }
   });
