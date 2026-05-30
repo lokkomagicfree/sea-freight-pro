@@ -1495,18 +1495,18 @@ function parseFile(buffer,filename){
       // Detect carrier from filename + sheet name + content
       const detectedCarrier = detectCarrierFromContext(filename, sn, rows);
       let parsed=[];
-      // Detect Flat Table format: header row with POL+POD+rate columns (no TOTAL RATE, no vertical layout)
-      const isFlatFormat = rows.slice(0,5).some(r=>{
+      // Detect FIX RATE format first: has "TOTAL RATE" column (2-row header)
+      const isFIXFormat = rows.slice(0,6).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/^TOTAL\s*RATE$/i.test(c)));
+      // Detect Flat Table format: header row with POL+POD+rate columns
+      const isFlatFormat = !isFIXFormat && rows.slice(0,5).some(r=>{
         const cells=r.map(v=>String(v==null?'':v).trim());
         return cells.some(c=>/^pol$/i.test(c)) && cells.some(c=>/destination|^pod$|^dest$/i.test(c));
       });
-      // Detect Quotation format: vertical POL/POD/Size/Rate (has "Origin" + "Container" header)
-      const isQuotFormat = !isFlatFormat && rows.slice(0,15).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c)));
-      // Detect FIX RATE format: 2-row header with "TOTAL RATE" column
-      const isFIXFormat = !isFlatFormat && !isQuotFormat && rows.slice(0,6).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/^TOTAL\s*RATE$/i.test(c)));
-      if(isFlatFormat) parsed=parseSheetFlat(rows,sn,shSrc);
+      // Detect Quotation format: vertical POL/POD/Size/Rate
+      const isQuotFormat = !isFIXFormat && !isFlatFormat && rows.slice(0,15).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c)));
+      if(isFIXFormat) parsed=parseSheetFIX(rows,sn,shSrc);
+      else if(isFlatFormat) parsed=parseSheetFlat(rows,sn,shSrc);
       else if(isQuotFormat) parsed=parseSheetQuotation(rows,sn,shSrc);
-      else if(isFIXFormat) parsed=parseSheetFIX(rows,sn,shSrc);
       else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
@@ -1598,22 +1598,128 @@ function parseSheetFlat(rows, sn, defaultSrc){
     }
     if(!g20&&!g40&&!h4c) continue;
     const[df,dt]=parseValidity(valid);
-    // Split multi-port POL (Bangkok / Laem Chabang → 2 rows)
-    const polParts = pol ? pol.split(/[\/\|]/).map(p=>p.trim()).filter(Boolean) : [''];
-    polParts.forEach(p=>{
-      if(p&&!isStrictThaiPOL(p.toLowerCase())) return; // skip non-Thai POL
-      out.push({
-        pol: p ? normalizeTHPOL(p) : pol,
-        pod,
-        gp20: g20||g40||h4c,
-        gp40: g40||h4c||g20,
-        hc40: h4c||g40||g20,
-        carrier: normalizeCarrier(carrier)||'',
-        source: src,
-        validity: valid,
-        date_from: df, date_to: dt,
-        valid_status: calcStatus(df,dt),
-        sheet: sn
+    // Split multi-port POL and filter Thai POL only
+    const polParts = pol ? pol.split(/[\/\|\n]/).map(p=>p.trim()).filter(Boolean) : [''];
+    const thaiPols = polParts.filter(p=>p&&isStrictThaiPOL(p.toLowerCase()));
+    if(pol && !thaiPols.length) continue; // skip non-Thai POL rows
+    const activePols = thaiPols.length ? thaiPols : polParts;
+    // Normalize POD (expand USEC/USWC)
+    const podList = normalizePOD(pod);
+    activePols.forEach(p=>{
+      podList.forEach(podNorm=>{
+        out.push({
+          pol: p ? normalizeTHPOL(p) : pol,
+          pod: podNorm,
+          gp20: g20||g40||h4c,
+          gp40: g40||h4c||g20,
+          hc40: h4c||g40||g20,
+          carrier: normalizeCarrier(carrier)||'',
+          source: src,
+          validity: valid,
+          date_from: df, date_to: dt,
+          valid_status: calcStatus(df,dt),
+          sheet: sn
+        });
+      });
+    });
+  }
+  return out;
+}
+
+// ── Parser for FIX RATE format (2-row header: POL/POD/TOTAL RATE 20GP/40GP/40HC) ──
+function parseSheetFIX(rows, sn, src){
+  const out=[];
+  const S=v=>String(v==null?'':v).trim();
+  const N=v=>{
+    if(v===null||v===undefined||v==='') return 0;
+    if(typeof v==='number') return v>0?v:0;
+    const s=String(v).replace(/[$,\s]/g,'');
+    const x=parseFloat(s); return isNaN(x)||x<=0?0:x;
+  };
+
+  // Find 2-row header: row with TOTAL RATE
+  let hdr1=-1,hdr2=-1;
+  for(let i=0;i<Math.min(8,rows.length);i++){
+    const cells=rows[i].map(S);
+    if(cells.some(c=>/^TOTAL\s*RATE$/i.test(c))){
+      hdr1=i; hdr2=i+1; break;
+    }
+  }
+  if(hdr1<0) return out;
+
+  const h1=rows[hdr1].map(S);
+  const h2=rows[hdr2]?rows[hdr2].map(S):[];
+
+  // Find column positions from row1
+  const polCol = h1.findIndex(c=>/^POL$/i.test(c));
+  const podCol = h1.findIndex(c=>/^POD$|^place\s*of\s*delivery$/i.test(c));
+  const totalRateCol = h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
+
+  // Find 20GP/40GP/40HC sub-columns under TOTAL RATE from row2
+  let g20col=-1, g40col=-1, g4hcol=-1;
+  if(totalRateCol>=0){
+    for(let j=totalRateCol;j<h2.length;j++){
+      if(g20col<0 && /^20\s*GP$/i.test(h2[j])) g20col=j;
+      else if(g20col>=0 && g40col<0 && /^40\s*GP$/i.test(h2[j])) g40col=j;
+      else if(g20col>=0 && g4hcol<0 && /^(40|45)\s*(HC|HQ)$/i.test(h2[j])) g4hcol=j;
+    }
+  }
+  if(g20col<0) return out;
+
+  // Extract validity from header rows
+  let validityStr='';
+  for(let i=0;i<Math.min(10,rows.length);i++){
+    const cells=rows[i].map(S);
+    for(let j=0;j<cells.length;j++){
+      if(/valid|expir/i.test(cells[j]) && cells[j+1] && /\d/.test(cells[j+1])){
+        validityStr=cells[j+1]; break;
+      }
+    }
+    if(validityStr) break;
+  }
+  const[dfSheet,dtSheet]=parseValidity(validityStr);
+
+  let lp='', ld='';
+  for(let ri=hdr2+1;ri<rows.length;ri++){
+    const row=rows[ri]; if(!row||row.every(c=>!c)) continue;
+    const cs=row.map(S);
+    if(cs[g20col] && /^(20GP|40GP|40HC|45HC)$/i.test(cs[g20col])) continue; // skip repeated sub-header
+
+    // POL — split by newline for multi-port cells
+    const pRaw = polCol>=0 && cs[polCol] ? cs[polCol] : lp;
+    const dRaw = podCol>=0 && cs[podCol] ? cs[podCol] : ld;
+    if(pRaw) lp=pRaw;
+    if(dRaw) ld=dRaw;
+    if(!lp||!ld) continue;
+
+    const g20=N(row[g20col]);
+    const g40=g40col>=0?N(row[g40col]):g20;
+    const g4h=g4hcol>=0?N(row[g4hcol]):g40;
+    if(!g20&&!g40&&!g4h) continue;
+
+    // Split multi-port POL (newline or slash separated)
+    const polParts = lp.split(/\n|\\n/).flatMap(p=>p.split('/').map(s=>s.trim())).filter(Boolean);
+    // Filter Thai POL only
+    const thaiPols = polParts.filter(p=>isStrictThaiPOL(p.toLowerCase()));
+    if(!thaiPols.length) continue;
+
+    // Normalize POD (expand USEC/USWC)
+    const podList = normalizePOD(ld);
+
+    thaiPols.forEach(pol=>{
+      podList.forEach(pod=>{
+        out.push({
+          pol: normalizeTHPOL(pol),
+          pod,
+          gp20:g20||g40||g4h,
+          gp40:g40||g4h||g20,
+          hc40:g4h||g40||g20,
+          carrier:'',
+          validity:validityStr,
+          date_from:dfSheet, date_to:dtSheet,
+          valid_status:calcStatus(dfSheet,dtSheet),
+          sheet:sn, source:src
+        });
       });
     });
   }
