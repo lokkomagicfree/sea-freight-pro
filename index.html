@@ -71,7 +71,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .fi option{background:var(--s2)}
 
 /* Tables */
-.tbl-wrap{overflow-x:auto;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06)}
+.tbl-wrap{overflow-x:auto;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06);position:relative}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{background:var(--s2);color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
 .tbl th:hover{color:var(--red)}
@@ -426,7 +426,7 @@ body{font-size:14px;font-weight:450}
       <tbody id="rate_body"></tbody>
     </table>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)">
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted);position:relative;z-index:10">
     <span id="page_info"></span>
     <div id="page_btns" style="display:flex;gap:4px"></div>
   </div>
