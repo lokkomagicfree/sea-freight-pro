@@ -768,9 +768,10 @@ body{font-size:14px;font-weight:450}
         <button onclick="qAddLocal()" class="btn btn-ghost" style="font-size:11px;margin-top:8px;width:100%">+ Add Local Charge</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
-        <button id="quot_save_btn" onclick="qSave()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save Quotation</button>
-        <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Generate Email</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px">
+        <button id="quot_save_btn" onclick="qSave()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save</button>
+        <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Email</button>
+        <button onclick="qCopyLine()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.3);color:#00b4d8">💬 Copy LINE</button>
         <button onclick="qClear()" class="btn btn-ghost" style="font-size:12px;padding:9px">✕ Clear</button>
       </div>
 
@@ -3616,6 +3617,64 @@ function qGenerateEmail(){
   document.getElementById('email_to').value      = '';
   document.getElementById('email_modal').style.display = '';
 }
+
+function qCopyLine(){
+  const get = id => (document.getElementById(id)||{}).value||'';
+  const carrier = get('q_carrier');
+  const pol     = get('q_pol');
+  const valid   = get('q_valid');
+  const subjto  = get('q_subjto');
+  const connote = get('q_connote');
+  const remarks = get('q_remarks');
+
+  const rateData = window.qRateRows||[];
+  if(!rateData.length){ toast('❌ ยังไม่มี rate — เพิ่ม POD ก่อนครับ'); return; }
+
+  let lines = [];
+  if(carrier) lines.push(`${carrier}:\n`);
+
+  rateData.forEach(row=>{
+    const pod = (row.pod||'').trim();
+    const r20 = parseFloat(row.r20)||0;
+    const r40 = parseFloat(row.r40)||0;
+    const r4h = parseFloat(row.r4h)||0;
+    if(!pod) return;
+
+    const route = pol ? `${pol} - ${pod}` : pod;
+    let rateLine = [];
+    if(r20) rateLine.push(`20 GP: USD ${r20.toLocaleString()}`);
+    if(r40&&r40!==r4h) rateLine.push(`40 GP: USD ${r40.toLocaleString()}`);
+    if(r4h) rateLine.push(`40 HC: USD ${r4h.toLocaleString()}`);
+
+    lines.push(`  ${route}`);
+    if(rateLine.length) lines.push(`  ${rateLine.join(' / ')} `);
+    lines.push('');
+  });
+
+  // Subj to
+  const subjParts = [];
+  if(subjto) subjParts.push(subjto);
+  subjParts.push('local charges both ends');
+  if(connote) subjParts.push(connote);
+  lines.push(`  Subj to ${subjParts.join(', ')}`);
+  lines.push('');
+
+  if(remarks){ lines.push(`  ${remarks}`); lines.push(''); }
+
+  if(valid) lines.push(`  Valid   : ${valid}`);
+
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(()=>{
+    toast('✅ Copied! วาง LINE ได้เลยครับ 💬');
+  }).catch(()=>{
+    const ta = document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✅ Copied! วาง LINE ได้เลยครับ 💬');
+  });
+}
+window.qCopyLine = qCopyLine;
 
 function qClear(){
   ['q_customer','q_carrier','q_pol','q_pod','q_incoterm','q_valid','q_transit','q_connote','q_commodity','q_remarks','q_subjto','q_r20','q_r40','q_r4h'].forEach(id=>{
