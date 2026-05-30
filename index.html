@@ -738,6 +738,7 @@ body{font-size:14px;font-weight:450}
         <div style="overflow-x:auto;margin-bottom:8px">
           <table style="width:100%;border-collapse:collapse;font-size:12px" id="q_rate_tbl">
             <thead><tr style="border-bottom:1px solid var(--border)">
+              <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:80px">Carrier</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:140px">POD</th>
               <th style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:90px">20 GP (USD)</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:90px">40 GP (USD)</th>
@@ -3408,9 +3409,9 @@ function openGroupMailto(){
 
 // ── Quotation Page ─────────────────────────────────────────
 
-function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl=''){
+function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier=''){
   const id = Date.now() + Math.random();
-  qRateRows.push({id, pod, r20, r40, r4h, valid, incl});
+  qRateRows.push({id, carrier, pod, r20, r40, r4h, valid, incl});
   qRenderRateRows();
   qPreview();
 }
@@ -3424,6 +3425,8 @@ function qRenderRateRows(){
   }
   body.innerHTML = qRateRows.map(row => `
     <tr style="border-bottom:1px solid rgba(30,48,80,.3)">
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
+        oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 7px;color:var(--accent2)"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod}" placeholder="e.g. Sokhna"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 7px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r20}" placeholder="0" min="0"
@@ -3521,11 +3524,9 @@ function qFilterRates(){
 function qApplyRate(idx){
   const r = ALL_RATES[idx]; if(!r) return;
   const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
-  set('q_carrier', r.carrier);
-  set('q_pol',     r.pol);
+  set('q_pol', r.pol);
   const vd = r.validity || (r.date_from&&r.date_to ? r.date_from+' ~ '+r.date_to : '');
-  set('q_valid', vd);
-  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '');
+  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'');
   toast('✅ Added: '+r.carrier+' '+r.pol+' → '+r.pod);
 }
 
@@ -3541,47 +3542,55 @@ function qPreview(){
 function qBuildEmail(){
   const get = id => (document.getElementById(id)||{}).value||'';
   const cust    = get('q_customer');
-  const carrier = get('q_carrier');
   const pol     = get('q_pol');
   const inco    = get('q_incoterm');
-  const valid   = get('q_valid');
   const transit = get('q_transit');
   const connote = get('q_connote');
   const comm    = get('q_commodity');
   const remarks = get('q_remarks');
-  // Build multi-POD rate section
-  const rateLines = [];
-  if(qRateRows.length){
-    qRateRows.forEach(row=>{
-      const parts = [];
-      const r20 = parseFloat(row.r20)||0;
-      const r40 = parseFloat(row.r40)||0;
-      const r4h = parseFloat(row.r4h)||0;
+  const subjto  = get('q_subjto');
+  const globalValid = get('q_valid');
+
+  // Group rows by carrier
+  const groups = {};
+  qRateRows.forEach(row=>{
+    const car = (row.carrier||get('q_carrier')||'').trim();
+    if(!groups[car]) groups[car]=[];
+    groups[car].push(row);
+  });
+
+  const carrierBlocks = Object.entries(groups).map(([car, rows])=>{
+    const lines = [];
+    lines.push(`${car}:`);
+    lines.push('');
+    rows.forEach(row=>{
+      const parts=[];
+      const r20=parseFloat(row.r20)||0, r40=parseFloat(row.r40)||0, r4h=parseFloat(row.r4h)||0;
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
       if(!parts.length) return;
-      const podLine  = `  ${pol?pol+' - ':''}${row.pod||'POD'}`;
-      const rateLine = `  ${parts.join(' / ')}`;
-      const rowValid = row.valid||valid||'';
-      const incl     = row.incl&&row.incl.trim()?'  ('+row.incl.trim()+')':'';
-      rateLines.push(podLine);
-      rateLines.push(rateLine);
-      if(incl) rateLines.push(incl);
-      rateLines.push('');
+      lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}`);
+      lines.push(`  ${parts.join(' / ')}`);
+      if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
+      lines.push('');
     });
-  }
-  if(!rateLines.length) rateLines.push('  Rate: (please add POD / rate)');
+    // Subj to
+    const subjParts=['local charges both ends'];
+    if(subjto) subjParts.unshift(subjto);
+    lines.push(`  Subj to ${subjParts.join(', ')}`);
+    lines.push('');
+    // Valid — use row-level valid if all same, else globalValid
+    const valids=[...new Set(rows.map(r=>r.valid||globalValid).filter(Boolean))];
+    const validStr = valids.length===1 ? valids[0] : (globalValid||valids[0]||'');
+    if(validStr) lines.push(`  Valid   : ${validStr}`);
+    return lines.join('\n');
+  });
 
   const localLines = qLocalRows.filter(r=>r.name&&r.rate).map(r=>
     `  ${r.name.padEnd(14)}: ${r.rate} / ${r.unit}`
   );
-  const subjto = get('q_subjto');
-  const subjLines = ['Subj to local charges both ends'];
-  if(subjto) subjLines.push(...subjto.split(',').map(s=>'Subj to '+s.trim()));
-  const localSection = localLines.length
-    ? `\nLocal Charges:\n${localLines.join('\n')}\n  ${subjLines.join('\n  ')}`
-    : `\n  ${subjLines.join('\n  ')}`;
+  const localSection = localLines.length ? `\nLocal Charges:\n${localLines.join('\n')}` : '';
 
   return [
     `Dear ${cust||''},`,
@@ -3589,12 +3598,9 @@ function qBuildEmail(){
     'Please find competitive rate as below, thank you for your support.',
     connote ? '\n'+connote : '',
     '',
-    `${carrier}:`,
-    '',
-    ...rateLines,
+    carrierBlocks.join('\n\n'),
     localSection,
     transit ? `\n  F/T     : ${transit}` : '',
-    valid   ? `  Valid   : ${valid}` : '',
     inco    ? `  Incoterm: ${inco}` : '',
     comm    ? `\nCommodity: ${comm}` : '',
     remarks ? `Note     : ${remarks}` : '',
@@ -3618,56 +3624,53 @@ function qGenerateEmail(){
   document.getElementById('email_modal').style.display = '';
 }
 
+
 function qCopyLine(){
   const get = id => (document.getElementById(id)||{}).value||'';
-  const carrier = get('q_carrier');
-  const pol     = get('q_pol');
-  const valid   = get('q_valid');
-  const subjto  = get('q_subjto');
-  const connote = get('q_connote');
-  const remarks = get('q_remarks');
-
-  const rateData = window.qRateRows||[];
+  const pol        = get('q_pol');
+  const globalValid= get('q_valid');
+  const subjto     = get('q_subjto');
+  const connote    = get('q_connote');
+  const remarks    = get('q_remarks');
+  const rateData   = window.qRateRows||[];
   if(!rateData.length){ toast('❌ ยังไม่มี rate — เพิ่ม POD ก่อนครับ'); return; }
-
-  let lines = [];
-  if(carrier) lines.push(`${carrier}:\n`);
-
+  // Group by carrier
+  const groups={};
   rateData.forEach(row=>{
-    const pod = (row.pod||'').trim();
-    const r20 = parseFloat(row.r20)||0;
-    const r40 = parseFloat(row.r40)||0;
-    const r4h = parseFloat(row.r4h)||0;
-    if(!pod) return;
-
-    const route = pol ? `${pol} - ${pod}` : pod;
-    let rateLine = [];
-    if(r20) rateLine.push(`20 GP: USD ${r20.toLocaleString()}`);
-    if(r40&&r40!==r4h) rateLine.push(`40 GP: USD ${r40.toLocaleString()}`);
-    if(r4h) rateLine.push(`40 HC: USD ${r4h.toLocaleString()}`);
-
-    lines.push(`  ${route}`);
-    if(rateLine.length) lines.push(`  ${rateLine.join(' / ')} `);
-    lines.push('');
+    const car=(row.carrier||get('q_carrier')||'').trim();
+    if(!groups[car]) groups[car]=[];
+    groups[car].push(row);
   });
-
-  // Subj to
-  const subjParts = [];
-  if(subjto) subjParts.push(subjto);
-  subjParts.push('local charges both ends');
-  if(connote) subjParts.push(connote);
-  lines.push(`  Subj to ${subjParts.join(', ')}`);
-  lines.push('');
-
-  if(remarks){ lines.push(`  ${remarks}`); lines.push(''); }
-
-  if(valid) lines.push(`  Valid   : ${valid}`);
-
-  const text = lines.join('\n');
+  const blocks=Object.entries(groups).map(([car,rows])=>{
+    const lines=[];
+    if(car) lines.push(`${car}:\n`);
+    rows.forEach(row=>{
+      const pod=(row.pod||'').trim(); if(!pod) return;
+      const r20=parseFloat(row.r20)||0,r40=parseFloat(row.r40)||0,r4h=parseFloat(row.r4h)||0;
+      const parts=[];
+      if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
+      if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
+      if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
+      lines.push(`  ${pol?pol+' - ':''}${pod}`);
+      if(parts.length) lines.push(`  ${parts.join(' / ')} `);
+      lines.push('');
+    });
+    const subjParts=['local charges both ends'];
+    if(subjto) subjParts.unshift(subjto);
+    lines.push(`  Subj to ${subjParts.join(', ')}`);
+    if(connote) lines.push(`  ${connote}`);
+    lines.push('');
+    const valids=[...new Set(rows.map(r=>r.valid||globalValid).filter(Boolean))];
+    const validStr=valids.length===1?valids[0]:(globalValid||valids[0]||'');
+    if(validStr) lines.push(`  Valid   : ${validStr}`);
+    return lines.join('\n');
+  });
+  let text=blocks.join('\n\n');
+  if(remarks) text+=`\n\n  ${remarks}`;
   navigator.clipboard.writeText(text).then(()=>{
     toast('✅ Copied! วาง LINE ได้เลยครับ 💬');
   }).catch(()=>{
-    const ta = document.createElement('textarea');
+    const ta=document.createElement('textarea');
     ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
