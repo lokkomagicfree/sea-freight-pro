@@ -98,11 +98,81 @@ select.inp{cursor:pointer}
 
   <div class="stat-grid" id="stat_grid"></div>
 
-  <!-- Cutoff Alerts -->
+  <!-- คู่มือสี Alert -->
+  <div style="margin-bottom:14px">
+    <details style="background:var(--s1);border:1px solid var(--border2);border-radius:10px;padding:10px 14px">
+      <summary style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em;cursor:pointer;user-select:none">
+        📖 คู่มือสี Alert — คลิกเพื่อดู
+      </summary>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:16px">
+
+        <!-- Cutoff -->
+        <div style="min-width:180px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--accent2);letter-spacing:.06em;margin-bottom:6px">⏰ CUTOFFS</div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#C0392B;flex-shrink:0;display:inline-block"></span><span>วันนี้ — <b style="color:#C0392B">⚡ TODAY</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E67E22;flex-shrink:0;display:inline-block"></span><span>1-2 วัน — <b style="color:#E67E22">⚠ TOMORROW</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E8A838;flex-shrink:0;display:inline-block"></span><span>3-7 วัน — <b style="color:#E8A838">📅 upcoming</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(150,150,150,.5);flex-shrink:0;display:inline-block"></span><span>เลยกำหนด — overdue</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(39,174,96,.6);flex-shrink:0;display:inline-block"></span><span>✅ Done แล้ว</span></div>
+          </div>
+        </div>
+
+        <!-- Pre-Alert -->
+        <div style="min-width:180px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:#00b4d8;letter-spacing:.06em;margin-bottom:6px">📨 PRE-ALERT</div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E67E22;flex-shrink:0;display:inline-block"></span><span>ETD พรุ่งนี้ — <b style="color:#E67E22">⚡ ด่วน</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#00b4d8;flex-shrink:0;display:inline-block"></span><span>ETD อีก 2-5 วัน</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(39,174,96,.6);flex-shrink:0;display:inline-block"></span><span>✅ ส่งแล้ว</span></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">ส่งข้อมูล Draft BL / เรือ / ETA<br>ให้ลูกค้าก่อน ETD</div>
+          </div>
+        </div>
+
+        <!-- INV -->
+        <div style="min-width:180px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.06em;margin-bottom:6px">🧾 INV PENDING</div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E8A838;flex-shrink:0;display:inline-block"></span><span>หลัง ETD &lt; 7 วัน — <b style="color:#E8A838">ทองเหลือง</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#E67E22;flex-shrink:0;display:inline-block"></span><span>7-13 วัน — <b style="color:#E67E22">ส้ม</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#C0392B;flex-shrink:0;display:inline-block"></span><span>14+ วัน — <b style="color:#C0392B">แดง (ค้างนาน)</b></span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(39,174,96,.6);flex-shrink:0;display:inline-block"></span><span>✅ ออก INV แล้ว</span></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">แสดง shipment ที่ ETD ผ่านแล้ว<br>0-30 วัน รอออก Invoice</div>
+          </div>
+        </div>
+
+        <!-- In-Transit -->
+        <div style="min-width:180px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.06em;margin-bottom:6px">🚛 IN-TRANSIT INV</div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(192,57,43,.4);flex-shrink:0;display:inline-block"></span><span>⏳ รอรับ INV จาก Vendor</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:rgba(39,174,96,.5);flex-shrink:0;display:inline-block"></span><span>✅ ได้รับแล้ว / ส่งแล้ว</span></div>
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
   <div id="cutoff_alerts" style="margin-bottom:14px;display:none">
     <div class="card" style="padding:12px 16px;border-color:rgba(220,80,80,.3)">
       <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);letter-spacing:.08em;margin-bottom:8px">⏰ UPCOMING CUTOFFS</div>
       <div id="cutoff_list" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start"></div>
+    </div>
+  </div>
+
+  <!-- Pre-Alert -->
+  <div id="prealert_wrap" style="margin-bottom:14px;display:none">
+    <div class="card" style="padding:12px 16px;border-color:rgba(0,180,216,.3)">
+      <div style="font-family:var(--mono);font-size:10px;color:#00b4d8;letter-spacing:.08em;margin-bottom:8px">📨 PRE-ALERT — ส่งข้อมูลให้ลูกค้าก่อน ETD</div>
+      <div id="prealert_list" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start"></div>
+    </div>
+  </div>
+
+  <!-- INV after ETD -->
+  <div id="inv_alert_wrap" style="margin-bottom:14px;display:none">
+    <div class="card" style="padding:12px 16px;border-color:rgba(232,168,56,.35)">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:.08em;margin-bottom:8px">🧾 INV PENDING — รอออก Invoice หลัง ETD</div>
+      <div id="inv_alert_list" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start"></div>
     </div>
   </div>
 
@@ -298,6 +368,8 @@ function startLiveSync(){
     buildMonthFilter();
     renderStats();
     renderCutoffAlerts();
+    renderPreAlerts();
+    renderInvAlerts();
     renderTable();
     // Show live badge
     const badge = document.getElementById('live_badge');
@@ -305,16 +377,7 @@ function startLiveSync(){
   }, (err) => {
     console.error('Firestore error:', err);
     document.getElementById('loading').style.display = 'none';
-    const isPermission = err.code==='permission-denied' || err.message?.includes('400') || err.message?.includes('PERMISSION_DENIED');
-    if(isPermission){
-      toast('❌ Firestore: Permission denied — กรุณาตรวจสอบ Rules ใน Firebase Console');
-      const banner = document.getElementById('debug_banner');
-      if(banner) banner.innerHTML = `⚠️ <b style="color:var(--red)">Firestore Permission Error</b> — ไปที่ Firebase Console → Firestore → Rules แล้วเปิดสิทธิ์ให้ authenticated users อ่านได้ครับ`;
-    } else {
-      toast('❌ Connection error: '+err.message);
-      // Auto-retry after 5 seconds
-      setTimeout(()=>{ if(!_unsubscribe) startLiveSync(); }, 5000);
-    }
+    toast('❌ Connection error: '+err.message);
   });
 
   // Listen to In-Transit data for invoice alerts
@@ -329,15 +392,13 @@ function startLiveSync(){
   onSnapshot(doneRef, (snap) => {
     _csDone = snap.exists() ? (snap.data() || {}) : {};
     renderCutoffAlerts();
+    renderPreAlerts();
+    renderInvAlerts();
   }, ()=>{ _csDone = {}; });
 }
 
 async function loadData(){ startLiveSync(); }
-window.refreshData = function(){
-  if(_unsubscribe){ _unsubscribe(); _unsubscribe=null; }
-  toast('🔄 Reconnecting…');
-  setTimeout(()=>startLiveSync(), 300);
-};
+window.refreshData = function(){ toast('🔄 Live sync active — ข้อมูลอัพเดต real-time'); };
 
 // ── Cutoff Done State ──────────────────────────────────────
 let _csDone = {};
@@ -360,6 +421,119 @@ async function markCutoffDone(bkgno, label, btn){
   renderCutoffAlerts();
 }
 window.markCutoffDone = markCutoffDone;
+
+// ── Pre-Alert ──────────────────────────────────────────────
+function renderPreAlerts(){
+  const wrap = document.getElementById('prealert_wrap');
+  const list = document.getElementById('prealert_list');
+  if(!wrap||!list) return;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const alerts = [];
+
+  allJobs.forEach(j=>{
+    if(!j.etd) return;
+    // Parse ETD dd/mm/yyyy
+    const dm = j.etd.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if(!dm) return;
+    const etd = new Date(parseInt(dm[3]), parseInt(dm[2])-1, parseInt(dm[1]));
+    const diff = Math.ceil((etd-now)/86400000); // days until ETD
+    // Show pre-alert 1-5 days before ETD
+    if(diff >= 1 && diff <= 5){
+      const key = `prealert__${j.no}`;
+      alerts.push({bkgno:j.no, customer:j.customer||'—', etd:j.etd, vessel:`${j.vessel||''} ${j.voyage||''}`.trim(), pol:j.pol||'—', pod:j.pod||'—', diff, key});
+    }
+  });
+
+  if(!alerts.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+
+  const undone = alerts.filter(a=>!_csDone[a.key]);
+  const done   = alerts.filter(a=> _csDone[a.key]);
+
+  const card = (a, isDone) => {
+    const col = isDone ? 'rgba(39,174,96,.6)' : a.diff===1 ? '#E67E22' : '#00b4d8';
+    const urgency = isDone ? '✅ Sent' : a.diff===1 ? '⚡ ETD TOMORROW' : `📨 ETD in ${a.diff}d`;
+    const doneInfo = isDone && _csDone[a.key] ? `<div style="font-size:9px;color:rgba(39,174,96,.7);margin-top:2px">by ${_csDone[a.key].by||AGENT}</div>` : '';
+    return `<div style="background:var(--s1);border:1.5px solid ${col};border-radius:8px;padding:10px 12px;min-width:200px;max-width:260px;flex:0 0 auto;${isDone?'opacity:.55':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;font-family:var(--mono);color:${col}">${urgency}</span>
+        <button onclick="markCutoffDone('${a.bkgno}','__prealert__',this)"
+          style="border:none;border-radius:5px;cursor:pointer;font-size:10px;font-weight:700;padding:2px 8px;font-family:var(--mono);
+            ${isDone?'background:rgba(150,150,150,.15);color:var(--muted)':'background:rgba(0,180,216,.12);color:#00b4d8;border:1px solid rgba(0,180,216,.3)'}">
+          ${isDone?'↩ Undo':'📨 Sent'}
+        </button>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--text)">${a.bkgno}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.customer}</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:3px;font-family:var(--mono)">ETD ${a.etd}</div>
+      ${a.vessel?`<div style="font-size:10px;color:var(--dim);font-family:var(--mono)">${a.vessel}</div>`:''}
+      <div style="font-size:10px;color:var(--dim);margin-top:1px">${a.pol} → ${a.pod}</div>
+      ${doneInfo}
+    </div>`;
+  };
+
+  list.innerHTML =
+    undone.sort((a,b)=>a.diff-b.diff).map(a=>card(a,false)).join('') +
+    (done.length ? `<div style="width:1px;background:var(--border2);margin:0 4px;flex-shrink:0"></div>` : '') +
+    done.map(a=>card(a,true)).join('');
+}
+
+// ── INV after ETD ──────────────────────────────────────────
+function renderInvAlerts(){
+  const wrap = document.getElementById('inv_alert_wrap');
+  const list = document.getElementById('inv_alert_list');
+  if(!wrap||!list) return;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const alerts = [];
+
+  allJobs.forEach(j=>{
+    if(!j.etd) return;
+    if((j.status||'').toLowerCase() === 'cancelled') return;
+    const dm = j.etd.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if(!dm) return;
+    const etd = new Date(parseInt(dm[3]), parseInt(dm[2])-1, parseInt(dm[1]));
+    const daysPast = Math.ceil((now-etd)/86400000); // days since ETD
+    // Show INV alert 0-30 days after ETD
+    if(daysPast >= 0 && daysPast <= 30){
+      const key = `inv__${j.no}`;
+      const invDone = !!_csDone[key];
+      alerts.push({bkgno:j.no, customer:j.customer||'—', etd:j.etd, vessel:`${j.vessel||''} ${j.voyage||''}`.trim(), pol:j.pol||'—', pod:j.pod||'—', daysPast, key, invDone});
+    }
+  });
+
+  if(!alerts.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+
+  const undone = alerts.filter(a=>!a.invDone);
+  const done   = alerts.filter(a=> a.invDone);
+
+  const card = (a, isDone) => {
+    const urgency = isDone ? '✅ INV Done' : a.daysPast===0 ? '🧾 ETD Today' : `🧾 +${a.daysPast}d after ETD`;
+    const col = isDone ? 'rgba(39,174,96,.6)' : a.daysPast >= 14 ? '#C0392B' : a.daysPast >= 7 ? '#E67E22' : 'var(--gold)';
+    const doneInfo = isDone && _csDone[a.key] ? `<div style="font-size:9px;color:rgba(39,174,96,.7);margin-top:2px">by ${_csDone[a.key].by||AGENT}</div>` : '';
+    return `<div style="background:var(--s1);border:1.5px solid ${col};border-radius:8px;padding:10px 12px;min-width:200px;max-width:260px;flex:0 0 auto;${isDone?'opacity:.55':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;font-family:var(--mono);color:${col}">${urgency}</span>
+        <button onclick="markCutoffDone('${a.bkgno}','__inv__',this)"
+          style="border:none;border-radius:5px;cursor:pointer;font-size:10px;font-weight:700;padding:2px 8px;font-family:var(--mono);
+            ${isDone?'background:rgba(150,150,150,.15);color:var(--muted)':'background:rgba(232,168,56,.12);color:#b8860b;border:1px solid rgba(232,168,56,.35)'}">
+          ${isDone?'↩ Undo':'🧾 Done'}
+        </button>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--text)">${a.bkgno}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.customer}</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:3px;font-family:var(--mono)">ETD ${a.etd}</div>
+      ${a.vessel?`<div style="font-size:10px;color:var(--dim);font-family:var(--mono)">${a.vessel}</div>`:''}
+      <div style="font-size:10px;color:var(--dim);margin-top:1px">${a.pol} → ${a.pod}</div>
+      ${doneInfo}
+    </div>`;
+  };
+
+  list.innerHTML =
+    undone.sort((a,b)=>b.daysPast-a.daysPast).map(a=>card(a,false)).join('') +
+    (done.length ? `<div style="width:1px;background:var(--border2);margin:0 4px;flex-shrink:0"></div>` : '') +
+    done.map(a=>card(a,true)).join('');
+}
 
 // ── Cutoff Alerts ──────────────────────────────────────────
 function renderCutoffAlerts(){
