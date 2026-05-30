@@ -1160,6 +1160,7 @@ let exRate     = 35.50;
 Object.defineProperty(window, 'commRate', { get(){ return commRate; }, set(v){ commRate=v; } });
 Object.defineProperty(window, 'exRate',   { get(){ return exRate; },   set(v){ exRate=v; } });
 let curPage    = 1;
+window._goPage = function(p){ curPage=p; applyFilter(); };
 const PER_PAGE = 50;
 let sortField  = 'gp20'; let sortAsc = true;
 
@@ -1907,7 +1908,8 @@ function renderTable(filtered){
   }
 }
 
-window._goPage = function(p){ curPage=p; applyFilter(); };
+// Also expose curPage setter for debugging
+Object.defineProperty(window,'_curPage',{get:()=>curPage,set:v=>{curPage=v;}});
 
 function deleteRate(idx){
   if(idx < 0 || idx >= ALL_RATES.length) return;
