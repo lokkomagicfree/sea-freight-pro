@@ -1530,12 +1530,19 @@ function parseSheetQuotation(rows,sn,src){
   }
   const[dfSheet,dtSheet]=parseValidity(validityStr);
 
-  // Find header row: contains "Origin" or "POL" and "Container"
-  let dataStart=-1;
+  // Find header row: contains "Origin" or "POL" and "Container" or "Rate"
+  let dataStart=-1, polCol=0, podCol=1, sizeCol=2, rateCol=3;
   for(let i=0;i<Math.min(15,rows.length);i++){
     const cells=rows[i].map(S);
-    if(cells.some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c))&&cells.some(c=>/container/i.test(c))){
-      dataStart=i+1;break;
+    if(cells.some(c=>/origin.*pol|port of loading|^origin$/i.test(c))&&cells.some(c=>/container|rate.*usd|rate/i.test(c))){
+      // Detect column positions from this header row
+      cells.forEach((c,j)=>{
+        if(/^origin|port of loading/i.test(c)) polCol=j;
+        else if(/^destination|^pod|^delivery/i.test(c)) podCol=j;
+        else if(/container.*size|^size$/i.test(c)) sizeCol=j;
+        else if(/^rate|rate.*usd/i.test(c)) rateCol=j;
+      });
+      dataStart=i+1; break;
     }
   }
   if(dataStart<0) return out;
@@ -1549,12 +1556,12 @@ function parseSheetQuotation(rows,sn,src){
   for(let ri=dataStart;ri<rows.length;ri++){
     const row=rows[ri]; if(!row||row.every(c=>!c)) continue;
     const cs=row.map(S);
-    const p=cs[0]?cs[0]:lp;
-    const d=cs[1]?cs[1]:ld;
+    const p=cs[polCol]?cs[polCol]:lp;
+    const d=cs[podCol]?cs[podCol]:ld;
     if(p) lp=p; if(d) ld=d;
     if(!lp||!ld) continue;
-    const size=cs[2]||'';
-    const rate=N(cs[3]);
+    const size=cs[sizeCol]||'';
+    const rate=N(cs[rateCol]);
     if(!rate) continue;
     const key=lp+'|||'+ld;
     if(!map[key]) map[key]={pol:lp,pod:ld,gp20:0,gp40:0,hc40:0};
