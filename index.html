@@ -1862,7 +1862,7 @@ function renderTable(filtered){
     const isReefer = r.container_type==='REEFER';
     const realIdx = ALL_RATES.indexOf(r);
     const fixRemark = r.source==='FIX'
-      ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px;white-space:nowrap">⚠ Recheck SC/NAC with Pricing Team</div>`
+      ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px;overflow:hidden;max-width:80px">⚠ Recheck SC/NAC</div>`
       : '';
     const ed=(field,val,style='')=>`<span contenteditable="true" spellcheck="false"
       title="Click to edit" style="outline:none;cursor:text;border-radius:3px;padding:1px 3px;${style}"
