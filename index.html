@@ -1564,13 +1564,14 @@ function parseSheetFlat(rows, sn, defaultSrc){
 
   // Map columns
   rows[hdr].map(S).forEach((c,j)=>{
-    if(/^src$/i.test(c))                           cols.src=j;
-    else if(/^validity|valid$/i.test(c))           cols.valid=j;
-    else if(/^carrier|line$/i.test(c))             cols.carrier=j;
-    else if(/^pol$/i.test(c))                      cols.pol=j;
-    else if(/destination|^pod$|^dest$/i.test(c))   cols.pod=j;
-    else if(/^20.*(gp|sd|dc|fr|rf)?$|^20gp$/i.test(c)) cols.g20=j;
-    else if(/^40.*(gp|sd|dc|fr)?$|^40gp$/i.test(c))    cols.g40=j;
+    if(/^src$/i.test(c))                                    cols.src=j;
+    else if(/^validity|valid$/i.test(c))                    cols.valid=j;
+    else if(/^carrier|line$/i.test(c))                      cols.carrier=j;
+    else if(/^pol$/i.test(c))                               cols.pol=j;
+    else if(/destination|^pod$|^dest$/i.test(c))            cols.pod=j;
+    else if(/^total\s*rate$/i.test(c))                      cols.total=j;  // Total Rate column
+    else if(/^20.*(gp|sd|dc|fr|rf)?$|^20gp$/i.test(c))     cols.g20=j;
+    else if(/^40.*(gp|sd|dc|fr)?$|^40gp$/i.test(c))        cols.g40=j;
     else if(/^(40|45).*(hc|hq|hi|cube)$/i.test(c)||/^40hc$/i.test(c)) cols.h4c=j;
   });
 
@@ -1585,9 +1586,16 @@ function parseSheetFlat(rows, sn, defaultSrc){
     const src     = cols.src!==undefined     ? (cs[cols.src]||defaultSrc) : defaultSrc;
     const carrier = cols.carrier!==undefined ? cs[cols.carrier] : '';
     const valid   = cols.valid!==undefined   ? cs[cols.valid]   : '';
-    const g20 = cols.g20!==undefined ? N(row[cols.g20]) : 0;
-    const g40 = cols.g40!==undefined ? N(row[cols.g40]) : 0;
-    const h4c = cols.h4c!==undefined ? N(row[cols.h4c]) : 0;
+    // Use Total Rate column if available, otherwise use individual 20GP/40GP/40HC
+    let g20, g40, h4c;
+    if(cols.total!==undefined){
+      const total = N(row[cols.total]);
+      g20=total; g40=total; h4c=total;
+    } else {
+      g20 = cols.g20!==undefined ? N(row[cols.g20]) : 0;
+      g40 = cols.g40!==undefined ? N(row[cols.g40]) : 0;
+      h4c = cols.h4c!==undefined ? N(row[cols.h4c]) : 0;
+    }
     if(!g20&&!g40&&!h4c) continue;
     const[df,dt]=parseValidity(valid);
     // Split multi-port POL (Bangkok / Laem Chabang → 2 rows)
