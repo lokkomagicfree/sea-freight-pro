@@ -3615,16 +3615,20 @@ function qBuildEmail(){
 
 function qGenerateEmail(){
   const body    = qBuildEmail();
-  const carrier = (document.getElementById('q_carrier')||{}).value||'';
   const pol     = (document.getElementById('q_pol')||{}).value||'';
-  const pod     = (document.getElementById('q_pod')||{}).value||'';
-  const valid   = (document.getElementById('q_valid')||{}).value||'';
   const cust    = (document.getElementById('q_customer')||{}).value||'';
-  const subject = `Rate Quotation // ${carrier} // ${pol}-${pod} // ${valid} // ${cust} // Worldwide Logistics`;
+  const valid   = (document.getElementById('q_valid')||{}).value||'';
+  // Build subject from rate rows
+  const carriers = [...new Set(qRateRows.map(r=>(r.carrier||'').trim()).filter(Boolean))].join('/');
+  const pods     = [...new Set(qRateRows.map(r=>(r.pod||'').trim()).filter(Boolean))].join('/');
+  const polStr   = pol || (qRateRows[0]?.pol||'');
+  const validStr = valid || (qRateRows[0]?.valid||'');
+  const subject  = `Rate Quotation // ${carriers} // ${polStr} - ${pods} // ${validStr} // ${cust} // Worldwide Logistics`
+    .replace(/\/\/\s*\/\//g,'//').replace(/\s{2,}/g,' ').trim();
   document.getElementById('email_subject').value = subject;
   document.getElementById('email_body').value    = body;
   document.getElementById('email_to').value      = '';
-  document.getElementById('email_modal').style.display = '';
+  document.getElementById('email_modal').style.display = 'flex';
 }
 
 
