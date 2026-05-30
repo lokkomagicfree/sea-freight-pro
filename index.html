@@ -421,7 +421,7 @@ body{font-size:14px;font-weight:450}
         <th style="text-align:right">40'HC ⇅</th>
         <th style="text-align:right;color:var(--cyan)">20'RF ⇅</th>
         <th style="text-align:right;color:var(--cyan)">40'RF ⇅</th>
-        <th>STATUS</th><th>VALID PERIOD</th><th>SHEET</th><th></th>
+        <th>VALID PERIOD</th><th>STATUS</th><th>SHEET</th><th></th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
     </table>
@@ -1892,7 +1892,7 @@ function renderTable(filtered){
       onblur="editRateField(${realIdx},'validity',this.value);this.style.borderBottomColor='var(--border2)'"
       onkeydown="if(event.key==='Enter')this.blur()"
     ></td>
-    <td>${vDate(r.date_from,r.date_to,r.validity)}</td>
+    <td>${vBadge(r.valid_status)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
     <td style="padding:4px 6px;text-align:center">
       <button onclick="deleteRate(${realIdx})" title="Delete" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
