@@ -49,8 +49,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .page .btn-gold:hover{background:rgba(183,128,10,.22)}
 
 /* Pages */
-.page{display:none;padding:18px 20px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
-.page.active{display:block}
+.page{display:none;padding:18px 20px;max-width:1440px;margin:0 auto;position:relative;z-index:1;pointer-events:none}
+.page.active{display:block;pointer-events:all}
 
 /* Cards */
 .card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:14px;box-shadow:0 1px 4px rgba(192,57,43,.06)}
@@ -426,9 +426,9 @@ body{font-size:14px;font-weight:450}
       <tbody id="rate_body"></tbody>
     </table>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted);position:relative;z-index:10">
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted);position:relative;z-index:10;isolation:isolate;pointer-events:all">
     <span id="page_info"></span>
-    <div id="page_btns" style="display:flex;gap:4px"></div>
+    <div id="page_btns" style="display:flex;gap:4px;pointer-events:all"></div>
   </div>
 </div>
 
@@ -1900,9 +1900,9 @@ function renderTable(filtered){
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
-    if(curPage>1)h+=`<button class="btn btn-ghost" style="font-size:10px;padding:3px 10px" onclick="curPage--;applyFilter()">◀</button>`;
-    for(let p=Math.max(1,curPage-2);p<=Math.min(pages,curPage+2);p++)h+=`<button class="btn ${p===curPage?'btn-cyan':'btn-ghost'}" style="font-size:10px;padding:3px 10px" onclick="curPage=${p};applyFilter()">${p}</button>`;
-    if(curPage<pages)h+=`<button class="btn btn-ghost" style="font-size:10px;padding:3px 10px" onclick="curPage++;applyFilter()">▶</button>`;
+    if(curPage>1)h+=`<button class="btn btn-ghost" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="curPage--;applyFilter()">◀</button>`;
+    for(let p=Math.max(1,curPage-2);p<=Math.min(pages,curPage+2);p++)h+=`<button class="btn ${p===curPage?'btn-cyan':'btn-ghost'}" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="curPage=${p};applyFilter()">${p}</button>`;
+    if(curPage<pages)h+=`<button class="btn btn-ghost" style="font-size:10px;padding:3px 10px;position:relative;z-index:20" onclick="curPage++;applyFilter()">▶</button>`;
     btns.innerHTML=h;
   }
 }
