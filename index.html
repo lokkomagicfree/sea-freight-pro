@@ -75,7 +75,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{background:var(--s2);color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
 .tbl th:hover{color:var(--red)}
-.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden;max-height:48px}
 .tbl tr:hover td{background:var(--s2)}
 .pager{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .pager-btns{display:flex;gap:4px}
@@ -412,22 +412,22 @@ body{font-size:14px;font-weight:450}
 
   <!-- Rate table -->
   <div class="tbl-wrap" style="margin-bottom:4px">
-    <table class="tbl">
+    <table class="tbl" style="table-layout:fixed">
       <thead><tr>
-        <th>SRC</th><th>CARRIER</th><th>POL</th><th>POD</th>
-        <th style="text-align:center">TYPE</th>
-        <th style="text-align:right">20'GP ⇅</th>
-        <th style="text-align:right">40'GP ⇅</th>
-        <th style="text-align:right">40'HC ⇅</th>
-        <th style="text-align:right;color:var(--cyan)">20'RF ⇅</th>
-        <th style="text-align:right;color:var(--cyan)">40'RF ⇅</th>
-        <th>VALID PERIOD</th><th>STATUS</th><th>SHEET</th><th></th>
+        <th style="width:60px">SRC</th><th style="width:90px">CARRIER</th><th style="width:110px">POL</th><th style="width:130px">POD</th>
+        <th style="text-align:center;width:55px">TYPE</th>
+        <th style="text-align:right;width:80px">20'GP ⇅</th>
+        <th style="text-align:right;width:80px">40'GP ⇅</th>
+        <th style="text-align:right;width:80px">40'HC ⇅</th>
+        <th style="text-align:right;color:var(--cyan);width:70px">20'RF ⇅</th>
+        <th style="text-align:right;color:var(--cyan);width:70px">40'RF ⇅</th>
+        <th style="width:120px">VALID PERIOD</th><th style="width:70px">STATUS</th><th style="width:70px">SHEET</th><th style="width:36px"></th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
-      <tfoot><tr><td colspan="14" style="padding:8px 12px;border-top:1px solid var(--border);pointer-events:none">
-        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);pointer-events:none">
+      <tfoot><tr><td colspan="14" style="padding:8px 12px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">
           <span id="page_info"></span>
-          <div id="page_btns" style="display:flex;gap:4px;pointer-events:auto"></div>
+          <div id="page_btns" style="display:flex;gap:4px"></div>
         </div>
       </td></tr></tfoot>
     </table>
