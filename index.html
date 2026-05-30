@@ -1861,10 +1861,9 @@ function renderTable(filtered){
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
     const realIdx = ALL_RATES.indexOf(r);
-    const fixRemark = r.source==='FIX' ? `
-    <tr><td colspan="14" style="padding:2px 10px 6px 10px">
-      <span style="font-size:10px;color:#e74c3c;font-family:var(--mono);font-weight:600">⚠ Please recheck SC and NAC detail with Pricing Team before booked</span>
-    </td></tr>` : '';
+    const fixRemark = r.source==='FIX'
+      ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px;white-space:nowrap">⚠ Recheck SC/NAC with Pricing Team</div>`
+      : '';
     const ed=(field,val,style='')=>`<span contenteditable="true" spellcheck="false"
       title="Click to edit" style="outline:none;cursor:text;border-radius:3px;padding:1px 3px;${style}"
       onmouseenter="this.style.background='rgba(0,180,216,.08)'"
@@ -1874,7 +1873,7 @@ function renderTable(filtered){
       onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
     >${val||''}</span>`;
     return `<tr>
-    <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
+    <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span>${fixRemark}</td>
     <td style="font-weight:500">${ed('carrier',r.carrier)}</td>
     <td style="font-family:var(--mono);font-size:11px">${ed('pol',r.pol)}</td>
     <td style="font-family:var(--mono);font-size:11px">${ed('pod',r.pod)}</td>
@@ -1897,7 +1896,7 @@ function renderTable(filtered){
     <td style="padding:4px 6px;text-align:center">
       <button onclick="deleteRate(${realIdx})" title="Delete" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
     </td>
-  </tr>${fixRemark}`;}).join('');
+  </tr>`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
