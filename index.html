@@ -457,8 +457,8 @@ body{font-size:14px;font-weight:450}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="card-title" style="margin-bottom:0">📋 Shipment Details</div>
           <label style="cursor:pointer">
-            <input type="file" accept=".pdf" style="display:none" onchange="extractPdfBooking(this)">
-            <span class="btn btn-ghost" style="font-size:11px;padding:4px 12px;pointer-events:none">📄 Upload Booking PDF</span>
+            <input type="file" accept=".xlsx,.xls" style="display:none" onchange="extractExcelBooking(this)">
+            <span class="btn btn-ghost" style="font-size:11px;padding:4px 12px;pointer-events:none">📊 Upload Booking Excel</span>
           </label>
         </div>
         <div class="four-col">
@@ -3135,6 +3135,110 @@ function copyCSLink(csName){
 window.copyCSLink = copyCSLink;
 
 // ── PDF Booking Auto-Extract (AI) ──────────────────────────
+function extractExcelBooking(input){
+  const file = input.files[0]; if(!file) return;
+  input.value='';
+  toast('📊 กำลังอ่าน Excel…');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+      const S = v => String(v==null?'':v).trim();
+
+      // Build label→value map from key-value rows
+      const map = {};
+      rows.forEach(row=>{
+        if(!row||row.length<2) return;
+        const k = S(row[0]).toLowerCase();
+        const v = S(row[1]);
+        if(k && v && v!=='-') map[k] = v;
+        // Also check col 3+4 (right side of sheet)
+        if(row.length>=5){
+          const k2 = S(row[3]).toLowerCase();
+          const v2 = S(row[4]);
+          if(k2 && v2 && v2!=='-') map[k2] = v2;
+        }
+      });
+
+      // Helper to find value by partial key match
+      const find = (...keys) => {
+        for(const k of keys){
+          for(const [mk, mv] of Object.entries(map)){
+            if(mk.includes(k.toLowerCase())) return mv;
+          }
+        }
+        return '';
+      };
+
+      // Parse container type/qty from "1x20'GP" format
+      const volRaw = find('volume','qty','container qty');
+      let ctnType='', ctnQty='';
+      const vm = volRaw.match(/(\d+)\s*[xX×]\s*(\d+['"]\s*(?:GP|HC|HQ|RF|ST))/i);
+      if(vm){ ctnQty=vm[1]; ctnType=vm[2].replace(/['"]/g,'').toUpperCase(); }
+
+      // Parse ETD/ETA dates
+      const fmtDate = s => {
+        if(!s) return '';
+        const d = new Date(s);
+        if(!isNaN(d)) return d.toISOString().slice(0,10);
+        return s;
+      };
+
+      const data = {
+        bookingNo:  find('booking no','booking#','bkg no'),
+        carrier:    find('shipping line','carrier','line'),
+        shipper:    find('shipper'),
+        pol:        find('port of loading','pol'),
+        pod:        find('port of discharge','pod','final destination'),
+        etd:        fmtDate(find('etd','departure')),
+        eta:        fmtDate(find('eta final','eta')),
+        vessel:     find('feeder vessel','vessel'),
+        voyage:     find('feeder voyage','voyage'),
+        motherVessel: find('mother vessel'),
+        motherVoyage: find('mother voyage'),
+        commodity:  find('commodity'),
+        siCutoff:   find('si cut','shipping instruction'),
+        vgmCutoff:  find('vgm cut'),
+        gateCutoff: find('gate closing','gate cut'),
+        containerType: ctnType,
+        containerQty:  ctnQty,
+      };
+
+      // Fill form fields
+      const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
+      set('s_bkgno',    data.bookingNo);
+      set('s_carrier',  data.carrier);
+      set('s_shipper',  data.shipper);
+      set('s_pol',      data.pol);
+      set('s_pod',      data.pod);
+      set('s_etd',      data.etd);
+      set('s_eta',      data.eta);
+      set('s_vessel',   data.vessel);
+      set('s_voyage',   data.voyage);
+      set('s_mother_vessel', data.motherVessel);
+      set('s_mother_voyage', data.motherVoyage);
+      set('s_commodity', data.commodity);
+      set('s_si_cutoff', data.siCutoff);
+      set('s_vgm_cutoff',data.vgmCutoff);
+      set('s_gate_cutoff',data.gateCutoff);
+
+      // Set container type if dropdown exists
+      const typeEl = document.getElementById('s_ctn_type');
+      if(typeEl && data.containerType){
+        [...typeEl.options].forEach(o=>{ if(o.value.includes(data.containerType)) typeEl.value=o.value; });
+      }
+
+      toast('✅ นำเข้าข้อมูล Booking สำเร็จ');
+    }catch(err){
+      toast('❌ อ่าน Excel ไม่ได้: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+window.extractExcelBooking = extractExcelBooking;
+
 async function extractPdfBooking(input){
   const file = input.files[0]; if(!file) return;
   let apiKey = localStorage.getItem('sfp_akey') || document.getElementById('anthropic_key_inp')?.value || '';
