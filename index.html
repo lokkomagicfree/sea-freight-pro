@@ -3171,12 +3171,23 @@ function extractExcelBooking(input){
         return '';
       };
 
-      // REF: extract from "REF: SBKK00513956" in col2
+      // REF: find row after "Shipper Name" that has value in col2, or explicit "REF:" prefix
       let refNo = '';
-      rows.forEach(row=>{
-        const v = S(row?.[2]||'');
-        if(/^REF:\s*/i.test(v)) refNo = v.replace(/^REF:\s*/i,'').trim();
-      });
+      for(let i=0;i<rows.length;i++){
+        const row = rows[i]||[];
+        const v = S(row[2]||'');
+        // Explicit REF: prefix
+        if(/^REF:\s*/i.test(v)){ refNo = v.replace(/^REF:\s*/i,'').trim(); break; }
+        // Row where col0 is Shipper Name — REF is in col2 of NEXT row
+        if(/shipper\s*name/i.test(S(row[0]))){
+          const nextRow = rows[i+1]||[];
+          const nextVal = S(nextRow[2]||'');
+          if(nextVal && !/^[A-Z][\w\s,]+$/.test(nextVal.slice(0,3))) { /* skip company names */ }
+          if(nextVal && /^S?[A-Z]{2,4}\d{6,}/i.test(nextVal)) { refNo = nextVal; break; }
+          // fallback: any non-empty value in col2 of next row
+          if(nextVal) { refNo = nextVal; break; }
+        }
+      }
 
       // Parse container type/qty from "1x20'GP"
       const volRaw = find('volume');
