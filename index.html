@@ -3528,6 +3528,9 @@ function qApplyRate(idx){
   const vd = r.validity || (r.date_from&&r.date_to ? r.date_from+' ~ '+r.date_to : '');
   qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'');
   toast('✅ Added: '+r.carrier+' '+r.pol+' → '+r.pod);
+  // Scroll to rate table so user can see the added row
+  const tbl = document.getElementById('q_rate_tbl');
+  if(tbl) tbl.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function qPreview(){
@@ -3632,7 +3635,7 @@ function qCopyLine(){
   const subjto     = get('q_subjto');
   const connote    = get('q_connote');
   const remarks    = get('q_remarks');
-  const rateData   = window.qRateRows||[];
+  const rateData   = qRateRows||[];
   if(!rateData.length){ toast('❌ ยังไม่มี rate — เพิ่ม POD ก่อนครับ'); return; }
   // Group by carrier
   const groups={};
