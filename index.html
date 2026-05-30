@@ -1411,7 +1411,13 @@ function parseFile(buffer,filename){
       else if(/food/i.test(snl)) shSrc='FOOD';
       else if(/fix/i.test(snl)) shSrc='FIX';
       let parsed=[];
-      if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
+      // Detect Quotation format: vertical POL/POD/Size/Rate (has "Origin" + "Container" header)
+      const isQuotFormat = rows.slice(0,15).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c)));
+      // Detect FIX RATE format: 2-row header with "TOTAL RATE" column
+      const isFIXFormat = !isQuotFormat && rows.slice(0,6).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/^TOTAL\s*RATE$/i.test(c)));
+      if(isQuotFormat) parsed=parseSheetQuotation(rows,sn,shSrc);
+      else if(isFIXFormat) parsed=parseSheetFIX(rows,sn,shSrc);
+      else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
       parsed.forEach(r=>newRates.push(r));
@@ -1429,6 +1435,66 @@ function parseFile(buffer,filename){
       if(typeof syncRatesToCloud === 'function') syncRatesToCloud();
     } else toast('❌ No Thai POL rates found (LCB/BKK/LKB/Songkhla only)');
   }catch(e){toast('❌ '+e.message);console.error(e);}
+}
+
+function parseSheetQuotation(rows,sn,src){
+  // Format: POL col A, POD col B, Container Size col C, Rate col D
+  // Pairs of rows: 20'GP then 40'HC/GP for same POL/POD
+  const out=[];
+  const S=v=>String(v==null?'':v).trim();
+  const N=v=>{const x=parseFloat(S(v).replace(/,/g,'').replace(/[^0-9.-]/g,''));return isNaN(x)||x<=0?0:x;};
+
+  // Extract validity from header rows
+  let validityStr='';
+  for(let i=0;i<Math.min(12,rows.length);i++){
+    const cells=rows[i].map(S);
+    for(let j=0;j<cells.length;j++){
+      if(/validity/i.test(cells[j])&&cells[j+1]){validityStr=cells[j+1];break;}
+    }
+    if(validityStr) break;
+  }
+  const[dfSheet,dtSheet]=parseValidity(validityStr);
+
+  // Find header row: contains "Origin" or "POL" and "Container"
+  let dataStart=-1;
+  for(let i=0;i<Math.min(15,rows.length);i++){
+    const cells=rows[i].map(S);
+    if(cells.some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c))&&cells.some(c=>/container/i.test(c))){
+      dataStart=i+1;break;
+    }
+  }
+  if(dataStart<0) return out;
+
+  // Extract carrier from sheet name or file header
+  const car=sn.replace(/rates?|laem.*|bangkok.*/gi,'').trim()||'';
+
+  // Group rows by POL+POD, accumulate 20GP and 40HC rates
+  const map={};
+  let lp='',ld='';
+  for(let ri=dataStart;ri<rows.length;ri++){
+    const row=rows[ri]; if(!row||row.every(c=>!c)) continue;
+    const cs=row.map(S);
+    const p=cs[0]?cs[0]:lp;
+    const d=cs[1]?cs[1]:ld;
+    if(p) lp=p; if(d) ld=d;
+    if(!lp||!ld) continue;
+    const size=cs[2]||'';
+    const rate=N(cs[3]);
+    if(!rate) continue;
+    const key=lp+'|||'+ld;
+    if(!map[key]) map[key]={pol:lp,pod:ld,gp20:0,gp40:0,hc40:0};
+    if(/20/i.test(size))           map[key].gp20=rate;
+    else if(/40.*hc|hc.*40|45/i.test(size)) map[key].hc40=rate;
+    else if(/40/i.test(size))      map[key].gp40=rate;
+  }
+
+  Object.values(map).forEach(r=>{
+    if(!r.gp20&&!r.gp40&&!r.hc40) return;
+    // If only 40HC given, use for both gp40 and hc40
+    if(!r.gp40&&r.hc40) r.gp40=r.hc40;
+    out.push({pol:r.pol,pod:r.pod,gp20:r.gp20||r.gp40||r.hc40,gp40:r.gp40||r.hc40||r.gp20,hc40:r.hc40||r.gp40||r.gp20,carrier:car,validity:validityStr,date_from:dfSheet,date_to:dtSheet,valid_status:calcStatus(dfSheet,dtSheet),sheet:sn,source:src});
+  });
+  return out;
 }
 
 function parseSheet(rows,sn,src){
@@ -1601,14 +1667,6 @@ function renderTable(filtered){
     const isReefer = r.container_type==='REEFER';
     const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
     const realIdx = ALL_RATES.indexOf(r);
-    const fixRemark = r.source==='FIX' ? `
-    <tr style="border-bottom:1px solid var(--border)">
-      <td colspan="14" style="padding:2px 10px 6px 10px">
-        <span style="font-size:10px;color:#e74c3c;font-family:var(--mono);font-weight:600">
-          ⚠ Please recheck SC and NAC detail with Pricing Team before booked
-        </span>
-      </td>
-    </tr>` : '';
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
@@ -1628,7 +1686,7 @@ function renderTable(filtered){
     <td style="padding:4px 6px;text-align:center">
       <button onclick="deleteRate(${realIdx})" title="Delete rate" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
     </td>
-  </tr>${fixRemark}`;}).join('');
+  </tr>`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
@@ -1854,7 +1912,25 @@ function checkCtnVsRate(){
 
 // ── Route picker ───────────────────────────────────────────
 // Only show rates with Thai POL
-const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla'];
+const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla','thailand'];
+
+// Normalize Thai POL abbreviations → full name
+function normalizeTHPOL(pol){
+  if(!pol) return pol;
+  const p = pol.trim();
+  const pl = p.toLowerCase();
+  if(/^(lcb|lcbg|laem\s*cha\s*bang|laemchabang|lemchabang)$/i.test(pl)) return 'Laem Chabang';
+  if(/^(bkk|bangkok)$/i.test(pl)) return 'Bangkok';
+  if(/^(lkb|latkrabang|lat\s*krabang)$/i.test(pl)) return 'Lat Krabang';
+  if(/^(skla|songkha|songkhla)$/i.test(pl)) return 'Songkhla';
+  // Partial match inside longer string — replace known abbreviations
+  return p
+    .replace(/\bLCB\b/gi,'Laem Chabang')
+    .replace(/\bLCBG\b/gi,'Laem Chabang')
+    .replace(/\bBKK\b/gi,'Bangkok')
+    .replace(/\bLKB\b/gi,'Lat Krabang')
+    .replace(/\bSKLA\b/gi,'Songkhla');
+}
 
 function isStrictThaiPOL(pol){
   // pol must be a single port (no | separator) AND be a Thai port
@@ -1873,20 +1949,18 @@ function isThaiPOL(pol){
   return parts.some(p => THAI_POLS.some(k => p.includes(k)) && !p.includes('|'));
 }
 
-// Expand multi-POL rate into separate Thai-only rates, filter non-Thai
+// Expand multi-POL rate into separate Thai-only rates, filter non-Thai, normalize abbreviations
 function expandAndFilterThaiPOL(rates){
   const result = [];
   rates.forEach(r=>{
     const pol = (r.pol||'').trim();
     if(!pol.includes('|')){
-      // Single POL — keep only if Thai
-      if(isStrictThaiPOL(pol)) result.push(r);
+      if(isStrictThaiPOL(pol)) result.push({...r, pol: normalizeTHPOL(pol)});
     } else {
-      // Multi-POL — split and create one entry per Thai port
       const parts = pol.split('|').map(s=>s.trim());
       parts.forEach(p=>{
         if(isStrictThaiPOL(p)){
-          result.push({...r, pol: p});
+          result.push({...r, pol: normalizeTHPOL(p)});
         }
       });
     }
