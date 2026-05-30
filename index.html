@@ -1467,6 +1467,16 @@ function parseFile(buffer,filename){
       else if(/\bfak\b/i.test(snl)) shSrc='FAK';
       else if(/food/i.test(snl)) shSrc='FOOD';
       else if(/fix/i.test(snl)) shSrc='FIX';
+      // Also scan first 10 rows of sheet content for SRC keywords
+      if(shSrc===src){
+        const cellText = rows.slice(0,10).map(r=>(r||[]).join(' ')).join(' ').toLowerCase();
+        if(/\bfix\s*rate\b|\bfix_rate\b|\bspecial\s*contract\b|\bs\/c\b|\bsc\s*#/i.test(cellText)) shSrc='FIX';
+        else if(/\bfak\b|\bfreight\s*all\s*kind/i.test(cellText)) shSrc='FAK';
+        else if(/\bbullet\b/i.test(cellText)) shSrc='BULLET';
+        else if(/\bfood.?stuff\b|\bfood\s*grade\b/i.test(cellText)) shSrc='FOOD';
+        else if(/\bisc.?me\b|\bindia\s*sub\s*cont/i.test(cellText)) shSrc='ISC-ME';
+        else if(/\bia.?eu\b|\beurope\s*rate\b|\beuromed\b/i.test(cellText)) shSrc='IA-EU';
+      }
       // Detect carrier from filename + sheet name + content
       const detectedCarrier = detectCarrierFromContext(filename, sn, rows);
       let parsed=[];
