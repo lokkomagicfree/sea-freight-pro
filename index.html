@@ -428,6 +428,7 @@ body{font-size:14px;font-weight:450}
   <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)">
     <span id="page_info"></span>
     <div id="page_btns" style="display:flex;gap:4px"></div>
+    <button onclick="addManualRate()" class="btn btn-ghost" style="margin-left:auto;font-size:10px;padding:3px 10px;color:var(--green);border-color:rgba(39,174,96,.3)">+ Add Rate</button>
   </div>
 </div>
 
@@ -1859,28 +1860,39 @@ function renderTable(filtered){
   if(!slice.length){tbody.innerHTML=`<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
-    const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
     const realIdx = ALL_RATES.indexOf(r);
+    const fixRemark = r.source==='FIX' ? `
+    <tr><td colspan="14" style="padding:2px 10px 6px 10px">
+      <span style="font-size:10px;color:#e74c3c;font-family:var(--mono);font-weight:600">⚠ Please recheck SC and NAC detail with Pricing Team before booked</span>
+    </td></tr>` : '';
+    const ed=(field,val,style='')=>`<span contenteditable="true" spellcheck="false"
+      title="Click to edit" style="outline:none;cursor:text;border-radius:3px;padding:1px 3px;${style}"
+      onmouseenter="this.style.background='rgba(0,180,216,.08)'"
+      onmouseleave="this.style.background=''"
+      onfocus="this.style.background='rgba(0,180,216,.12)';document.execCommand('selectAll',false,null)"
+      onblur="editRateField(${realIdx},'${field}',this.textContent.trim());this.style.background=''"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+    >${val||''}</span>`;
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
-    <td style="font-weight:500">${r.carrier||'—'}</td>
-    <td style="font-family:var(--mono);font-size:11px">${r.pol||'—'}</td>
-    <td style="font-family:var(--mono);font-size:11px">${r.pod||'—'}</td>
+    <td style="font-weight:500">${ed('carrier',r.carrier)}</td>
+    <td style="font-family:var(--mono);font-size:11px">${ed('pol',r.pol)}</td>
+    <td style="font-family:var(--mono);font-size:11px">${ed('pod',r.pod)}</td>
     <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${isReefer?'var(--cyan)':'var(--muted)'}">
       ${isReefer?'❄️ RF':'📦 DRY'}
     </td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.gp40?'$'+r.gp40.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
+    <td style="text-align:right">${ed('gp20',r.gp20||'','color:var(--green);font-weight:600;font-family:var(--mono)')}</td>
+    <td style="text-align:right">${ed('gp40',r.gp40||'','color:var(--cyan);font-family:var(--mono)')}</td>
+    <td style="text-align:right">${ed('hc40',r.hc40||'','color:var(--cyan);font-family:var(--mono)')}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
-    <td>${vBadge(r.valid_status)}</td>
+    <td>${ed('validity',r.validity||'','font-size:11px;color:var(--muted)')}</td>
     <td>${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
     <td style="padding:4px 6px;text-align:center">
-      <button onclick="deleteRate(${realIdx})" title="Delete rate" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
+      <button onclick="deleteRate(${realIdx})" title="Delete" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
     </td>
-  </tr>`;}).join('');
+  </tr>${fixRemark}`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
@@ -1897,6 +1909,33 @@ function deleteRate(idx){
   ALL_RATES.splice(idx, 1);
   buildFilters(); applyFilter(); storageSave();
   toast(`🗑 Deleted: ${r.carrier||''} ${r.pol||''}→${r.pod||''}`);
+}
+
+function editRateField(idx, field, val){
+  if(idx < 0 || idx >= ALL_RATES.length) return;
+  const r = ALL_RATES[idx];
+  const N = v => { const x=parseFloat(String(v).replace(/[$,]/g,'')); return isNaN(x)?0:x; };
+  if(['gp20','gp40','hc40','rf20','rf40'].includes(field)) r[field] = N(val);
+  else r[field] = val;
+  // Re-calculate validity status when validity changes
+  if(field === 'validity'){
+    const[df,dt] = parseValidity(val);
+    r.date_from = df; r.date_to = dt;
+    r.valid_status = calcStatus(df,dt);
+  }
+  storageSave();
+  applyFilter(); // re-render to update vDate/vBadge
+}
+
+function addManualRate(){
+  const r = {
+    pol: 'Laem Chabang', pod: '', carrier: '', source: 'OTHER',
+    gp20: 0, gp40: 0, hc40: 0, validity: '', date_from: '', date_to: '',
+    valid_status: 'unknown', sheet: 'Manual'
+  };
+  ALL_RATES.unshift(r); // add at top
+  buildFilters(); applyFilter(); storageSave();
+  toast('✅ เพิ่มเรทใหม่แล้ว — คลิก cell เพื่อแก้ไขครับ');
 }
 
 function renderCompare(filtered){
