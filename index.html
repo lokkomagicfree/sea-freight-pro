@@ -3218,12 +3218,12 @@ function extractExcelBooking(input){
       set('s_vessel',        feeder.vessel);
       set('s_voyage',        feeder.voyage);
       set('s_mother_vessel', mother.vessel);
-      set('s_mother_voyage', mother.voyage);
+      set('s_mother_voy',    mother.voyage);
       set('s_commodity',     find('commodity'));
       set('s_hscode',        find('hs. code'));
       set('s_si_cutoff',     find('si cut-off time'));
       set('s_vgm_cutoff',    find('vgm cut-off time'));
-      set('s_gate_cutoff',   find('gate closing date'));
+      set('s_gate_closing',  find('gate closing date'));
       set('s_doc_cutoff',    find('dead line cfm bl'));
 
       // Container qty/type
