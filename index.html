@@ -71,11 +71,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .fi option{background:var(--s2)}
 
 /* Tables */
-.tbl-wrap{overflow-x:auto;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06);position:relative}
+.tbl-wrap{overflow-x:auto;overflow-y:hidden;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06);position:relative}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{background:var(--s2);color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
 .tbl th:hover{color:var(--red)}
-.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden}
 .tbl tr:hover td{background:var(--s2)}
 .pager{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .pager-btns{display:flex;gap:4px}
@@ -411,7 +411,7 @@ body{font-size:14px;font-weight:450}
   </div>
 
   <!-- Rate table -->
-  <div class="tbl-wrap">
+  <div class="tbl-wrap" style="margin-bottom:4px">
     <table class="tbl">
       <thead><tr>
         <th>SRC</th><th>CARRIER</th><th>POL</th><th>POD</th>
@@ -1865,7 +1865,7 @@ function renderTable(filtered){
       ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px;overflow:hidden;max-width:80px">⚠ Recheck SC/NAC</div>`
       : '';
     const ed=(field,val,style='')=>`<span contenteditable="true" spellcheck="false"
-      title="Click to edit" style="outline:none;cursor:text;border-radius:3px;padding:1px 3px;${style}"
+      title="Click to edit" style="outline:none;cursor:text;border-radius:3px;padding:1px 3px;display:inline-block;max-width:100%;${style}"
       onmouseenter="this.style.background='rgba(0,180,216,.08)'"
       onmouseleave="this.style.background=''"
       onfocus="this.style.background='rgba(0,180,216,.12)';document.execCommand('selectAll',false,null)"
