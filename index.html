@@ -23,16 +23,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(192,57,43,.04),transparent);pointer-events:none;z-index:0}
 
 /* Topbar */
-.topbar{position:sticky;top:0;z-index:200;background:var(--red);border-bottom:1px solid #A93226;padding:0 8px;height:48px;display:flex;align-items:center;gap:3px;backdrop-filter:blur(12px);overflow:visible}
-.logo{font-family:var(--mono);font-size:12px;color:#fff;flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:4px}
-.logo img{height:26px!important;width:26px!important}
-.logo-text{display:none}
-@media(min-width:1300px){.logo-text{display:inline}}
-.nav-tabs{display:flex;gap:2px;margin-left:6px;flex-shrink:1;min-width:0}
-.nav-tab{padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:rgba(255,255,255,.85);font-family:var(--sans);font-size:10.5px;cursor:pointer;transition:all .15s;font-weight:600;box-shadow:0 2px 0 rgba(0,0,0,.2);white-space:nowrap}
+.topbar{position:sticky;top:0;z-index:200;background:var(--red);border-bottom:1px solid #A93226;padding:0 12px;height:52px;display:flex;align-items:center;gap:4px;backdrop-filter:blur(12px);overflow:hidden}
+.logo{font-family:var(--mono);font-size:13px;color:#fff;flex-shrink:0;white-space:nowrap}
+.nav-tabs{display:flex;gap:3px;margin-left:8px;flex-shrink:0}
+.nav-tab{padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:rgba(255,255,255,.85);font-family:var(--sans);font-size:11px;cursor:pointer;transition:all .15s;font-weight:600;box-shadow:0 2px 0 rgba(0,0,0,.2);white-space:nowrap}
 .nav-tab:hover{background:rgba(255,255,255,.22);color:#fff;transform:translateY(-1px);box-shadow:0 3px 0 rgba(0,0,0,.2)}
 .nav-tab.active{background:rgba(255,255,255,.95);color:var(--red);font-weight:800;box-shadow:inset 0 2px 4px rgba(0,0,0,.15);transform:translateY(1px)}
-.topbar-right{margin-left:auto;display:flex;gap:3px;align-items:center;flex-shrink:0}
+.topbar-right{margin-left:auto;display:flex;gap:4px;align-items:center;flex-shrink:0}
 .rate-badge{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 10px;font-family:var(--mono);font-size:11px;color:#fff;display:flex;align-items:center;gap:6px}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
 @keyframes blink{50%{opacity:.2}}
@@ -189,7 +186,7 @@ body{font-size:14px;font-weight:450}
 .cmp-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;transition:border .2s}
 .cmp-card.best{border-color:var(--green);background:var(--green-bg)}
 
-@media(max-width:768px){.stats{grid-template-columns:repeat(2,1fr)}.filter-bar{flex-direction:column}.two-col,.three-col,.four-col{grid-template-columns:1fr}.page{padding:10px 8px}.topbar{padding:0 6px;height:auto;min-height:44px;flex-wrap:nowrap;overflow:hidden}.logo{font-size:11px;white-space:nowrap;flex-shrink:0}.nav-tabs{overflow-x:auto;flex-shrink:1;gap:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}.nav-tabs::-webkit-scrollbar{display:none}.nav-tab{padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0}.topbar-right{display:none}.result-row{flex-wrap:wrap}.tbl-wrap{overflow-x:auto}}
+@media(max-width:768px){.stats{grid-template-columns:repeat(2,1fr)}.filter-bar{flex-direction:column}.two-col,.three-col,.four-col{grid-template-columns:1fr}.page{padding:10px 8px}.topbar{padding:0 8px;height:auto;min-height:52px;flex-wrap:nowrap;overflow:hidden}.logo{font-size:12px;white-space:nowrap;flex-shrink:0}.nav-tabs{overflow-x:auto;flex-shrink:1;gap:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}.nav-tabs::-webkit-scrollbar{display:none}.nav-tab{padding:4px 10px;font-size:11px;white-space:nowrap;flex-shrink:0}.topbar-right{display:none}.result-row{flex-wrap:wrap}.tbl-wrap{overflow-x:auto}}
 
 .ac-drop{position:absolute;z-index:999;background:var(--s1);border:1px solid var(--border2);border-radius:7px;min-width:220px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4);margin-top:2px}
 .ac-item{padding:7px 12px;font-size:12px;font-family:var(--mono);cursor:pointer;color:var(--text);transition:background .1s}
@@ -221,37 +218,37 @@ body{font-size:14px;font-weight:450}
 <body>
 
 <div class="topbar">
-  <div class="logo"><img src="LOGO.jpg" style="height:26px;width:26px;border-radius:6px;object-fit:cover;flex-shrink:0"><span class="logo-text">Sea Freight Pro</span></div>
+  <div class="logo"><img src="LOGO.jpg" style="height:32px;width:32px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:6px">Sea Freight Pro</div>
   <div class="nav-tabs">
     <button class="nav-tab" onclick="showPage('rates')">📋 Rates</button>
     <button class="nav-tab" onclick="showPage('shipments')">🚢 Shipments</button>
     <button class="nav-tab" onclick="showPage('quotation')">💰 Quotation</button>
     <button class="nav-tab" onclick="showPage('todo')">✅ To Do</button>
-    <button class="nav-tab" onclick="showPage('news')">📰 News</button>
-    <button class="nav-tab" onclick="showPage('salereport');renderSaleReport()">📊 Sale</button>
-    <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 In-Transit</button>
+    <button class="nav-tab" onclick="showPage('news')">📰 Market News</button>
+    <button class="nav-tab" onclick="showPage('salereport');renderSaleReport()">📊 Sale Report</button>
+    <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 In-Transit/Cross Border</button>
   </div>
   <div class="topbar-right">
-    <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 6px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">
-      💾 <span id="rate_cache_count">0</span>
+    <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 8px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">
+      💾 <span id="rate_cache_count">0</span> rates
     </div>
-    <div class="rate-badge" style="font-size:9px;padding:2px 6px">
+    <div class="rate-badge" style="font-size:10px;padding:3px 8px">
       <div class="live-dot" id="live_dot" style="background:var(--muted)"></div>
-      <span style="font-size:9px;opacity:.8">USD/THB</span><strong id="rate_disp">35.50</strong>
+      <span style="font-size:9px;opacity:.8">USD/THB</span> <strong id="rate_disp">35.50</strong>
     </div>
-    <button class="btn btn-ghost" onclick="fetchRate()" style="font-size:10px;padding:2px 6px" title="Refresh rate">🔄</button>
-    <button id="alert_btn" class="btn btn-ghost" onclick="showAlertPanel()" style="font-size:11px;padding:2px 6px" title="Alerts">🔕</button>
-    <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:9px;padding:3px 8px" id="load_rates_btn" title="Load Rates">📂 Rates</button>
-    <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:9px;padding:3px 7px" title="Upload File">+ File</button>
-    <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:11px;padding:3px 6px" title="Compare">⚖</button>
-    <button onclick="openCSPortal()" style="font-size:9px;padding:3px 8px;background:rgba(39,174,96,.15);border:1px solid rgba(39,174,96,.35);color:var(--green);border-radius:7px;cursor:pointer;font-weight:700;font-family:var(--sans);white-space:nowrap" title="CS Portal">🔗 CS</button>
-    <div id="fb_user_badge" style="display:none;align-items:center;gap:4px">
-      <img id="fb_avatar" src="" width="22" height="22" style="border-radius:50%;border:2px solid rgba(255,255,255,.6);object-fit:cover;flex-shrink:0">
-      <span id="fb_name" style="font-size:9px;color:#fff;font-family:var(--mono);max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-      <button onclick="signOutUser()" class="btn btn-ghost" style="font-size:9px;padding:2px 5px">Out</button>
+    <button class="btn btn-ghost" onclick="fetchRate()" style="font-size:10px;padding:3px 7px">🔄</button>
+    <button id="alert_btn" class="btn btn-ghost" onclick="showAlertPanel()" style="font-size:11px;padding:3px 7px">🔕</button>
+    <button class="btn btn-gold" onclick="document.getElementById('load_rates_prompt').style.display='block';document.getElementById('upload_panel').style.display='none'" style="font-size:10px;padding:4px 10px" id="load_rates_btn">📂 Rates</button>
+    <button class="btn btn-ghost" onclick="toggleUpload()" style="font-size:10px;padding:4px 10px">+ File</button>
+    <button class="btn btn-ghost" onclick="toggleCompare()" style="font-size:10px;padding:4px 10px">⚖</button>
+    <button onclick="openCSPortal()" style="font-size:10px;padding:4px 10px;background:rgba(39,174,96,.15);border:1px solid rgba(39,174,96,.35);color:var(--green);border-radius:7px;cursor:pointer;font-weight:700;font-family:var(--sans)">🔗 CS Portal</button>
+    <div id="fb_user_badge" style="display:none;align-items:center;gap:6px">
+      <img id="fb_avatar" src="" width="24" height="24" style="border-radius:50%;border:2px solid rgba(255,255,255,.6);object-fit:cover;flex-shrink:0">
+      <span id="fb_name" style="font-size:10px;color:#fff;font-family:var(--mono);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button onclick="signOutUser()" class="btn btn-ghost" style="font-size:9px;padding:2px 7px">Out</button>
     </div>
-    <div id="fb_sync_badge" style="display:none;font-size:9px;font-family:var(--mono);color:var(--green);padding:2px 5px;background:rgba(34,197,94,.1);border-radius:5px">☁</div>
-    <button id="fb_force_sync" onclick="forceSyncAll()" style="display:none;font-size:9px;font-family:var(--mono);background:rgba(41,128,185,.15);border:1px solid rgba(41,128,185,.4);color:#fff;padding:2px 7px;border-radius:5px;cursor:pointer">⬆ Sync</button>
+    <div id="fb_sync_badge" style="display:none;font-size:9px;font-family:var(--mono);color:var(--green);padding:2px 6px;background:rgba(34,197,94,.1);border-radius:5px">☁</div>
+    <button id="fb_force_sync" onclick="forceSyncAll()" style="display:none;font-size:9px;font-family:var(--mono);background:rgba(41,128,185,.15);border:1px solid rgba(41,128,185,.4);color:#fff;padding:2px 8px;border-radius:5px;cursor:pointer">⬆ Sync</button>
   </div>
 </div>
 <!-- Mobile floating load button (shows only when no rates) -->
@@ -1404,7 +1401,7 @@ function parseFile(buffer,filename){
     const newRates=[];
     wb.SheetNames.forEach(sn=>{
       const ws=wb.Sheets[sn];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,cellFormula:false});
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
       if(!rows.length) return;
       const snl=sn.toLowerCase();
       if(/^fuel$|^contact/i.test(snl)) return;
@@ -1413,14 +1410,8 @@ function parseFile(buffer,filename){
       else if(/\bfak\b/i.test(snl)) shSrc='FAK';
       else if(/food/i.test(snl)) shSrc='FOOD';
       else if(/fix/i.test(snl)) shSrc='FIX';
-      // Detect FIX RATE format: 2-row header with "TOTAL RATE" column
-      const isFIXFormat = rows.slice(0,6).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/^TOTAL\s*RATE$/i.test(c)));
       let parsed=[];
-      if(isFIXFormat){
-        // Re-read sheet with raw:false so formula cells show computed text values
-        const rowsEval=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-        parsed=parseSheetFIX(rowsEval,sn,shSrc);
-      } else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
+      if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
       parsed.forEach(r=>newRates.push(r));
@@ -1528,101 +1519,6 @@ function parseSheet(rows,sn,src){
   return out;
 }
 
-// ── Parser for FIX RATE format (2-row header: TOTAL RATE + 20GP/40GP/40HC sub-columns) ──
-function parseSheetFIX(rows,sn,src){
-  const out=[],S=v=>String(v==null?'':v).trim();
-  // N: handle SheetJS raw values — numeric, string, or formula string (skip formulas)
-  const N=v=>{
-    if(v===null||v===undefined||v==='') return 0;
-    if(typeof v==='number') return v>0?v:0;
-    const s=String(v).trim();
-    if(s.startsWith('=')) return 0; // formula not evaluated — return 0
-    const x=parseFloat(s.replace(/,/g,'').replace(/[^0-9.-]/g,''));
-    return isNaN(x)||x<=0?0:x;
-  };
-  // Find the two header rows — look for row with "TOTAL RATE" or "POL"
-  let hdrRow1=-1, hdrRow2=-1;
-  for(let i=0;i<Math.min(8,rows.length);i++){
-    const cells=rows[i].map(S);
-    if(cells.some(c=>/^TOTAL\s*RATE$/i.test(c)) && cells.some(c=>/^POL$/i.test(c))){
-      hdrRow1=i; hdrRow2=i+1; break;
-    }
-  }
-  if(hdrRow1<0) return out;
-  const h1=rows[hdrRow1].map(S);
-  const h2=rows[hdrRow2]?rows[hdrRow2].map(S):[];
-  // Find column indices from row1
-  const pc=h1.findIndex(c=>/^POL$/i.test(c));
-  const dc=h1.findIndex(c=>/^POD$/i.test(c));
-  const dlvc=h1.findIndex(c=>/place.of.delivery|^DEL$/i.test(c));
-  const totalRateCol=h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
-  // Find validity from header row — look for last date-like column name or 'Validity'
-  let validityStr='';
-  for(let i=0;i<Math.min(8,rows.length);i++){
-    const cells=rows[i].map(S);
-    const vi=cells.findIndex(c=>/^validity$/i.test(c));
-    if(vi>=0&&vi+1<cells.length&&cells[vi+1]){validityStr=cells[vi+1];break;}
-    // Also check for date patterns in any cell
-    for(const c of cells){if(/\d+[./]\d+/.test(c)&&c.length<20&&!validityStr){validityStr=c;break;}}
-  }
-  // 20GP/40GP/40HC columns from row2, starting at totalRateCol (TOTAL RATE only)
-  let s20=-1,s40=-1,s4h=-1;
-  if(totalRateCol>=0){
-    let foundFirst=false;
-    for(let j=totalRateCol;j<h2.length;j++){
-      if(!foundFirst&&/^20\s*GP$/i.test(h2[j])){s20=j;foundFirst=true;}
-      else if(foundFirst&&s40<0&&/^40\s*GP$/i.test(h2[j])){s40=j;}
-      else if(foundFirst&&s4h<0&&/^(40\s*HC|45\s*H[CQ])$/i.test(h2[j])){s4h=j;}
-    }
-  }
-  if(pc<0||s20<0) return out;
-  // Extract carrier from sheet name
-  const carFromSheet=sn.replace(/\s*(FIX|SP|for.*|USEC.*)/gi,'').trim()||sn.split(' ')[0];
-  let lp='',ld='';
-  const[dfSheet,dtSheet]=parseValidity(validityStr);
-
-  // Helper: split multi-port POL cell (newline or slash separated) → array of individual ports
-  const splitPOL=raw=>{
-    if(!raw) return [];
-    // Split by newline first, then each part by slash if it looks like port names not a route
-    const parts=raw.split(/\n/).flatMap(seg=>{
-      // Only split by / if no individual segment already looks like a full port name
-      const sub=seg.split('/').map(s=>s.trim()).filter(Boolean);
-      return sub.length>1?sub:[seg.trim()];
-    }).filter(Boolean);
-    return parts;
-  };
-
-  for(let ri=hdrRow2+1;ri<rows.length;ri++){
-    const row=rows[ri];if(!row||row.every(c=>!c))continue;
-    const cs=row.map(S);
-    // Skip sub-header rows (row2 repeats)
-    if(cs[s20]&&/^(20GP|40GP|40HC|45HC|20RF)$/i.test(cs[s20])) continue;
-    let pRaw=pc<cs.length&&cs[pc]?cs[pc].trim():'';
-    let d=dc>=0&&dc<cs.length&&cs[dc]?cs[dc].split('\n')[0].trim().slice(0,80):'';
-    if(!d&&dlvc>=0&&dlvc<cs.length&&cs[dlvc]) d=cs[dlvc].split('\n')[0].trim().slice(0,80);
-    if(pRaw)lp=pRaw;else pRaw=lp;
-    if(d)ld=d;else d=ld;
-    if(!pRaw||!d)continue;
-    if(/^POL$/i.test(pRaw)||/^POD$/i.test(pRaw))continue;
-    const g20raw=s20<row.length?row[s20]:0;
-    const g40raw=s40>=0&&s40<row.length?row[s40]:0;
-    const g4hraw=s4h>=0&&s4h<row.length?row[s4h]:0;
-    const g20=N(g20raw);
-    const g40=N(g40raw);
-    const g4h=N(g4hraw);
-    if(!g20&&!g40&&!g4h)continue;
-    // Split multi-port POL and emit one row per port
-    const polParts=splitPOL(pRaw);
-    const pols=polParts.length>0?polParts:[pRaw];
-    pols.forEach(p=>{
-      p=p.slice(0,80);
-      out.push({pol:p,pod:d,gp20:g20||g40||g4h,gp40:g40||g4h||g20,hc40:g4h||g40||g20,carrier:carFromSheet,validity:validityStr,date_from:dfSheet,date_to:dtSheet,valid_status:calcStatus(dfSheet,dtSheet),sheet:sn,source:src});
-    });
-  }
-  return out;
-}
-
 function parseSheetSummary(rows,sn,src){
   const out=[],S=v=>String(v==null?'':v).trim(),N=v=>{const x=parseFloat(String(v).replace(/,/g,'').replace(/[^0-9.-]/g,''));return isNaN(x)||x<=0?0:x;};
   const hdr=rows[1]?rows[1].map(S):[];
@@ -1705,6 +1601,14 @@ function renderTable(filtered){
     const isReefer = r.container_type==='REEFER';
     const col1 = isReefer ? 'var(--cyan)' : 'var(--green)';
     const realIdx = ALL_RATES.indexOf(r);
+    const fixRemark = r.source==='FIX' ? `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td colspan="14" style="padding:2px 10px 6px 10px">
+        <span style="font-size:10px;color:#e74c3c;font-family:var(--mono);font-weight:600">
+          ⚠ Please recheck SC and NAC detail with Pricing Team before booked
+        </span>
+      </td>
+    </tr>` : '';
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span></td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
@@ -1724,7 +1628,7 @@ function renderTable(filtered){
     <td style="padding:4px 6px;text-align:center">
       <button onclick="deleteRate(${realIdx})" title="Delete rate" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:13px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center" onmouseover="this.style.background='rgba(192,57,43,.25)'" onmouseout="this.style.background='rgba(192,57,43,.1)'">🗑</button>
     </td>
-  </tr>`;}).join('');
+  </tr>${fixRemark}`;}).join('');
   g('page_info').textContent=`Page ${curPage}/${pages} · ${total} routes`;
   const btns=g('page_btns');if(btns){
     let h='';
@@ -1950,7 +1854,7 @@ function checkCtnVsRate(){
 
 // ── Route picker ───────────────────────────────────────────
 // Only show rates with Thai POL
-const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla','thailand'];
+const THAI_POLS = ['laem chabang','lemchabang','lcb','bangkok','bkk','lat krabang','latkrabang','lkb','songkhla','songkha','skla'];
 
 function isStrictThaiPOL(pol){
   // pol must be a single port (no | separator) AND be a Thai port
