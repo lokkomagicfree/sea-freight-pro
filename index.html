@@ -72,6 +72,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 /* Tables */
 .tbl-wrap{overflow-x:auto;overflow-y:hidden;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06);position:relative}
+#page-rates .tbl-wrap{max-height:calc(100vh - 280px);overflow-y:auto}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{background:var(--s2);color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
 .tbl th:hover{color:var(--red)}
@@ -421,16 +422,14 @@ body{font-size:14px;font-weight:450}
         <th style="text-align:right;width:80px">40'HC ⇅</th>
         <th style="text-align:right;color:var(--cyan);width:70px">20'RF ⇅</th>
         <th style="text-align:right;color:var(--cyan);width:70px">40'RF ⇅</th>
-        <th style="width:120px">VALID PERIOD</th><th style="width:70px">STATUS</th><th style="width:70px">SHEET</th><th style="width:36px"></th>
+        <th style="width:120px">VALID PERIOD</th><th style="width:70px">STATUS</th><th style="width:70px">SHEET</th><th style="width:70px"></th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
-      <tfoot><tr><td colspan="14" style="padding:8px 12px;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">
-          <span id="page_info"></span>
-          <div id="page_btns" style="display:flex;gap:4px"></div>
-        </div>
-      </td></tr></tfoot>
     </table>
+  </div>
+  <div id="rate_pagination" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)">
+    <span id="page_info"></span>
+    <div id="page_btns" style="display:flex;gap:4px"></div>
   </div>
 </div>
 
