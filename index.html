@@ -3147,22 +3147,20 @@ function extractExcelBooking(input){
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
       const S = v => String(v==null?'':v).trim();
 
-      // Build label→value map from key-value rows
+      // Build label→value map
+      // Format: colA=label, colC=value, colE=label, colH=value
       const map = {};
       rows.forEach(row=>{
-        if(!row||row.length<2) return;
-        const k = S(row[0]).toLowerCase();
-        const v = S(row[1]);
-        if(k && v && v!=='-') map[k] = v;
-        // Also check col 3+4 (right side of sheet)
-        if(row.length>=5){
-          const k2 = S(row[3]).toLowerCase();
-          const v2 = S(row[4]);
-          if(k2 && v2 && v2!=='-') map[k2] = v2;
-        }
+        if(!row) return;
+        const kA = S(row[0]).replace(/\s*:\s*$/, '').toLowerCase();
+        const vC = S(row[2]);
+        if(kA && vC && vC!=='-') map[kA] = vC;
+
+        const kE = S(row[4]).replace(/\s*:\s*$/, '').toLowerCase();
+        const vH = S(row[7]);
+        if(kE && vH && vH!=='-') map[kE] = vH;
       });
 
-      // Helper to find value by partial key match
       const find = (...keys) => {
         for(const k of keys){
           for(const [mk, mv] of Object.entries(map)){
@@ -3172,62 +3170,59 @@ function extractExcelBooking(input){
         return '';
       };
 
-      // Parse container type/qty from "1x20'GP" format
-      const volRaw = find('volume','qty','container qty');
-      let ctnType='', ctnQty='';
-      const vm = volRaw.match(/(\d+)\s*[xX×]\s*(\d+['"]\s*(?:GP|HC|HQ|RF|ST))/i);
-      if(vm){ ctnQty=vm[1]; ctnType=vm[2].replace(/['"]/g,'').toUpperCase(); }
+      // Parse container type/qty from "1x20'GP"
+      const volRaw = find('volume');
+      let ctnType='20GP', ctnQty='1';
+      const vm = volRaw.match(/(\d+)\s*[xX×]\s*(\d+)['"]\s*(GP|HC|HQ|RF|ST)/i);
+      if(vm){ ctnQty=vm[1]; ctnType=vm[2]+(vm[3].toUpperCase()==='HQ'?'HC':vm[3].toUpperCase()); }
 
-      // Parse ETD/ETA dates
       const fmtDate = s => {
         if(!s) return '';
         const d = new Date(s);
         if(!isNaN(d)) return d.toISOString().slice(0,10);
+        // Try parse "07/JUN/2026" format
+        const m = s.match(/(\d{1,2})[\/\-]([A-Za-z]+)[\/\-](\d{4})/);
+        if(m){
+          const months={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+          const mo=months[m[2].toLowerCase().slice(0,3)];
+          if(mo!==undefined) return new Date(+m[3],mo,+m[1]).toISOString().slice(0,10);
+        }
         return s;
       };
 
-      const data = {
-        bookingNo:  find('booking no','booking#','bkg no'),
-        carrier:    find('shipping line','carrier','line'),
-        shipper:    find('shipper'),
-        pol:        find('port of loading','pol'),
-        pod:        find('port of discharge','pod','final destination'),
-        etd:        fmtDate(find('etd','departure')),
-        eta:        fmtDate(find('eta final','eta')),
-        vessel:     find('feeder vessel','vessel'),
-        voyage:     find('feeder voyage','voyage'),
-        motherVessel: find('mother vessel'),
-        motherVoyage: find('mother voyage'),
-        commodity:  find('commodity'),
-        siCutoff:   find('si cut','shipping instruction'),
-        vgmCutoff:  find('vgm cut'),
-        gateCutoff: find('gate closing','gate cut'),
-        containerType: ctnType,
-        containerQty:  ctnQty,
-      };
-
-      // Fill form fields
       const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
-      set('s_bkgno',    data.bookingNo);
-      set('s_carrier',  data.carrier);
-      set('s_shipper',  data.shipper);
-      set('s_pol',      data.pol);
-      set('s_pod',      data.pod);
-      set('s_etd',      data.etd);
-      set('s_eta',      data.eta);
-      set('s_vessel',   data.vessel);
-      set('s_voyage',   data.voyage);
-      set('s_mother_vessel', data.motherVessel);
-      set('s_mother_voyage', data.motherVoyage);
-      set('s_commodity', data.commodity);
-      set('s_si_cutoff', data.siCutoff);
-      set('s_vgm_cutoff',data.vgmCutoff);
-      set('s_gate_cutoff',data.gateCutoff);
+      set('s_bkgno',         find('booking no'));
+      set('s_carrier',       find('shipping line'));
+      set('s_shipper',       find('shipper name','shipper'));
+      set('s_pol',           find('port of loading'));
+      set('s_pod',           find('port of discharge','final destination'));
+      set('s_etd',           fmtDate(find('etd')));
+      set('s_eta',           fmtDate(find('eta')));
+      set('s_vessel',        find('vsl name','vessel name','feeder vessel'));
+      set('s_voyage',        '');
+      set('s_mother_vessel', find('mother vsl','mother vessel'));
+      set('s_commodity',     find('commodity'));
+      set('s_si_cutoff',     find('si cut'));
+      set('s_vgm_cutoff',    find('vgm cut'));
+      set('s_gate_cutoff',   find('gate closing'));
 
-      // Set container type if dropdown exists
-      const typeEl = document.getElementById('s_ctn_type');
-      if(typeEl && data.containerType){
-        [...typeEl.options].forEach(o=>{ if(o.value.includes(data.containerType)) typeEl.value=o.value; });
+      // Parse vessel + voyage from "IRENES RAINBOW V.031N"
+      const vesselRaw = find('vsl name','vessel');
+      const vvm = vesselRaw.match(/^(.+?)\s+V\.(\S+)$/i);
+      if(vvm){ set('s_vessel', vvm[1].trim()); set('s_voyage', vvm[2].trim()); }
+
+      const motherRaw = find('mother vsl','mother vessel');
+      const mvm = motherRaw.match(/^(.+?)\s+V\.(\S+)$/i);
+      if(mvm){ set('s_mother_vessel', mvm[1].trim()); set('s_mother_voyage', mvm[2].trim()); }
+
+      // Set container qty
+      const qtyEl = document.querySelector('#ctn_rows input[type="number"]');
+      if(qtyEl && ctnQty) qtyEl.value = ctnQty;
+
+      // Set container type dropdown
+      const typeEl = document.querySelector('#ctn_rows select');
+      if(typeEl && ctnType){
+        [...typeEl.options].forEach(o=>{ if(o.value.includes(ctnType)||o.text.includes(ctnType)) typeEl.value=o.value; });
       }
 
       toast('✅ นำเข้าข้อมูล Booking สำเร็จ');
