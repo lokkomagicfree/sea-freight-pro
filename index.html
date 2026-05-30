@@ -1161,8 +1161,7 @@ let exRate     = 35.50;
 Object.defineProperty(window, 'commRate', { get(){ return commRate; }, set(v){ commRate=v; } });
 Object.defineProperty(window, 'exRate',   { get(){ return exRate; },   set(v){ exRate=v; } });
 let curPage    = 1;
-window._goPage = function(p){ curPage=p; applyFilter(); };
-window.applyFilter = function(){ applyFilter(); };
+window._goPage = function(p){ curPage=p; applyFilter(false); };
 const PER_PAGE = 20;
 let sortField  = 'gp20'; let sortAsc = true;
 
