@@ -1369,7 +1369,7 @@ function srcLabel(s,r){
   if(r && r.container_type==='REEFER') return 'RF';
   if(s==='image_upload') return 'BUL';
   const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','IA-EU':'IA-EU',TP:'TP',IMPORT:'IMP'};
-  return m[s]||s||'IMP';
+  return m[s]||'OTHER';
 }
 
 // ── File handling ──────────────────────────────────────────
@@ -1383,6 +1383,60 @@ function handleFile(file){
     const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(Array.isArray(d)&&d.length&&d[0].pol!==undefined){const filtered=expandAndFilterThaiPOL(d);ALL_RATES=filtered;buildFilters();applyFilter();g('upload_panel').style.display='none';hideLoadRatesPrompt();storageSave();toast('✅ Loaded '+filtered.length.toLocaleString()+' Thai POL rates ('+d.length+' total in file)');}else toast('❌ Invalid JSON format');}catch(ex){toast('❌ JSON error: '+ex.message);}};r.readAsText(file);return;
   }
   const r=new FileReader();r.onload=e=>parseFile(e.target.result,file.name);r.readAsArrayBuffer(file);
+}
+
+// ── Carrier name detection ─────────────────────────────────
+const CARRIER_MAP = [
+  // Full name match first, then abbreviations
+  {r:/\b(evergreen|evgr|egl)\b/i,       v:'Evergreen'},
+  {r:/\b(cosco|cosc)\b/i,               v:'COSCO'},
+  {r:/\b(maersk|msk)\b/i,               v:'Maersk'},
+  {r:/\b(msc)\b/i,                      v:'MSC'},
+  {r:/\b(cma.?cgm|cma)\b/i,             v:'CMA CGM'},
+  {r:/\b(hapag.?lloyd|hapag|hlag)\b/i,  v:'Hapag-Lloyd'},
+  {r:/\b(one|ocean.?network)\b/i,        v:'ONE'},
+  {r:/\b(yang.?ming|yml)\b/i,           v:'Yang Ming'},
+  {r:/\b(zim)\b/i,                      v:'ZIM'},
+  {r:/\b(hmm|hyundai)\b/i,              v:'HMM'},
+  {r:/\b(whl|wan.?hai)\b/i,             v:'Wan Hai'},
+  {r:/\b(pil|pacific.?int)\b/i,         v:'PIL'},
+  {r:/\b(sitc)\b/i,                     v:'SITC'},
+  {r:/\b(kmtc)\b/i,                     v:'KMTC'},
+  {r:/\b(heung.?a|heung)\b/i,           v:'Heung-A'},
+  {r:/\b(ts.?lines|tslines)\b/i,        v:'TS Lines'},
+  {r:/\b(sinokor)\b/i,                  v:'Sinokor'},
+  {r:/\b(antong|anth)\b/i,              v:'Antong'},
+  {r:/\b(sea.?lead|slad)\b/i,           v:'Sea Lead'},
+  {r:/\b(iqax)\b/i,                     v:'IQAX'},
+  {r:/\b(nyk)\b/i,                      v:'NYK'},
+  {r:/\b(mol)\b/i,                      v:'MOL'},
+  {r:/\b(k.?line)\b/i,                  v:'K Line'},
+  {r:/\b(swire)\b/i,                    v:'Swire'},
+  {r:/\b(arkas)\b/i,                    v:'Arkas'},
+  {r:/\b(grimaldi)\b/i,                 v:'Grimaldi'},
+  {r:/\b(mcc)\b/i,                      v:'MCC'},
+  {r:/\b(stc|samudera)\b/i,             v:'Samudera'},
+  {r:/\b(blpl|bumi.?line)\b/i,          v:'BLPL'},
+];
+
+function detectCarrier(text){
+  if(!text) return '';
+  for(const{r,v} of CARRIER_MAP){ if(r.test(text)) return v; }
+  return '';
+}
+
+function detectCarrierFromContext(filename, sheetName, rows){
+  // 1. Try filename
+  const fn = filename.replace(/[_\-]/g,' ');
+  let c = detectCarrier(fn);
+  if(c) return c;
+  // 2. Try sheet name
+  c = detectCarrier(sheetName);
+  if(c) return c;
+  // 3. Try first 8 rows of sheet content
+  const text = (rows||[]).slice(0,8).map(r=>(r||[]).join(' ')).join(' ');
+  c = detectCarrier(text);
+  return c;
 }
 
 // ── Parsers ────────────────────────────────────────────────
@@ -1412,6 +1466,8 @@ function parseFile(buffer,filename){
       else if(/\bfak\b/i.test(snl)) shSrc='FAK';
       else if(/food/i.test(snl)) shSrc='FOOD';
       else if(/fix/i.test(snl)) shSrc='FIX';
+      // Detect carrier from filename + sheet name + content
+      const detectedCarrier = detectCarrierFromContext(filename, sn, rows);
       let parsed=[];
       // Detect Quotation format: vertical POL/POD/Size/Rate (has "Origin" + "Container" header)
       const isQuotFormat = rows.slice(0,15).some(r=>r.map(v=>String(v==null?'':v).trim()).some(c=>/origin.*pol|port of loading/i.test(c)||/^origin$/i.test(c)));
@@ -1422,6 +1478,10 @@ function parseFile(buffer,filename){
       else if(isSummary) parsed=parseSheetSummary(rows,sn,shSrc);
       else if(isISC) parsed=parseSheetISC(rows,sn,shSrc);
       else parsed=parseSheet(rows,sn,shSrc);
+      // Apply detected carrier to rows that have no carrier set
+      if(detectedCarrier){
+        parsed.forEach(r=>{ if(!r.carrier||r.carrier===sn.split(' ')[0]) r.carrier=detectedCarrier; });
+      }
       parsed.forEach(r=>newRates.push(r));
     });
     const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-1);
