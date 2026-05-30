@@ -2320,37 +2320,100 @@ function normalizeTHPOL(pol){
     .replace(/\bLKB\b/gi,'Lat Krabang');
 }
 
-// Normalize POD abbreviations → full port names
-// USWC → LA / Oakland, USEC → New York / Savannah / Norfolk
+// Full port name map — abbreviation → full name
+const PORT_MAP = {
+  // US East Coast
+  'NYC':'New York, NY','USNYC':'New York, NY','NEW YORK':'New York, NY','NY':'New York, NY',
+  'SAV':'Savannah, GA','USSAV':'Savannah, GA','SAVANNAH':'Savannah, GA',
+  'NOR':'Norfolk, VA','ORF':'Norfolk, VA','NORFOLK':'Norfolk, VA',
+  'CHS':'Charleston, SC','CHARLESTON':'Charleston, SC',
+  'BAL':'Baltimore, MD','BALTIMORE':'Baltimore, MD',
+  'MIA':'Miami, FL','MIAMI':'Miami, FL',
+  'FLL':'Fort Lauderdale, FL','PORT EVERGLADES':'Port Everglades, FL',
+  'JAX':'Jacksonville, FL','JACKSONVILLE':'Jacksonville, FL',
+  'HAL':'Halifax, NS','HALIFAX':'Halifax, NS',
+  'BOS':'Boston, MA','BOSTON':'Boston, MA',
+  'PHI':'Philadelphia, PA','PHILADELPHIA':'Philadelphia, PA',
+  // US Gulf
+  'HOU':'Houston, TX','HOUSTON':'Houston, TX',
+  'MOB':'Mobile, AL','MOBILE':'Mobile, AL',
+  'TAM':'Tampa, FL','TAMPA':'Tampa, FL',
+  'NEW ORLEANS':'New Orleans, LA','NOL':'New Orleans, LA',
+  // US West Coast
+  'LA':'Los Angeles, CA','LAX':'Los Angeles, CA','LOS ANGELES':'Los Angeles, CA',
+  'LB':'Long Beach, CA','LGB':'Long Beach, CA','LONG BEACH':'Long Beach, CA',
+  'LALB':'Los Angeles/Long Beach, CA','USLAX':'Los Angeles, CA','USLGB':'Long Beach, CA',
+  'OAK':'Oakland, CA','OAKLAND':'Oakland, CA',
+  'SEA':'Seattle, WA','SEATTLE':'Seattle, WA',
+  'TAC':'Tacoma, WA','TIW':'Tacoma, WA','TACOMA':'Tacoma, WA',
+  'POR':'Portland, OR','PORTLAND':'Portland, OR',
+  // US Inland
+  'CHI':'Chicago, IL','CHICAGO':'Chicago, IL',
+  'DAL':'Dallas, TX','DALLAS':'Dallas, TX',
+  'ATL':'Atlanta, GA','ATLANTA':'Atlanta, GA',
+  'CLE':'Cleveland, OH','CLEVELAND':'Cleveland, OH',
+  'COL':'Columbus, OH','COLUMBUS':'Columbus, OH',
+  'CIN':'Cincinnati, OH','CINCINNATI':'Cincinnati, OH',
+  'MEM':'Memphis, TN','MEMPHIS':'Memphis, TN',
+  // Canada
+  'VAN':'Vancouver, BC','VANCOUVER':'Vancouver, BC',
+  'TOR':'Toronto, ON','TORONTO':'Toronto, ON',
+};
+
+// Normalize POD — split multi-port cells and expand abbreviations
 function normalizePOD(pod){
   if(!pod) return [pod];
-  const p = pod.trim();
-  // USWC / US West Coast → expand to LA + Oakland
-  if(/\bUSWC\b|\bUS\s*WEST\s*COAST\b|\bWEST\s*COAST\b/i.test(p)){
-    return ['Los Angeles, CA', 'Oakland, CA'];
+  const raw = pod.trim();
+
+  // USEC / US East Coast → expand
+  if(/\bUSEC\b|\bUS\s*EAST\s*COAST\b/i.test(raw)){
+    return ['New York, NY','Savannah, GA','Norfolk, VA'];
   }
-  // USEC / US East Coast → expand to New York + Savannah + Norfolk
-  if(/\bUSEC\b|\bUS\s*EAST\s*COAST\b|\bEAST\s*COAST\b/i.test(p)){
-    return ['New York, NY', 'Savannah, GA', 'Norfolk, VA'];
+  // USWC / US West Coast → expand
+  if(/\bUSWC\b|\bUS\s*WEST\s*COAST\b/i.test(raw)){
+    return ['Los Angeles, CA','Oakland, CA'];
   }
-  // Single port abbreviations
-  const map = {
-    'NYC':'New York, NY','NY':'New York, NY','NEW YORK':'New York, NY',
-    'SAV':'Savannah, GA','SAVANNAH':'Savannah, GA',
-    'NOR':'Norfolk, VA','NORFOLK':'Norfolk, VA',
-    'LAX':'Los Angeles, CA','LA':'Los Angeles, CA','LOS ANGELES':'Los Angeles, CA',
-    'OAK':'Oakland, CA','OAKLAND':'Oakland, CA',
-    'HOU':'Houston, TX','HOUSTON':'Houston, TX',
-    'CHI':'Chicago, IL','CHICAGO':'Chicago, IL',
-    'CHS':'Charleston, SC','CHARLESTON':'Charleston, SC',
-    'BAL':'Baltimore, MD','BALTIMORE':'Baltimore, MD',
-    'MIA':'Miami, FL','MIAMI':'Miami, FL',
-    'SEA':'Seattle, WA','SEATTLE':'Seattle, WA',
-    'TAC':'Tacoma, WA','TACOMA':'Tacoma, WA',
-  };
-  const up = p.toUpperCase().replace(/[^A-Z\s]/g,'').trim();
-  if(map[up]) return [map[up]];
-  return [p];
+
+  // Split multi-port cells: slash, newline, \n literal, comma between ports
+  const parts = raw
+    .split(/\n|\\n/)
+    .flatMap(s=>s.split(/\/(?![^(]*\))/)) // split / but not inside parentheses
+    .flatMap(s=>s.split(/,\s*(?=[A-Z]{2,})/)) // split "Houston,TX/Tampa,FL" type
+    .map(s=>s.trim())
+    .filter(Boolean);
+
+  return parts.map(p=>{
+    // Strip vessel/service suffixes like "Z7S only", "(via VNTCT)", "(GA)", etc.
+    let clean = p
+      .replace(/\s*\([A-Z]{2}\)\s*$/,'')      // strip "(GA)" state abbreviation at end
+      .replace(/\s+Z\d+S\s+only\b/gi,'')       // strip "Z7S only"
+      .replace(/\s*\(via\s+\w+\)/gi,'')        // strip "(via LALB)"
+      .replace(/\s+only\b/gi,'')
+      .trim();
+
+    // Try exact match in PORT_MAP (uppercase)
+    const up = clean.toUpperCase().replace(/[^A-Z0-9\s]/g,'').trim();
+    if(PORT_MAP[up]) return PORT_MAP[up];
+
+    // Try to match known abbreviations embedded in string like "LALB/OAK/TIW"
+    // Already split above, just normalize each part
+    for(const [abbr, full] of Object.entries(PORT_MAP)){
+      if(up === abbr) return full;
+    }
+
+    // Normalize common full names with state in parens: "NEW YORK (NY)" → "New York, NY"
+    const m = clean.match(/^(.+?)\s*\(([A-Z]{2})\)(.*)$/);
+    if(m){
+      const city = m[1].trim();
+      const state = m[2];
+      const suffix = m[3].trim();
+      const titleCity = city.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+      return `${titleCity}, ${state}${suffix?' '+suffix:''}`.trim();
+    }
+
+    // Title-case the city name
+    return clean.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+  });
 }
 
 function isStrictThaiPOL(pol){
