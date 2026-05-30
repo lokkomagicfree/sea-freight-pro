@@ -1493,6 +1493,8 @@ function parseFile(buffer,filename){
       if(detectedCarrier){
         parsed.forEach(r=>{ if(!r.carrier||r.carrier===sn.split(' ')[0]) r.carrier=detectedCarrier; });
       }
+      // Normalize all carrier names (strip date suffixes)
+      parsed.forEach(r=>{ if(r.carrier) r.carrier=normalizeCarrier(r.carrier); });
       parsed.forEach(r=>newRates.push(r));
     });
     const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-1);
@@ -1697,8 +1699,17 @@ function parseSheetISC(rows,sn,src){
 }
 
 // ── Rates page ─────────────────────────────────────────────
+function normalizeCarrier(c){
+  if(!c) return c;
+  // Strip date/validity suffixes e.g. "CMA(6.1-6.14)", "ZIM (Jun-Jul)", "HMM_2026"
+  return c.replace(/[\s_\-]*[\(\[]\s*[\d\.\/\-\w\s]+[\)\]]/g,'')
+          .replace(/[\s_]+\d{1,2}[\/\.\-]\d{1,2}([\/\.\-]\d{2,4})?$/,'')
+          .replace(/[\s_]+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*/gi,'')
+          .trim();
+}
+
 function buildFilters(){
-  const carriers=[...new Set(ALL_RATES.map(r=>r.carrier).filter(Boolean))].sort();
+  const carriers=[...new Set(ALL_RATES.map(r=>normalizeCarrier(r.carrier)).filter(Boolean))].sort();
   const sel=g('f_carrier');if(sel){const cur=sel.value;sel.innerHTML='<option value="">All Carriers</option>'+carriers.map(c=>`<option${c===cur?' selected':''}>${c}</option>`).join('');}
   const rcarrier=g('r_carrier');if(rcarrier){const cur=rcarrier.value;rcarrier.innerHTML='<option value="">All</option>'+carriers.map(c=>`<option${c===cur?' selected':''}>${c}</option>`).join('');}
   applyFilter();
@@ -1714,7 +1725,7 @@ function applyFilter(){
       const label = KNOWN_SRCS.has(r.source) ? r.source : 'OTHER';
       if(src==='OTHER' ? KNOWN_SRCS.has(r.source) : label!==src) return false;
     }
-    if(car&&r.carrier!==car)return false;
+    if(car&&normalizeCarrier(r.carrier)!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
     if(val&&r.valid_status!==val)return false;
@@ -1723,7 +1734,7 @@ function applyFilter(){
   const[sf,dir]=sort.split('_');
   filtered.sort((a,b)=>{let va=a[sf]||0,vb=b[sf]||0;if(typeof va==='string')va=va.toLowerCase();if(typeof vb==='string')vb=vb.toLowerCase();return dir==='asc'?va>vb?1:-1:va<vb?1:-1;});
   g('st_total').textContent=ALL_RATES.length.toLocaleString();
-  g('st_carriers').textContent=[...new Set(ALL_RATES.map(r=>r.carrier))].length;
+  g('st_carriers').textContent=[...new Set(ALL_RATES.map(r=>normalizeCarrier(r.carrier)).filter(Boolean))].length;
   g('st_sources').textContent=[...new Set(ALL_RATES.map(r=>r.source))].length;
   g('st_filtered').textContent=filtered.length.toLocaleString();
   const best=filtered.filter(r=>r.gp20>0).sort((a,b)=>a.gp20-b.gp20)[0];
