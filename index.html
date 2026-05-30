@@ -3148,35 +3148,37 @@ function extractExcelBooking(input){
       const S = v => String(v==null?'':v).trim();
 
       // Build label→value map
-      // colA[0]=label → colC[2]=value (left side)
-      // colE[4]=label → colH[7]=value (right side, some use col6→col7)
+      // colA[0]=label → colC[2]=value
+      // colE[4]=label → colH[7]=value
+      // colG[6]=label → colH[7]=value (Booking No, Shipping Line)
       const map = {};
+      const norm = s => S(s).replace(/[\s:]+$/, '').toLowerCase();
       rows.forEach(row=>{
         if(!row) return;
-        const kA = S(row[0]).replace(/\s*:\s*$/, '').toLowerCase();
+        const kA = norm(row[0]);
         const vC = S(row[2]);
         if(kA && vC) map[kA] = vC;
 
-        // Right side: col4=label, col7=value
-        const kE = S(row[4]).replace(/\s*:\s*$/, '').toLowerCase();
+        const kE = norm(row[4]);
         const vH = S(row[7]);
         if(kE && vH) map[kE] = vH;
 
-        // Also col6=label, col7=value (Booking No, Shipping Line)
-        const kG = S(row[6]).replace(/\s*:\s*$/, '').toLowerCase();
+        const kG = norm(row[6]);
         if(kG && vH) map[kG] = vH;
       });
 
       const find = (...keys) => {
         for(const k of keys){
+          const kl = k.toLowerCase();
+          if(map[kl]) return map[kl];
           for(const [mk, mv] of Object.entries(map)){
-            if(mk.includes(k.toLowerCase())) return mv;
+            if(mk.includes(kl)) return mv;
           }
         }
         return '';
       };
 
-      // REF: extract from "REF: SBKK00513956" in col2 row10
+      // REF: extract from "REF: SBKK00513956" in col2
       let refNo = '';
       rows.forEach(row=>{
         const v = S(row?.[2]||'');
@@ -3202,23 +3204,22 @@ function extractExcelBooking(input){
         return s;
       };
 
-      // Split vessel + voyage: "IRENES RAINBOW V.031N" → vessel + voyage
       const splitVessel = raw => {
         const m = raw.match(/^(.+?)\s+V\.(\S+)$/i);
         if(m) return {vessel: m[1].trim(), voyage: m[2].trim()};
         return {vessel: raw, voyage: ''};
       };
 
-      const feeder = splitVessel(find('vsl name','vessel name','feeder'));
-      const mother = splitVessel(find('mother vsl','mother vessel'));
+      const feeder = splitVessel(find('vsl name / voy','vsl name'));
+      const mother = splitVessel(find('mother vsl name','mother vsl'));
 
       const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
-      set('s_bkgno',         find('booking no'));
+      set('s_bkgno',         find('booking no.','booking no'));
       set('s_refno',         refNo);
       set('s_carrier',       find('shipping line'));
-      set('s_shipper',       find('shipper name','shipper'));
+      set('s_shipper',       find('shipper name'));
       set('s_pol',           find('port of loading'));
-      set('s_pod',           find('port of discharge','final destination'));
+      set('s_pod',           find('port of discharge'));
       set('s_etd',           fmtDate(find('etd')));
       set('s_eta',           fmtDate(find('eta')));
       set('s_vessel',        feeder.vessel);
@@ -3226,10 +3227,11 @@ function extractExcelBooking(input){
       set('s_mother_vessel', mother.vessel);
       set('s_mother_voyage', mother.voyage);
       set('s_commodity',     find('commodity'));
-      set('s_si_cutoff',     find('si cut'));
-      set('s_vgm_cutoff',    find('vgm cut'));
-      set('s_gate_cutoff',   find('gate closing'));
-      set('s_doc_cutoff',    find('dead line cfm','deadline cfm','doc cut','cfm bl'));
+      set('s_hscode',        find('hs. code','hs code'));
+      set('s_si_cutoff',     find('si cut-off time','si cut'));
+      set('s_vgm_cutoff',    find('vgm cut-off time','vgm cut'));
+      set('s_gate_cutoff',   find('gate closing date','gate closing'));
+      set('s_doc_cutoff',    find('dead line cfm bl','deadline cfm'));
 
       // Container qty/type
       const qtyEl = document.querySelector('#ctn_rows input[type="number"]');
