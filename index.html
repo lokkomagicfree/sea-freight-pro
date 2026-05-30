@@ -371,8 +371,9 @@ body{font-size:14px;font-weight:450}
         <option value="">All Sources</option>
         <option value="FIX">FIX</option><option value="FAK">FAK</option>
         <option value="BULLET">BULLET</option><option value="FOOD">FOOD</option>
-        <option value="TP">TP</option><option value="ISC-ME">ISC-ME</option>
+        <option value="ISC-ME">ISC-ME</option>
         <option value="IA-EU">IA-EU</option>
+        <option value="OTHER">OTHER</option>
       </select>
       <select class="fi" id="f_carrier" onchange="applyFilter()" style="width:140px;font-size:11px">
         <option value="">All Carriers</option>
@@ -1697,8 +1698,12 @@ function buildFilters(){
 function applyFilter(){
   const src=v('f_source'),car=v('f_carrier'),pol=v('f_pol').toLowerCase(),pod=v('f_pod').toLowerCase();
   const val=v('f_validity')||'',sort=v('f_sort')||'gp20_asc';
+  const KNOWN_SRCS = new Set(['FIX','FAK','BULLET','FOOD','ISC-ME','IA-EU']);
   let filtered=ALL_RATES.filter(r=>{
-    if(src&&r.source!==src)return false;
+    if(src){
+      const label = KNOWN_SRCS.has(r.source) ? r.source : 'OTHER';
+      if(src==='OTHER' ? KNOWN_SRCS.has(r.source) : label!==src) return false;
+    }
     if(car&&r.carrier!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
