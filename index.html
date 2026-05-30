@@ -1400,7 +1400,7 @@ const CARRIER_MAP = [
   {r:/\b(zim)\b/i,                      v:'ZIM'},
   {r:/\b(hmm|hyundai)\b/i,              v:'HMM'},
   {r:/\b(whl|wan.?hai)\b/i,             v:'Wan Hai'},
-  {r:/\b(pil|pacific.?int)\b/i,         v:'PIL'},
+  {r:/\b(pil|pacific.?int(ernational)?(\s*lines?)?)\b/i, v:'PIL'},
   {r:/\b(sitc)\b/i,                     v:'SITC'},
   {r:/\b(kmtc)\b/i,                     v:'KMTC'},
   {r:/\b(heung.?a|heung)\b/i,           v:'Heung-A'},
@@ -1431,10 +1431,20 @@ function detectCarrierFromContext(filename, sheetName, rows){
   const fn = filename.replace(/[_\-]/g,' ');
   let c = detectCarrier(fn);
   if(c) return c;
-  // 2. Try sheet name
+  // 2. Try sheet name (strip suffixes first)
   c = detectCarrier(sheetName);
   if(c) return c;
-  // 3. Try first 8 rows of sheet content
+  // 3. Try "Carrier / Line:" label in header rows
+  for(const row of (rows||[]).slice(0,12)){
+    const cells = (row||[]).map(v=>String(v==null?'':v).trim());
+    for(let j=0;j<cells.length;j++){
+      if(/carrier.*line|shipping.*line|^carrier$/i.test(cells[j]) && cells[j+1]){
+        c = detectCarrier(cells[j+1]);
+        if(c) return c;
+      }
+    }
+  }
+  // 4. Try first 8 rows of sheet content
   const text = (rows||[]).slice(0,8).map(r=>(r||[]).join(' ')).join(' ');
   c = detectCarrier(text);
   return c;
@@ -1712,6 +1722,8 @@ function normalizeCarrier(c){
   return c.replace(/[\s_\-]*[\(\[]\s*[\d\.\/\-\w\s]+[\)\]]/g,'')
           .replace(/[\s_]+\d{1,2}[\/\.\-]\d{1,2}([\/\.\-]\d{2,4})?$/,'')
           .replace(/[\s_]+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*/gi,'')
+          // Strip common sheet name suffixes like "- TH POL", "Rates", "rate", "TH POL"
+          .replace(/[\s\-–_]*(rates?|th\s*pol|th_pol|pol|for\s+sea|for\s+china).*/gi,'')
           .trim();
 }
 
