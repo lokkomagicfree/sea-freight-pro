@@ -2953,8 +2953,10 @@ function getDbProfitByMonth(){
   const map={};
   dbRows.forEach(r=>{
     const m=r.month||''; if(!m) return;
+    const qm=String(r.volume||'').match(/(\d+)\s*[xX×]/);
+    const qty=qm?parseInt(qm[1]):1;
     if(!map[m]) map[m]=0;
-    map[m]+=(r.sell||0)-(r.cost||0);
+    map[m]+=((r.sell||0)-(r.cost||0))*qty;
   });
   return map;
 }
@@ -2990,7 +2992,11 @@ function renderDbIntransit(){
       const gRows = groups[key];
       const[y,mo] = key.split('-');
       const label = key==='Unknown' ? 'Unknown ETD' : `ETD: ${(MN[mo]||mo)} ${y}`;
-      const gProfit = gRows.reduce((s,r)=>s+(r.sell||0)-(r.cost||0),0);
+      const gProfit = gRows.reduce((s,r)=>{
+        const qm=String(r.volume||'').match(/(\d+)\s*[xX×]/);
+        const qty=qm?parseInt(qm[1]):1;
+        return s+((r.sell||0)-(r.cost||0))*qty;
+      },0);
       const gComm = gProfit * (window.commRate||0.25);
 
       // Group header
@@ -3016,7 +3022,13 @@ function renderDbIntransit(){
           <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
           <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
           <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">${(()=>{const p=(r.sell||0)-(r.cost||0);const c=p*(window.commRate||0.25);return c?c.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';})()}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">${(()=>{
+            const qm=String(r.volume||'').match(/(\d+)\s*[xX×]/);
+            const qty=qm?parseInt(qm[1]):1;
+            const p=((r.sell||0)-(r.cost||0))*qty;
+            const c=p*(window.commRate||0.25);
+            return c?c.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';
+          })()}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
           <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
