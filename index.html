@@ -2053,7 +2053,7 @@ function saveEditRate(){
   const idx=parseInt(m.dataset.idx);
   const r=ALL_RATES[idx]; if(!r) return;
   const N=v=>{const x=parseFloat(String(v).replace(/[$,]/g,''));return isNaN(x)?0:x;};
-  r.carrier=document.getElementById('er_carrier').value.trim();
+  r.carrier=normalizeCarrier(document.getElementById('er_carrier').value.trim())||document.getElementById('er_carrier').value.trim();
   r.pol=document.getElementById('er_pol').value.trim();
   r.pod=document.getElementById('er_pod').value.trim();
   r.gp20=N(document.getElementById('er_gp20').value);
@@ -2483,8 +2483,8 @@ function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),vstatus=v('r_vstatus');
   if(!pol&&!pod&&!car){g('route_body').innerHTML='<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
   let res=ALL_RATES.filter(r=>{
-    if(!isThaiPOL(r.pol)) return false;  // ← Thai POL only
-    if(car&&r.carrier!==car)return false;
+    if(!isThaiPOL(r.pol)) return false;
+    if(car&&normalizeCarrier(r.carrier)!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
     if(vstatus&&r.valid_status!==vstatus)return false;
