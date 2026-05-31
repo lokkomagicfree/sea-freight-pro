@@ -3031,7 +3031,11 @@ function renderDbIntransit(){
           })()}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
+          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${(()=>{
+            const qm=String(r.volume||'').match(/(\d+)\s*[xX×]/);
+            const qty=qm?parseInt(qm[1]):1;
+            return fmtT(profit*qty)+' ฿';
+          })()}</td>
           <td style="padding:4px 6px;text-align:center"><input type="checkbox" ${r.closed?'checked':''} onchange="updateDbRow(${r.id},'closed',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
           <td style="padding:4px 6px;min-width:120px">
             <div style="display:flex;align-items:center;gap:4px">
@@ -3047,7 +3051,10 @@ function renderDbIntransit(){
     return html;
   })();
 
-  const tC=filtered.reduce((s,r)=>s+(r.cost||0),0), tS=filtered.reduce((s,r)=>s+(r.sell||0),0), tP=tS-tC;
+  const getQty = r => { const m=String(r.volume||'').match(/(\d+)\s*[xX×]/); return m?parseInt(m[1]):1; };
+  const tC=filtered.reduce((s,r)=>s+(r.cost||0)*getQty(r),0);
+  const tS=filtered.reduce((s,r)=>s+(r.sell||0)*getQty(r),0);
+  const tP=tS-tC;
   tfoot.innerHTML=`<tr style="border-top:2px solid var(--border2);background:var(--s3)">
     <td colspan="10" style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)">TOTAL (${filtered.length} rows)</td>
     <td style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red)">${fmtT(tC)} ฿</td>
