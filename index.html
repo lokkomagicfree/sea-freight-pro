@@ -3173,21 +3173,25 @@ function extractExcelBooking(input){
         return '';
       };
 
-      // REF: find row after "Shipper Name" that has value in col2, or explicit "REF:" prefix
+      // REF: find SBKK/REF number — check 3 rows after Shipper Name in col2
       let refNo = '';
-      for(let i=0;i<rows.length;i++){
-        const row = rows[i]||[];
+      let shipperRowIdx = -1;
+      rows.forEach((row,i)=>{
+        if(!row) return;
         const v = S(row[2]||'');
-        // Explicit REF: prefix
-        if(/^REF:\s*/i.test(v)){ refNo = v.replace(/^REF:\s*/i,'').trim(); break; }
-        // Row where col0 is Shipper Name — REF is in col2 of NEXT row
-        if(/shipper\s*name/i.test(S(row[0]))){
-          const nextRow = rows[i+1]||[];
-          const nextVal = S(nextRow[2]||'');
-          if(nextVal && !/^[A-Z][\w\s,]+$/.test(nextVal.slice(0,3))) { /* skip company names */ }
-          if(nextVal && /^S?[A-Z]{2,4}\d{6,}/i.test(nextVal)) { refNo = nextVal; break; }
-          // fallback: any non-empty value in col2 of next row
-          if(nextVal) { refNo = nextVal; break; }
+        // Explicit REF: prefix anywhere
+        if(/^REF:\s*/i.test(v) && !refNo){
+          refNo = v.replace(/^REF:\s*/i,'').trim();
+        }
+        // Track Shipper Name row index
+        if(/shipper\s*name/i.test(S(row[0]||''))) shipperRowIdx = i;
+      });
+      // If no explicit REF, check col2 of rows 1-3 after Shipper Name
+      if(!refNo && shipperRowIdx >= 0){
+        for(let i=shipperRowIdx+1; i<=shipperRowIdx+3; i++){
+          const row = rows[i]||[];
+          const v = S(row[2]||'');
+          if(v && /^[A-Z]{1,5}\d{5,}/i.test(v)){ refNo = v; break; }
         }
       }
 
@@ -3239,12 +3243,15 @@ function extractExcelBooking(input){
       set('s_gate_closing',  find('gate closing date'));
       set('s_doc_cutoff',    find('dead line cfm bl'));
 
-      // Container qty/type
-      const qtyEl = document.querySelector('#ctn_rows input[type="number"]');
-      if(qtyEl && ctnQty) qtyEl.value = ctnQty;
-      const typeEl = document.querySelector('#ctn_rows select');
-      if(typeEl && ctnType){
-        [...typeEl.options].forEach(o=>{ if(o.value.includes(ctnType)||o.text.includes(ctnType)) typeEl.value=o.value; });
+      // Container qty/type — set _ctnRows directly then re-render
+      if(ctnType && ctnQty){
+        // Normalize type: HQ→HC
+        const type = ctnType.replace(/HQ$/i,'HC').toUpperCase();
+        if(typeof _ctnRows !== 'undefined'){
+          _ctnRows = [{type: type, qty: parseInt(ctnQty)||1}];
+          if(typeof renderCtnRows === 'function') renderCtnRows();
+          if(typeof recalc === 'function') recalc();
+        }
       }
 
       toast('✅ นำเข้าข้อมูล Booking สำเร็จ');
