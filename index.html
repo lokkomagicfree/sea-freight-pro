@@ -1014,6 +1014,8 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INV FROM VENDOR</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO CUSTOMER</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--green)">INV NO.</th>
+              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--gold)">RATE/BOX (฿)</th>
+              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--gold)">COMM (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--red)">COST (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">SELL (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--cyan)">PROFIT (฿)</th>
@@ -2928,7 +2930,7 @@ function initDbIntransitSync(){
 window._initDbIntransitSync = initDbIntransitSync;
 
 function addDbRow(){
-  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', etd:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
+  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', etd:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', ratePerBox:0, cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
   dbStorageSave(); renderDbIntransit();
   setTimeout(()=>{ const t=document.getElementById('dbit_body'); if(t&&t.lastElementChild) t.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'}); },100);
 }
@@ -2939,7 +2941,7 @@ window.deleteDbRow = deleteDbRow;
 
 function updateDbRow(id, field, value){
   const r=dbRows.find(r=>r.id===id); if(!r) return;
-  if(field==='cost'||field==='sell') r[field]=parseFloat(value)||0;
+  if(field==='cost'||field==='sell'||field==='ratePerBox') r[field]=parseFloat(value)||0;
   else if(field==='closed') r[field]=value;
   else r[field]=value;
   // Group by ETD — fallback to cyDate
@@ -2950,7 +2952,14 @@ window.updateDbRow = updateDbRow;
 
 function getDbProfitByMonth(){
   const map={};
-  dbRows.forEach(r=>{ const m=r.month||''; if(!m) return; if(!map[m]) map[m]=0; map[m]+=(r.sell||0)-(r.cost||0); });
+  dbRows.forEach(r=>{
+    const m=r.month||''; if(!m) return;
+    const qtyMatch = String(r.volume||'').match(/(\d+)\s*[xX×]/);
+    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+    const comm = (r.ratePerBox||0) * qty;
+    if(!map[m]) map[m]=0;
+    map[m]+=comm;
+  });
   return map;
 }
 window.getDbProfitByMonth = getDbProfitByMonth;
@@ -3012,6 +3021,8 @@ function renderDbIntransit(){
           <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
           <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
           <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
+          <td style="padding:4px 6px;min-width:90px">${inp(r.id,'ratePerBox',r.ratePerBox||0,'number')}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">${(()=>{const m=String(r.volume||'').match(/(\d+)\s*[xX×]/);const q=m?parseInt(m[1]):1;const c=(r.ratePerBox||0)*q;return c?c.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';})()}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
           <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
@@ -3069,13 +3080,12 @@ function renderMonthlySummary(groups,sortedKeys){
     const jobs=(groups[key])||[];
     const mS=jobs.reduce((s,j)=>s+j.sell,0),mC=jobs.reduce((s,j)=>s+j.cost,0),mP=jobs.reduce((s,j)=>s+j.profit,0);
     const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
-    const mDb=dbByMonth[key]||0;
+    const mDb=dbByMonth[key]||0;  // already box comm in THB
     const mDbCount=dbCountByMonth[key]||0;
-    // In-Transit commission = In-Transit profit × commRate
-    const mDbComm = mDb * (window.commRate||0.25);
+    const mDbComm = mDb; // direct THB from ratePerBox × qty
     const totalJobs = jobs.length + mDbCount;
     const mM=mS>0?mP/mS*100:0;
-    const mTTotal = mT + mDbComm; // COMM THB = Shipment comm + In-Transit comm
+    const mTTotal = mT + mDbComm;
     gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mTTotal;gJ+=totalJobs;gDb+=mDb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
