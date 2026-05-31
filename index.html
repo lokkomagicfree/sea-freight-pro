@@ -2824,6 +2824,10 @@ function renderShipments(){
     const keyJobs=groups[key];
     const[y,m]=key.split('-');const label=key==='Unknown'?'Unknown':((MN[m]||m)+' '+y);
     const typeLabel=keyJobs[0]?.jobType==='import'?'📥 Import':'📤 Export';
+    // Monthly subtotals
+    const mProfit=keyJobs.reduce((s,j)=>s+(j.profit||0),0);
+    const mComm=keyJobs.reduce((s,j)=>s+(j.comm||0),0);
+    const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
     html+=`<tr><td colspan="17" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
@@ -2856,6 +2860,15 @@ function renderShipments(){
         </td>
       </tr>`;
     });
+    // Monthly subtotal row
+    html+=`<tr style="background:rgba(232,168,56,.06);border-top:1px solid var(--border2)">
+      <td colspan="12" style="padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted)">${typeLabel} · ${label} · subtotal</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:${mProfit>=0?'var(--green)':'var(--red)'}">$${mProfit.toFixed(2)}</td>
+      <td></td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">$${mComm.toFixed(2)}</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">${mCommThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+      <td colspan="3"></td>
+    </tr>`;
   });
   if(!jobs.length)html='<tr><td colspan="17" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
