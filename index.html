@@ -3171,9 +3171,9 @@ function extractExcelBooking(input){
 
       rows.forEach(row=>{
         if(!row) return;
-        const r = row.concat(Array(8).fill(''));
+        const r = row.concat(Array(10).fill(''));
 
-        // Format 1: colA[0]=label, colC[2]=value, colE[4]=label, colH[7]=value
+        // Format 1: colA[0]=label→colC[2], colE[4]=label→colH[7], colG[6]=label→colH[7]
         const kA=norm(r[0]), vC=S(r[2]);
         const kE=norm(r[4]), vH=S(r[7]);
         const kG=norm(r[6]);
@@ -3181,11 +3181,15 @@ function extractExcelBooking(input){
         if(kE&&vH) map[kE]=vH;
         if(kG&&vH) map[kG]=vH;
 
-        // Format 2: colB[1]=label, colC[2]=value, colD[3]=label, colF[5]=value
+        // Format 2: colB[1]=label→colC[2], colD[3]=label→colF[5]
         const kB=norm(r[1]), vC2=S(r[2]);
         const kD=norm(r[3]), vF=S(r[5]);
         if(kB&&vC2) map[kB]=vC2;
         if(kD&&vF) map[kD]=vF;
+
+        // Format 3: colE[4]=label→colF[5] (Booking No., Shipping Line in this format)
+        const vF2=S(r[5]);
+        if(kE&&vF2&&!map[kE]) map[kE]=vF2;
       });
 
       // Exact match first, then partial
@@ -3240,13 +3244,21 @@ function extractExcelBooking(input){
       };
 
       const splitVessel = raw => {
-        const m = raw.match(/^(.+?)\s+V\.(\S+)$/i);
-        if(m) return {vessel: m[1].trim(), voyage: m[2].trim()};
-        return {vessel: raw, voyage: ''};
+        if(!raw) return {vessel:'', voyage:''};
+        // "VESSEL NAME V.031N"
+        const m1 = raw.match(/^(.+?)\s+V\.(\S+)$/i);
+        if(m1) return {vessel: m1[1].trim(), voyage: m1[2].trim()};
+        // Last token is voyage-like (e.g. "1TUJMS1MA", "057S")
+        const parts = raw.trim().split(/\s+/);
+        const last = parts[parts.length-1];
+        if(parts.length>1 && /^[A-Z0-9]{4,12}$/.test(last)){
+          return {vessel: parts.slice(0,-1).join(' '), voyage: last};
+        }
+        return {vessel: raw.trim(), voyage: ''};
       };
 
-      const feeder = splitVessel(find('vsl name / voy'));
-      const mother = splitVessel(find('mother vsl name'));
+      const feeder = splitVessel(find('vsl name / voy','vsl name'));
+      const mother = splitVessel(find('mother vsl name','mother vsl'));
 
       const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
       set('s_bkgno',         find('booking no.','booking no'));
