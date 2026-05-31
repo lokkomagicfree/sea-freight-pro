@@ -2041,6 +2041,8 @@ function openEditRate(idx){
   document.getElementById('er_gp20').value=r.gp20||'';
   document.getElementById('er_gp40').value=r.gp40||'';
   document.getElementById('er_hc40').value=r.hc40||'';
+  document.getElementById('er_rf20').value=r.rf20||'';
+  document.getElementById('er_rf40').value=r.rf40||'';
   document.getElementById('er_validity').value=r.validity||'';
   document.getElementById('er_src').value=r.source||'';
   m.dataset.idx=idx;
@@ -2057,6 +2059,8 @@ function saveEditRate(){
   r.gp20=N(document.getElementById('er_gp20').value);
   r.gp40=N(document.getElementById('er_gp40').value);
   r.hc40=N(document.getElementById('er_hc40').value);
+  r.rf20=N(document.getElementById('er_rf20').value);
+  r.rf40=N(document.getElementById('er_rf40').value);
   r.validity=document.getElementById('er_validity').value.trim();
   r.source=document.getElementById('er_src').value.trim()||'OTHER';
   const[df,dt]=parseValidity(r.validity);
@@ -6494,6 +6498,8 @@ function duplicateBookingPDF(){
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">20'GP (USD)</label><input id="er_gp20" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--green)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'GP (USD)</label><input id="er_gp40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'HC (USD)</label><input id="er_hc40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">20'RF (USD)</label><input id="er_rf20" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'RF (USD)</label><input id="er_rf40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">VALIDITY</label><input id="er_validity" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="e.g. 1-30 Jun"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
