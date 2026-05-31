@@ -1014,7 +1014,6 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INV FROM VENDOR</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO CUSTOMER</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--green)">INV NO.</th>
-              <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--gold)">RATE/BOX (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--gold)">COMM (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--red)">COST (฿)</th>
               <th style="padding:10px 8px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--green)">SELL (฿)</th>
@@ -2954,11 +2953,8 @@ function getDbProfitByMonth(){
   const map={};
   dbRows.forEach(r=>{
     const m=r.month||''; if(!m) return;
-    const qtyMatch = String(r.volume||'').match(/(\d+)\s*[xX×]/);
-    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-    const comm = (r.ratePerBox||0) * qty;
     if(!map[m]) map[m]=0;
-    map[m]+=comm;
+    map[m]+=(r.sell||0)-(r.cost||0);
   });
   return map;
 }
@@ -2996,7 +2992,6 @@ function renderDbIntransit(){
       const label = key==='Unknown' ? 'Unknown ETD' : `ETD: ${(MN[mo]||mo)} ${y}`;
       const gProfit = gRows.reduce((s,r)=>s+(r.sell||0)-(r.cost||0),0);
       const gComm = gProfit * (window.commRate||0.25);
-      const gCommThb = gComm; // already in THB
 
       // Group header
       html+=`<tr style="background:var(--s3)"><td colspan="16" style="padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em">
@@ -3021,8 +3016,7 @@ function renderDbIntransit(){
           <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
           <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
           <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
-          <td style="padding:4px 6px;min-width:90px">${inp(r.id,'ratePerBox',r.ratePerBox||0,'number')}</td>
-          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">${(()=>{const m=String(r.volume||'').match(/(\d+)\s*[xX×]/);const q=m?parseInt(m[1]):1;const c=(r.ratePerBox||0)*q;return c?c.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';})()}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);white-space:nowrap">${(()=>{const p=(r.sell||0)-(r.cost||0);const c=p*(window.commRate||0.25);return c?c.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';})()}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
           <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
           <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
@@ -3080,9 +3074,9 @@ function renderMonthlySummary(groups,sortedKeys){
     const jobs=(groups[key])||[];
     const mS=jobs.reduce((s,j)=>s+j.sell,0),mC=jobs.reduce((s,j)=>s+j.cost,0),mP=jobs.reduce((s,j)=>s+j.profit,0);
     const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
-    const mDb=dbByMonth[key]||0;  // already box comm in THB
+    const mDb=dbByMonth[key]||0;  // Transit profit in THB
     const mDbCount=dbCountByMonth[key]||0;
-    const mDbComm = mDb; // direct THB from ratePerBox × qty
+    const mDbComm = mDb * (window.commRate||0.25); // Transit comm = profit × commRate
     const totalJobs = jobs.length + mDbCount;
     const mM=mS>0?mP/mS*100:0;
     const mTTotal = mT + mDbComm;
