@@ -2723,12 +2723,17 @@ function saveShipment(){
   if(g('lkb_toggle')?.checked) jobData.pol = 'LAT KRABANG (LKB)';
   if(g('bkk_toggle')?.checked) jobData.pol = 'BANGKOK (BKK)';
   if(window._editIdx!=null){
-    jobData.statusHistory=savedJobs[window._editIdx].statusHistory||[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
+    const prev = savedJobs[window._editIdx];
+    // Set assignedAt when csAssigned is first assigned
+    if(jobData.csAssigned && !prev.csAssigned) jobData.assignedAt = new Date().toISOString();
+    else if(prev.assignedAt) jobData.assignedAt = prev.assignedAt; // keep existing
+    jobData.statusHistory=prev.statusHistory||[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
     savedJobs[window._editIdx]=jobData;window._editIdx=null;
     const btn=g('save_btn');if(btn){btn.textContent='💾 Save Shipment';btn.className='btn btn-cyan';btn.style.background='';}
     toast('✅ Shipment updated!');
   } else {
     jobData.statusHistory=[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
+    if(jobData.csAssigned) jobData.assignedAt = new Date().toISOString();
     savedJobs.push(jobData);toast('✅ Shipment saved!');
   }
   renderShipments();updateAlertCount();storageSave();
