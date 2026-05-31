@@ -1009,6 +1009,7 @@ body{font-size:14px;font-weight:450}
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--cyan)">VOLUME</th>
               <th style="padding:10px 8px;text-align:left;font-family:var(--mono);font-size:10px;color:var(--muted)">CONTAINER NO.</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">CY DATE</th>
+              <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--cyan)">ETD</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">LOAD DATE</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">INV FROM VENDOR</th>
               <th style="padding:10px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--green)">SENT TO CUSTOMER</th>
@@ -2927,7 +2928,7 @@ function initDbIntransitSync(){
 window._initDbIntransitSync = initDbIntransitSync;
 
 function addDbRow(){
-  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
+  dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', etd:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
   dbStorageSave(); renderDbIntransit();
   setTimeout(()=>{ const t=document.getElementById('dbit_body'); if(t&&t.lastElementChild) t.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'}); },100);
 }
@@ -2941,7 +2942,8 @@ function updateDbRow(id, field, value){
   if(field==='cost'||field==='sell') r[field]=parseFloat(value)||0;
   else if(field==='closed') r[field]=value;
   else r[field]=value;
-  const ds=r.cyDate||''; if(ds) r.month=ds.slice(0,7); else r.month='';
+  // Group by ETD — fallback to cyDate
+  const ds=r.etd||r.cyDate||''; if(ds) r.month=ds.slice(0,7); else r.month='';
   dbStorageSave(); renderDbIntransit(); renderShipments();
 }
 window.updateDbRow = updateDbRow;
@@ -2966,35 +2968,67 @@ function renderDbIntransit(){
   const inp=(id,field,val,type='text')=>`<input type="${type}" value="${String(val||'').replace(/"/g,'&quot;')}" onchange="updateDbRow(${id},'${field}',this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none;text-align:${type==='number'?'right':'left'}">`;
   const dateInp=(id,field,val,col='var(--gold)')=>`<input type="date" value="${val||''}" onchange="updateDbRow(${id},'${field}',this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:${col};font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none;color-scheme:light">`;
 
-  tbody.innerHTML=filtered.map((r,i)=>{
-    const profit=(r.sell||0)-(r.cost||0);
-    const pc=profit>0?'var(--green)':profit<0?'var(--red)':'var(--muted)';
-    const bg=i%2===0?'':'background:var(--s2)';
-    return `<tr style="border-bottom:1px solid var(--border);${bg}">
-      <td style="padding:4px 6px;min-width:110px">${inp(r.id,'customerBooking',r.customerBooking)}</td>
-      <td style="padding:4px 6px;min-width:130px">${inp(r.id,'bookingNo',r.bookingNo)}</td>
-      <td style="padding:4px 6px;min-width:180px">${inp(r.id,'shipper',r.shipper)}</td>
-      <td style="padding:4px 6px;min-width:80px">${inp(r.id,'volume',r.volume)}</td>
-      <td style="padding:4px 6px;min-width:120px">${inp(r.id,'containerNo',r.containerNo||'')}</td>
-      <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'cyDate',r.cyDate)}</td>
-      <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'loadDate',r.loadDate)}</td>
-      <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
-      <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
-      <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
-      <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
-      <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
-      <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
-      <td style="padding:4px 6px;text-align:center"><input type="checkbox" ${r.closed?'checked':''} onchange="updateDbRow(${r.id},'closed',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
-      <td style="padding:4px 6px;min-width:120px">
-        <div style="display:flex;align-items:center;gap:4px">
-          ${inp(r.id,'csAssigned',r.csAssigned||'')}
-          ${r.csAssigned?`<button onclick="openCSPortalFor('${r.csAssigned}')" title="CS Portal" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;width:22px;height:22px;border-radius:4px;font-size:11px;flex-shrink:0">🔗</button>`:''}
-        </div>
-      </td>
-      <td style="padding:4px 6px;min-width:150px">${inp(r.id,'remarks',r.remarks)}</td>
-      <td style="padding:4px 6px;text-align:center"><button onclick="deleteDbRow(${r.id})" style="border:none;background:rgba(192,57,43,.12);color:var(--red);cursor:pointer;width:24px;height:24px;border-radius:5px;font-size:13px" onmouseover="this.style.background='rgba(192,57,43,.3)'" onmouseout="this.style.background='rgba(192,57,43,.12)'">🗑</button></td>
-    </tr>`;
-  }).join('')||`<tr><td colspan="15" style="padding:32px;text-align:center;color:var(--muted)">ยังไม่มีข้อมูล — กด + Add Row เพื่อเพิ่ม</td></tr>`;
+  tbody.innerHTML = (() => {
+    if(!filtered.length) return `<tr><td colspan="16" style="padding:32px;text-align:center;color:var(--muted)">ยังไม่มีข้อมูล — กด + Add Row เพื่อเพิ่ม</td></tr>`;
+
+    // Group by ETD month
+    const groups = {};
+    filtered.forEach(r=>{
+      const key = (r.etd||r.cyDate||'').slice(0,7) || 'Unknown';
+      if(!groups[key]) groups[key]=[];
+      groups[key].push(r);
+    });
+    const sortedKeys = Object.keys(groups).sort().reverse();
+
+    let html = '';
+    sortedKeys.forEach(key=>{
+      const gRows = groups[key];
+      const[y,mo] = key.split('-');
+      const label = key==='Unknown' ? 'Unknown ETD' : `ETD: ${(MN[mo]||mo)} ${y}`;
+      const gProfit = gRows.reduce((s,r)=>s+(r.sell||0)-(r.cost||0),0);
+      const gComm = gProfit * (window.commRate||0.25);
+      const gCommThb = gComm; // already in THB
+
+      // Group header
+      html+=`<tr style="background:var(--s3)"><td colspan="16" style="padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em">
+        📅 ${label} · ${gRows.length} jobs
+        <span style="margin-left:16px;color:var(--gold)">Commission: ${gComm.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</span>
+        <span style="margin-left:16px;color:${gProfit>=0?'var(--green)':'var(--red)'}">Profit: ${gProfit.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</span>
+      </td></tr>`;
+
+      gRows.forEach((r,i)=>{
+        const profit=(r.sell||0)-(r.cost||0);
+        const pc=profit>0?'var(--green)':profit<0?'var(--red)':'var(--muted)';
+        const bg=i%2===0?'':'background:rgba(255,255,255,.02)';
+        html+=`<tr style="border-bottom:1px solid var(--border);${bg}">
+          <td style="padding:4px 6px;min-width:110px">${inp(r.id,'customerBooking',r.customerBooking)}</td>
+          <td style="padding:4px 6px;min-width:130px">${inp(r.id,'bookingNo',r.bookingNo)}</td>
+          <td style="padding:4px 6px;min-width:180px">${inp(r.id,'shipper',r.shipper)}</td>
+          <td style="padding:4px 6px;min-width:80px">${inp(r.id,'volume',r.volume)}</td>
+          <td style="padding:4px 6px;min-width:120px">${inp(r.id,'containerNo',r.containerNo||'')}</td>
+          <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'cyDate',r.cyDate)}</td>
+          <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'etd',r.etd||'','var(--cyan)')}</td>
+          <td style="padding:4px 6px;min-width:110px">${dateInp(r.id,'loadDate',r.loadDate)}</td>
+          <td style="padding:4px 6px;text-align:center;min-width:65px">${ddSel(r.id,'invoice',r.invoice,['','YES','NO'])}</td>
+          <td style="padding:4px 6px;text-align:center;min-width:75px">${ddSel(r.id,'sentToDb',r.sentToDb,['','YES','NO'])}</td>
+          <td style="padding:4px 6px;min-width:120px">${inp(r.id,'invNo',r.invNo)}</td>
+          <td style="padding:4px 6px;min-width:100px">${inp(r.id,'cost',r.cost,'number')}</td>
+          <td style="padding:4px 6px;min-width:100px">${inp(r.id,'sell',r.sell,'number')}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${pc};white-space:nowrap">${fmtT(profit)} ฿</td>
+          <td style="padding:4px 6px;text-align:center"><input type="checkbox" ${r.closed?'checked':''} onchange="updateDbRow(${r.id},'closed',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+          <td style="padding:4px 6px;min-width:120px">
+            <div style="display:flex;align-items:center;gap:4px">
+              ${inp(r.id,'csAssigned',r.csAssigned||'')}
+              ${r.csAssigned?`<button onclick="openCSPortalFor('${r.csAssigned}')" title="CS Portal" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;width:22px;height:22px;border-radius:4px;font-size:11px;flex-shrink:0">🔗</button>`:''}
+            </div>
+          </td>
+          <td style="padding:4px 6px;min-width:150px">${inp(r.id,'remarks',r.remarks)}</td>
+          <td style="padding:4px 6px;text-align:center"><button onclick="deleteDbRow(${r.id})" style="border:none;background:rgba(192,57,43,.12);color:var(--red);cursor:pointer;width:24px;height:24px;border-radius:5px;font-size:13px" onmouseover="this.style.background='rgba(192,57,43,.3)'" onmouseout="this.style.background='rgba(192,57,43,.12)'">🗑</button></td>
+        </tr>`;
+      });
+    });
+    return html;
+  })();
 
   const tC=filtered.reduce((s,r)=>s+(r.cost||0),0), tS=filtered.reduce((s,r)=>s+(r.sell||0),0), tP=tS-tC;
   tfoot.innerHTML=`<tr style="border-top:2px solid var(--border2);background:var(--s3)">
@@ -3037,9 +3071,12 @@ function renderMonthlySummary(groups,sortedKeys){
     const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
     const mDb=dbByMonth[key]||0;
     const mDbCount=dbCountByMonth[key]||0;
+    // In-Transit commission = In-Transit profit × commRate
+    const mDbComm = mDb * (window.commRate||0.25);
     const totalJobs = jobs.length + mDbCount;
     const mM=mS>0?mP/mS*100:0;
-    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mT;gJ+=totalJobs;gDb+=mDb;
+    const mTTotal = mT + mDbComm; // COMM THB = Shipment comm + In-Transit comm
+    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mTTotal;gJ+=totalJobs;gDb+=mDb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
@@ -3058,7 +3095,10 @@ function renderMonthlySummary(groups,sortedKeys){
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mP>=0?'var(--green)':'var(--red)'}">${mS||mC?'$'+mP.toFixed(0):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?mM.toFixed(1)+'%':'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mCo<0?'var(--red)':'var(--gold)'}">${mCo?'$'+mCo.toFixed(2):'—'}</td>
-      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mT<0?'var(--red)':'var(--gold)'}">${mT?(mT<0?'-':'')+Math.abs(mT).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mTTotal<0?'var(--red)':'var(--gold)'}">
+        ${mTTotal?(mTTotal<0?'-':'')+Math.abs(mTTotal).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}
+        ${mDbComm>0?`<div style="font-size:9px;color:var(--cyan);margin-top:1px">+${mDbComm.toLocaleString('th-TH',{maximumFractionDigits:0})} (Transit)</div>`:''}
+      </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${dbCol}">${mDb?mDb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
       <td style="padding:5px 8px;text-align:right">
         <input type="number" min="0" step="100" placeholder="฿ profit" data-month="${key}" value="${commInputVal}" oninput="recalcMonthlyComm(this)"
