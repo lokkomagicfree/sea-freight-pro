@@ -3168,28 +3168,36 @@ function extractExcelBooking(input){
       // colG[6]=label → colH[7]=value (Booking No, Shipping Line)
       const map = {};
       const norm = s => S(s).replace(/[\s:]+$/g,'').toLowerCase();
+      const isLabel = s => {
+        if(!s || s.length > 50) return false;
+        const t = s.trim();
+        // Must end with ":" or contain at least one letter and be short
+        return /[a-zA-Z]/.test(t) && (t.endsWith(':') || (t.length < 35 && !/^\d/.test(t) && /^[A-Za-z]/.test(t)));
+      };
+      const isValue = s => {
+        if(!s) return false;
+        const t = s.trim();
+        // Not a label (doesn't end with ":")
+        return t.length > 0 && !t.endsWith(':');
+      };
 
       rows.forEach(row=>{
         if(!row) return;
         const r = row.concat(Array(10).fill(''));
-
-        // Format 1: colA[0]=label→colC[2], colE[4]=label→colH[7], colG[6]=label→colH[7]
-        const kA=norm(r[0]), vC=S(r[2]);
-        const kE=norm(r[4]), vH=S(r[7]);
-        const kG=norm(r[6]);
-        if(kA&&vC) map[kA]=vC;
-        if(kE&&vH) map[kE]=vH;
-        if(kG&&vH) map[kG]=vH;
-
-        // Format 2: colB[1]=label→colC[2], colD[3]=label→colF[5]
-        const kB=norm(r[1]), vC2=S(r[2]);
-        const kD=norm(r[3]), vF=S(r[5]);
-        if(kB&&vC2) map[kB]=vC2;
-        if(kD&&vF) map[kD]=vF;
-
-        // Format 3: colE[4]=label→colF[5] (Booking No., Shipping Line in this format)
-        const vF2=S(r[5]);
-        if(kE&&vF2&&!map[kE]) map[kE]=vF2;
+        for(let ci=0; ci<r.length-1; ci++){
+          const raw = S(r[ci]);
+          if(!raw || !isLabel(raw)) continue;
+          const k = norm(raw);
+          if(!k) continue;
+          // Find next non-empty value cell (skip cells that are labels themselves)
+          for(let vi=ci+1; vi<=Math.min(ci+5, r.length-1); vi++){
+            const v = S(r[vi]);
+            if(v && isValue(v)){
+              if(!map[k]) map[k] = v;
+              break;
+            }
+          }
+        }
       });
 
       // Exact match first, then partial
