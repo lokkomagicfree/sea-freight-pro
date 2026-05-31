@@ -2061,6 +2061,9 @@ function saveEditRate(){
   r.hc40=N(document.getElementById('er_hc40').value);
   r.rf20=N(document.getElementById('er_rf20').value);
   r.rf40=N(document.getElementById('er_rf40').value);
+  // Auto-detect container type
+  if(r.rf20||r.rf40) r.container_type='REEFER';
+  else if(r.gp20||r.gp40||r.hc40) r.container_type='DRY';
   r.validity=document.getElementById('er_validity').value.trim();
   r.source=document.getElementById('er_src').value.trim()||'OTHER';
   const[df,dt]=parseValidity(r.validity);
