@@ -2270,12 +2270,14 @@ function updateCtnRow(el){
   syncLegacyQty();
   checkCtnVsRate();
   if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+  recalc();
 }
 
 function stepCtn(i, delta){
   _ctnRows[i].qty = Math.max(1, (_ctnRows[i].qty||1) + delta);
   renderCtnRows();
   if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+  recalc();
 }
 
 // Sync to legacy s_q20/s_q40/s_q40hc for backward compat
