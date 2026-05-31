@@ -2908,6 +2908,24 @@ function dbStorageSave(){
 function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
 dbStorageLoad();
 
+// Live sync dbIntransit from Firestore
+function initDbIntransitSync(){
+  if(typeof window.fbOnSnapshot!=='function'||!window._currentUid) return;
+  const ref = window.fbDoc(window.fbDb,'users',window._currentUid,'data','dbIntransit');
+  window.fbOnSnapshot(ref, snap=>{
+    if(snap.exists()){
+      const d=snap.data();
+      if(d&&Array.isArray(d.rows)){
+        dbRows=d.rows;
+        try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbRows)); }catch(e){}
+        renderDbIntransit();
+      }
+    }
+  }, err=>console.warn('dbIntransit sync error',err));
+}
+// Call after Firebase auth ready
+window._initDbIntransitSync = initDbIntransitSync;
+
 function addDbRow(){
   dbRows.push({ id:Date.now(), customerBooking:'', bookingNo:'', shipper:'', volume:'', containerNo:'', cyDate:'', loadDate:'', invoice:'', sentToDb:'', invNo:'', cost:0, sell:0, closed:false, csAssigned:'', remarks:'', month:'' });
   dbStorageSave(); renderDbIntransit();
@@ -5802,10 +5820,10 @@ onAuthStateChanged(auth, async user=>{
 });
 
 async function initFirestoreSync(){
-  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap] = await Promise.all([
+  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap,dbItSnap] = await Promise.all([
     fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
     fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
-    fbGet('data/rateMeta'),
+    fbGet('data/rateMeta'), fbGet('data/dbIntransit'),
   ]);
 
   // ── Set data from Firestore (override localStorage) ──
@@ -5818,6 +5836,7 @@ async function initFirestoreSync(){
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; }
+  if(dbItSnap?.rows)         { window.dbRows = dbItSnap.rows; try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){} }
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
     if(settSnap.exRate!==undefined)   window.exRate   = settSnap.exRate;
@@ -5846,6 +5865,7 @@ async function initFirestoreSync(){
   window.initCtnRows?.();
   window.renderShipments?.();
   window.renderTodos?.();
+  window.renderDbIntransit?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
   window.renderCSTeam?.();
