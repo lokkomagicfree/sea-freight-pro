@@ -823,42 +823,66 @@ window.saveChanges = async function(){
   if(editIdx === null) return;
   const j = allJobs[editIdx];
   const prevRemarks = j.remarks || '';
-  j.etd          = document.getElementById('m_etd').value;
-  j.eta          = document.getElementById('m_eta').value;
-  j.vessel       = document.getElementById('m_vessel').value;
-  j.voyage       = document.getElementById('m_voyage').value;
-  j.motherVessel = document.getElementById('m_mother_vessel').value;
-  j.motherVoy    = document.getElementById('m_mother_voy').value;
-  j.status       = document.getElementById('m_status').value;
-  j.remarks      = document.getElementById('m_remarks').value;
-  j.csTasks      = serializeTasks(taskList);
 
-  if(j.remarks !== prevRemarks && j.remarks.trim()){
-    j.lastRemarked = new Date().toISOString();
-  }
+  // Read new values from modal
+  const newEtd          = document.getElementById('m_etd').value;
+  const newEta          = document.getElementById('m_eta').value;
+  const newVessel       = document.getElementById('m_vessel').value;
+  const newVoyage       = document.getElementById('m_voyage').value;
+  const newMotherVessel = document.getElementById('m_mother_vessel').value;
+  const newMotherVoy    = document.getElementById('m_mother_voy').value;
+  const newStatus       = document.getElementById('m_status').value;
+  const newRemarks      = document.getElementById('m_remarks').value;
+  const newCsTasks      = serializeTasks(taskList);
+
+  const newLastRemarked = (newRemarks !== prevRemarks && newRemarks.trim())
+    ? new Date().toISOString()
+    : (j.lastRemarked || '');
 
   try{
+    // Always fetch fresh from Firestore to avoid stale data
     const snap = await fbGet('data/jobs');
-    if(snap?.jobs){
-      const fullJobs = snap.jobs;
-      const target = fullJobs.find(x=>x.no===j.no);
-      if(target){
-        target.etd          = j.etd;
-        target.eta          = j.eta;
-        target.vessel       = j.vessel;
-        target.voyage       = j.voyage;
-        target.motherVessel = j.motherVessel;
-        target.motherVoy    = j.motherVoy;
-        target.status       = j.status;
-        target.remarks      = j.remarks;
-        target.csTasks      = j.csTasks;
-        target.lastRemarked = j.lastRemarked || target.lastRemarked || '';
-        if(!target.statusHistory) target.statusHistory = [];
-        target.statusHistory.push({status:j.status, date:new Date().toISOString(), note:'Updated by CS: '+AGENT});
-        await fbSet('data/jobs', {jobs: fullJobs});
-        toast('✅ Saved!');
-      }
-    }
+    if(!snap?.jobs) throw new Error('ไม่พบข้อมูล jobs ใน Firestore');
+
+    const fullJobs = snap.jobs;
+    const target = fullJobs.find(x => x.no === j.no);
+    if(!target) throw new Error('ไม่พบ booking: ' + j.no);
+
+    // Apply all changes to Firestore record
+    target.etd          = newEtd;
+    target.eta          = newEta;
+    target.etdMonth     = newEtd ? newEtd.slice(0,7) : (target.etdMonth||'');
+    target.etaMonth     = newEta ? newEta.slice(0,7) : (target.etaMonth||'');
+    target.vessel       = newVessel;
+    target.voyage       = newVoyage;
+    target.motherVessel = newMotherVessel;
+    target.motherVoy    = newMotherVoy;
+    target.status       = newStatus;
+    target.remarks      = newRemarks;
+    target.csTasks      = newCsTasks;
+    target.lastRemarked = newLastRemarked;
+    if(!target.statusHistory) target.statusHistory = [];
+    target.statusHistory.push({
+      status: newStatus,
+      date: new Date().toISOString(),
+      note: 'Updated by CS: ' + AGENT
+    });
+
+    await fbSet('data/jobs', {jobs: fullJobs, updatedAt: new Date().toISOString()});
+
+    // Update local copy so table reflects changes immediately
+    j.etd          = newEtd;
+    j.eta          = newEta;
+    j.vessel       = newVessel;
+    j.voyage       = newVoyage;
+    j.motherVessel = newMotherVessel;
+    j.motherVoy    = newMotherVoy;
+    j.status       = newStatus;
+    j.remarks      = newRemarks;
+    j.csTasks      = newCsTasks;
+    j.lastRemarked = newLastRemarked;
+
+    toast('✅ Saved!');
   }catch(e){
     toast('❌ Error: '+e.message);
     console.error(e);
