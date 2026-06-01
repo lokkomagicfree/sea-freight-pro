@@ -56,12 +56,12 @@ select.inp{cursor:pointer}
 .stat{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:12px 14px;box-shadow:0 1px 3px rgba(192,57,43,.06)}
 .stat-val{font-family:var(--mono);font-size:22px;font-weight:700}
 .stat-lbl{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px;text-transform:uppercase;letter-spacing:.06em}
-.filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;position:relative;z-index:50}
 .fi{background:var(--s2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11px;padding:5px 9px;outline:none;font-family:var(--mono)}
 .fi:focus{border-color:var(--red)}
 #loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9000;gap:12px}
 .spinner{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes sparkle{from{opacity:.6;transform:scale(.95)}to{opacity:1;transform:scale(1.05)}} spin{to{transform:rotate(360deg)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 .tasks-progress{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:4px}
 .tasks-progress-bar{height:100%;background:var(--red);border-radius:2px;transition:width .3s}
 </style>
@@ -82,6 +82,7 @@ select.inp{cursor:pointer}
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="agent-badge" id="agent_badge">Loading…</span>
+    <div id="online_users" style="display:flex;align-items:center;gap:5px;font-size:10px;font-family:'DM Mono',monospace"></div>
     <span id="live_badge" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--green);opacity:.4;transition:opacity .3s">● LIVE</span>
     <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px" onclick="refreshData()">🔄 Refresh</button>
   </div>
@@ -143,12 +144,14 @@ select.inp{cursor:pointer}
             <th>BOOKING NO.</th>
             <th>CUSTOMER</th>
             <th>POL → POD</th>
+            <th>CARRIER</th>
             <th>ETD</th>
             <th>ETA</th>
             <th>VESSEL / VOY</th>
             <th>STATUS</th>
             <th style="min-width:180px">CS TASKS</th>
             <th style="min-width:200px">REMARKS</th>
+            <th style="text-align:center">PRE-ALERT</th>
             <th style="text-align:center">ACTION</th>
           </tr>
         </thead>
@@ -163,6 +166,39 @@ select.inp{cursor:pointer}
 <div class="modal-bg" id="edit_modal" style="display:none" onclick="if(event.target===this){}">
   <div class="modal">
     <div class="modal-title" id="modal_bkgno">📋 BKG-001</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <span class="label">ETD</span>
+        <input class="inp" type="date" id="m_etd" style="width:100%">
+      </div>
+      <div>
+        <span class="label">ETA</span>
+        <input class="inp" type="date" id="m_eta" style="width:100%">
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <span class="label">VESSEL</span>
+        <input class="inp" id="m_vessel" placeholder="Vessel name" style="width:100%;font-size:12px">
+      </div>
+      <div>
+        <span class="label">VOY</span>
+        <input class="inp" id="m_voyage" placeholder="Voyage no." style="width:100%;font-size:12px">
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <span class="label">MOTHER VESSEL</span>
+        <input class="inp" id="m_mother_vessel" placeholder="Mother vessel" style="width:100%;font-size:12px">
+      </div>
+      <div>
+        <span class="label">MOTHER VOY</span>
+        <input class="inp" id="m_mother_voy" placeholder="Mother voyage" style="width:100%;font-size:12px">
+      </div>
+    </div>
 
     <div style="margin-bottom:14px">
       <span class="label">STATUS</span>
@@ -231,11 +267,73 @@ if(!AGENT){
   throw new Error('No agent');
 }
 
-// ── State ──────────────────────────────────────────────────
+// ── Presence System ────────────────────────────────────────
+const PRESENCE_TTL = 60000; // 60 sec — if no heartbeat, consider offline
+let _presenceInterval = null;
+
+async function writePresence(){
+  if(!AGENT || !ownerUid) return;
+  try{
+    await setDoc(doc(db,'users',ownerUid,'presence',AGENT),{
+      agent: AGENT,
+      ts: Date.now(),
+      page: 'CS Portal'
+    });
+  }catch(e){}
+}
+
+async function renderOnlineUsers(){
+  if(!ownerUid) return;
+  try{
+    const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js');
+    const snap = await getDocs(collection(db,'users',ownerUid,'presence'));
+    const now = Date.now();
+    const online = [];
+    snap.forEach(d=>{
+      const data = d.data();
+      if(now - (data.ts||0) < PRESENCE_TTL && data.agent){
+        online.push(data.agent);
+      }
+    });
+    const el = document.getElementById('online_users');
+    if(!el) return;
+    if(online.length <= 1){
+      el.innerHTML = '<span style="color:rgba(255,255,255,.4)">👤 Only you</span>';
+    } else {
+      const others = online.filter(a=>a!==AGENT);
+      el.innerHTML = `<span style="color:#2ecc71">🟢 Online:</span> `
+        + online.map(a=> a===AGENT
+          ? `<span style="color:#fff;font-weight:700">${a}</span>`
+          : `<span style="background:rgba(46,204,113,.15);border:1px solid rgba(46,204,113,.3);border-radius:4px;padding:1px 6px;color:#2ecc71">${a}</span>`
+        ).join(' ');
+    }
+  }catch(e){}
+}
+
+function startPresence(){
+  if(!AGENT) return;
+  writePresence();
+  renderOnlineUsers();
+  _presenceInterval = setInterval(()=>{
+    writePresence();
+    renderOnlineUsers();
+  }, 30000);
+  // Clean up on tab close
+  window.addEventListener('beforeunload', async ()=>{
+    try{
+      const { deleteDoc } = await import('https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js');
+      await deleteDoc(doc(db,'users',ownerUid,'presence',AGENT));
+    }catch(e){}
+  });
+}
 let allJobs = [];
 let editIdx = null;
 let ownerUid = OWNER;
 let taskList = [];
+
+// Expose to window so HTML attributes (oninput, onchange) can access them
+Object.defineProperty(window,'taskList',{get:()=>taskList,set:v=>{taskList=v;}});
+Object.defineProperty(window,'editIdx', {get:()=>editIdx, set:v=>{editIdx=v;}});
 
 // ── Firebase helpers ───────────────────────────────────────
 async function fbGet(path){
@@ -299,6 +397,7 @@ function startLiveSync(){
     renderStats();
     renderCutoffAlerts();
     renderTable();
+    startPresence();
     // Show live badge
     const badge = document.getElementById('live_badge');
     if(badge){ badge.style.opacity='1'; setTimeout(()=>badge.style.opacity='.4', 800); }
@@ -597,22 +696,26 @@ function renderTable(){
       : '';
     const isRecent = j.lastRemarked && (Date.now()-new Date(j.lastRemarked).getTime()) < 24*60*60*1000;
 
-    // NEW SHIPMENT badge — show for 7 days after first assigned
-    const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
-    const assignedAt = j.assignedAt ? new Date(j.assignedAt).getTime() : null;
-    const isNew = assignedAt && (Date.now() - assignedAt) < ONE_WEEK;
-    const newBadge = isNew
-      ? `<div style="font-size:9px;font-family:var(--mono);font-weight:700;color:#f59e0b;animation:sparkle 1.2s infinite alternate;white-space:nowrap">✨ NEW SHIPMENT</div>`
-      : '';
-
     return `<tr>
-      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${j.no||'—'}</span>${newBadge}</td>
+      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${j.no||'—'}</span></td>
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
+      <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
       <td style="font-family:var(--mono);font-size:11px">${etd}</td>
       <td style="font-family:var(--mono);font-size:11px">${eta}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${vessel}</td>
-      <td>${statusBadge(j.status||'pending')}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">
+        <div>${vessel}</div>
+        ${(j.motherVessel||j.motherVsl) ? `<div style="font-size:9px;color:var(--muted);margin-top:2px">M: ${j.motherVessel||j.motherVsl}${j.motherVoy?' / '+j.motherVoy:''}</div>` : '<div style="font-size:9px;color:var(--muted)">M: —</div>'}
+      </td>
+      <td>
+        <select onchange="updateCsStatus(${j._idx}, this.value)" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--s1);color:var(--text);cursor:pointer;font-family:var(--sans)">
+          <option value="pending"   ${(j.status||'pending')==='pending'   ?'selected':''}>⏳ Pending</option>
+          <option value="confirmed" ${j.status==='confirmed' ?'selected':''}>📋 Confirmed</option>
+          <option value="loaded"    ${j.status==='loaded'    ?'selected':''}>🚢 Loaded</option>
+          <option value="completed" ${j.status==='completed' ?'selected':''}>✔ Done</option>
+          <option value="cancelled" ${j.status==='cancelled' ?'selected':''}>✘ Cancelled</option>
+        </select>
+      </td>
       <td>${tasksHtml}</td>
       <td>
         <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
@@ -622,6 +725,12 @@ function renderTable(){
         </div>
       </td>
       <td style="text-align:center">
+        <input type="checkbox" ${j.preAlert?'checked':''} 
+          onchange="updatePreAlert(${j._idx}, this.checked)"
+          style="width:18px;height:18px;cursor:pointer;accent-color:#22c55e">
+        ${j.preAlert?'<div style="font-size:9px;color:#22c55e;font-family:var(--mono);font-weight:700;margin-top:2px">✓ Done</div>':''}
+      </td>
+      <td style="text-align:center">
         <button class="btn btn-cyan" style="font-size:10px;padding:4px 10px" onclick="openModal(${j._idx})">✏ Edit</button>
       </td>
     </tr>`;
@@ -629,12 +738,55 @@ function renderTable(){
 }
 
 // ── Modal ──────────────────────────────────────────────────
+window.updatePreAlert = async function(idx, val){
+  const j = allJobs[idx]; if(!j) return;
+  j.preAlert = val;
+  try{
+    if(window.fbSet && window._ownerJobs){
+      const target = window._ownerJobs.find(x=>x.no===j.no);
+      if(target){
+        target.preAlert = val;
+        await window.fbSet('data/jobs', {jobs: window._ownerJobs, updatedAt: new Date().toISOString()});
+      }
+    }
+  }catch(e){ console.warn('preAlert sync error',e); }
+  toast(val ? '✅ Pre-Alert: Done' : 'Pre-Alert cleared');
+  renderTable();
+};
+
+window.updateCsStatus = async function(idx, status){
+  const j = allJobs[idx]; if(!j) return;
+  j.status = status;
+  if(!j.statusHistory) j.statusHistory=[];
+  j.statusHistory.push({status, date:new Date().toISOString(), note:'Updated by CS: '+AGENT});
+  // Sync to Firestore via existing fbSet
+  try{
+    if(window.fbSet && window._ownerJobs){
+      const target = window._ownerJobs.find(x=>x.no===j.no);
+      if(target){
+        target.status = status;
+        target.statusHistory = j.statusHistory;
+        await window.fbSet('data/jobs', {jobs: window._ownerJobs, updatedAt: new Date().toISOString()});
+      }
+    }
+  }catch(e){ console.warn('Status sync error',e); }
+  toast('✅ Status: '+status);
+  renderTable();
+};
+
+// ── Modal ──────────────────────────────────────────────────
 window.openModal = function(idx){
   editIdx = idx;
   const j = allJobs[idx];
   document.getElementById('modal_bkgno').textContent = '📋 '+( j.no||'—')+' · '+(j.customer||j.shipper||'');
-  document.getElementById('m_status').value  = j.status||'pending';
-  document.getElementById('m_remarks').value = j.remarks||'';
+  document.getElementById('m_etd').value          = j.etd||'';
+  document.getElementById('m_eta').value          = j.eta||'';
+  document.getElementById('m_vessel').value        = j.vessel||'';
+  document.getElementById('m_voyage').value        = j.voyage||'';
+  document.getElementById('m_mother_vessel').value = j.motherVessel||'';
+  document.getElementById('m_mother_voy').value    = j.motherVoy||'';
+  document.getElementById('m_status').value        = j.status||'pending';
+  document.getElementById('m_remarks').value       = j.remarks||'';
   taskList = parseTasks(j.csTasks||'');
   renderTaskList();
   document.getElementById('edit_modal').style.display = 'flex';
@@ -671,11 +823,16 @@ window.saveChanges = async function(){
   if(editIdx === null) return;
   const j = allJobs[editIdx];
   const prevRemarks = j.remarks || '';
-  j.status  = document.getElementById('m_status').value;
-  j.remarks = document.getElementById('m_remarks').value;
-  j.csTasks = serializeTasks(taskList);
+  j.etd          = document.getElementById('m_etd').value;
+  j.eta          = document.getElementById('m_eta').value;
+  j.vessel       = document.getElementById('m_vessel').value;
+  j.voyage       = document.getElementById('m_voyage').value;
+  j.motherVessel = document.getElementById('m_mother_vessel').value;
+  j.motherVoy    = document.getElementById('m_mother_voy').value;
+  j.status       = document.getElementById('m_status').value;
+  j.remarks      = document.getElementById('m_remarks').value;
+  j.csTasks      = serializeTasks(taskList);
 
-  // Stamp lastRemarked if remark changed
   if(j.remarks !== prevRemarks && j.remarks.trim()){
     j.lastRemarked = new Date().toISOString();
   }
@@ -686,6 +843,12 @@ window.saveChanges = async function(){
       const fullJobs = snap.jobs;
       const target = fullJobs.find(x=>x.no===j.no);
       if(target){
+        target.etd          = j.etd;
+        target.eta          = j.eta;
+        target.vessel       = j.vessel;
+        target.voyage       = j.voyage;
+        target.motherVessel = j.motherVessel;
+        target.motherVoy    = j.motherVoy;
         target.status       = j.status;
         target.remarks      = j.remarks;
         target.csTasks      = j.csTasks;

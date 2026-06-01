@@ -481,6 +481,7 @@ body{font-size:14px;font-weight:450}
               <option value="pending">⏳ Pending</option><option value="confirmed">📋 Confirmed</option>
               <option value="shipped">🚢 Shipped</option><option value="arrived">📦 Arrived</option>
               <option value="completed">✅ Completed</option>
+              <option value="cancelled">❌ Cancelled</option>
             </select></div>
           <div class="inp-group full-col" id="s_qty_card">
             <label class="inp-lbl">Container (QTY & Type)</label>
@@ -664,6 +665,7 @@ body{font-size:14px;font-weight:450}
         <option value="pending">⏳ Pending</option><option value="confirmed">📋 Confirmed</option>
         <option value="shipped">🚢 Shipped</option><option value="arrived">📦 Arrived</option>
         <option value="completed">✅ Completed</option>
+        <option value="cancelled">❌ Cancelled</option>
       </select>
       <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
       <button onclick="showGroupEmail()" class="btn btn-cyan" style="font-size:11px">✉️ Group Email</button>
@@ -5878,6 +5880,37 @@ onAuthStateChanged(auth, async user=>{
         const b = document.getElementById('dbit_sync_badge');
         if(b){ b.textContent='🔄 CS Updated'; b.style.color='var(--cyan)'; setTimeout(()=>b.textContent='',3000); }
         console.log('🔄 dbIntransit updated by CS Portal');
+      }
+    }, ()=>{});
+
+    // Real-time listener for jobs — sync CS Portal changes back to Shipments
+    const _jobsRef = doc(db,'users',uid(),'data','jobs');
+    onSnapshot(_jobsRef, (snap)=>{
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(!data?.jobs) return;
+      const remoteJobs = data.jobs;
+      // Merge CS-editable fields back into savedJobs
+      let changed = false;
+      remoteJobs.forEach(rj=>{
+        const lj = window.savedJobs?.find(x=>x.no===rj.no);
+        if(!lj) return;
+        const fields = ['etd','eta','vessel','voyage','motherVessel','motherVoy','status','remarks','csTasks','lastRemarked','preAlert','assignedAt'];
+        fields.forEach(f=>{
+          if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){
+            lj[f] = rj[f];
+            changed = true;
+          }
+        });
+        // Recalc etdMonth/etaMonth if etd/eta changed
+        if(lj.etd) lj.etdMonth = lj.etd.slice(0,7);
+        if(lj.eta) lj.etaMonth = lj.eta.slice(0,7);
+      });
+      if(changed){
+        try{ localStorage.setItem('sfp_jobs', JSON.stringify(window.savedJobs)); }catch(e){}
+        window.renderShipments?.();
+        window.updateAlertCount?.();
+        console.log('🔄 Jobs updated by CS Portal');
       }
     }, ()=>{});
   } else {
