@@ -636,6 +636,43 @@ function serializeTasks(arr){
   return arr.map(t=>(t.done?'✅ ':'⬜ ')+t.text).join('|');
 }
 
+// ── Inline field update ───────────────────────────────────
+window.inlineUpdate = async function(idx, field, value, el){
+  const j = allJobs[idx];
+  if(!j) return;
+
+  // Flash saving indicator
+  if(el){ el.style.borderColor='var(--gold)'; }
+
+  // Update local copy
+  j[field] = value;
+  if(field==='etd') j.etdMonth = value ? value.slice(0,7) : (j.etdMonth||'');
+  if(field==='eta') j.etaMonth = value ? value.slice(0,7) : (j.etaMonth||'');
+
+  try{
+    const snap = await fbGet('data/jobs');
+    if(!snap?.jobs) throw new Error('No jobs data');
+    const fullJobs = snap.jobs;
+    const target = fullJobs.find(x => x.no === j.no);
+    if(!target) throw new Error('Job not found: ' + j.no);
+
+    target[field] = value;
+    if(field==='etd'){ target.etdMonth = j.etdMonth; }
+    if(field==='eta'){ target.etaMonth = j.etaMonth; }
+    // Sync motherVessel alias
+    if(field==='motherVessel'){ target.motherVsl = value; }
+
+    await fbSet('data/jobs', {jobs: fullJobs, updatedAt: new Date().toISOString()});
+
+    if(el){ el.style.borderColor='var(--green)'; setTimeout(()=>{ el.style.borderColor='var(--border2)'; }, 1200); }
+    toast('✅ Saved!');
+  }catch(e){
+    if(el){ el.style.borderColor='var(--red)'; }
+    toast('❌ '+e.message);
+    console.error(e);
+  }
+};
+
 // ── Render table ───────────────────────────────────────────
 function renderTable(){
   const search = (document.getElementById('search_inp').value||'').toLowerCase();
@@ -701,11 +738,39 @@ function renderTable(){
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
       <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
-      <td style="font-family:var(--mono);font-size:11px">${etd}</td>
-      <td style="font-family:var(--mono);font-size:11px">${eta}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">
-        <div>${vessel}</div>
-        ${(j.motherVessel||j.motherVsl) ? `<div style="font-size:9px;color:var(--muted);margin-top:2px">M: ${j.motherVessel||j.motherVsl}${j.motherVoy?' / '+j.motherVoy:''}</div>` : '<div style="font-size:9px;color:var(--muted)">M: —</div>'}
+      <td style="padding:6px 8px">
+        <input type="date" value="${j.etd||''}"
+          onchange="inlineUpdate(${j._idx},'etd',this.value,this)"
+          style="font-family:var(--mono);font-size:11px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--text);width:120px;outline:none;cursor:pointer;color-scheme:light"
+          onfocus="this.style.borderColor='var(--red)'"
+          onblur="this.style.borderColor='var(--border2)'">
+      </td>
+      <td style="padding:6px 8px">
+        <input type="date" value="${j.eta||''}"
+          onchange="inlineUpdate(${j._idx},'eta',this.value,this)"
+          style="font-family:var(--mono);font-size:11px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--text);width:120px;outline:none;cursor:pointer;color-scheme:light"
+          onfocus="this.style.borderColor='var(--red)'"
+          onblur="this.style.borderColor='var(--border2)'">
+      </td>
+      <td style="padding:6px 8px;min-width:160px">
+        <input value="${(j.vessel||'').replace(/"/g,'&quot;')}" placeholder="Vessel…"
+          onchange="inlineUpdate(${j._idx},'vessel',this.value,this)"
+          style="font-family:var(--mono);font-size:10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--text);width:100%;outline:none;margin-bottom:3px"
+          onfocus="this.style.borderColor='var(--red)'"
+          onblur="this.style.borderColor='var(--border2)'">
+        <input value="${(j.voyage||'').replace(/"/g,'&quot;')}" placeholder="Voy…"
+          onchange="inlineUpdate(${j._idx},'voyage',this.value,this)"
+          style="font-family:var(--mono);font-size:10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);width:100%;outline:none;margin-bottom:3px"
+          onfocus="this.style.borderColor='var(--red)'"
+          onblur="this.style.borderColor='var(--border2)'">
+        <div style="display:flex;align-items:center;gap:3px">
+          <span style="font-size:9px;color:var(--muted)">M:</span>
+          <input value="${((j.motherVessel||j.motherVsl)||'').replace(/"/g,'&quot;')}" placeholder="Mother Vessel…"
+            onchange="inlineUpdate(${j._idx},'motherVessel',this.value,this)"
+            style="font-family:var(--mono);font-size:10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);flex:1;outline:none"
+            onfocus="this.style.borderColor='var(--red)'"
+            onblur="this.style.borderColor='var(--border2)'">
+        </div>
       </td>
       <td>
         <select onchange="updateCsStatus(${j._idx}, this.value)" style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--s1);color:var(--text);cursor:pointer;font-family:var(--sans)">
