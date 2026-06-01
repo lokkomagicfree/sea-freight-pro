@@ -6733,57 +6733,55 @@ window.renderSOP = function(){
 
 // ── SOP PDF — shared generator (format matches SOP Email) ──
 
+
 function buildSopPdfFromJob(j){
   if(!window.jspdf) return null;
   const { jsPDF } = window.jspdf;
 
   const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
   const LM=15, RM=195, TW=RM-LM;
-  const PAGE_H=297, FOOTER_H=12, MARGIN_BOTTOM=PAGE_H-FOOTER_H;
+  const PAGE_H=297, MARGIN_BOT=285;
 
   const BLK=[30,30,30], WHITE=[255,255,255], RED=[180,30,30];
-  const LGRAY=[248,248,248], MGRAY=[190,190,190], DGRAY=[110,110,110];
+  const LGRAY=[248,248,248], MGRAY=[185,185,185], DGRAY=[110,110,110];
   const LBLUE=[235,245,255], DBLUE=[30,100,180], GREEN=[20,120,70];
 
-  let y=12, pageNum=1;
+  let y=12;
 
-  function checkNewPage(needed){
-    if(y + needed > MARGIN_BOTTOM){
-      doc.addPage();
-      pageNum++;
-      y=15;
-      // repeat mini header
+  /* page-break guard */
+  function needY(h){
+    if(y+h > MARGIN_BOT){
+      doc.addPage(); y=15;
       fillR(LM,y,TW,7,RED);
-      T('Sea Freight Pro — SOP (continued)', LM+4, y+5, 8, true, WHITE);
-      T('Page '+pageNum, RM, y+5, 8, false, WHITE, 'right');
+      Tb('Sea Freight Pro — SOP (cont.)',LM+4,y,7,true,WHITE);
       y+=10;
     }
   }
 
-  function T(text,x,yy,sz,bold,col,align){
-    doc.setFontSize(sz||8.5);
+  /* text helpers — all y values are TOP of the line box, not baseline */
+  const LS=4.5; // line spacing in mm for 8.5pt
+  function Tb(text,x,boxTop,boxH,bold,col,align){
+    // baseline = boxTop + boxH*0.65  (empirical for helvetica in jsPDF)
+    const baseline = boxTop + boxH*0.65;
+    doc.setFontSize(8.5);
     doc.setFont('helvetica',bold?'bold':'normal');
     doc.setTextColor(...(col||BLK));
-    doc.text(String(text||''),x,yy,{align:align||'left'});
+    doc.text(String(text||''),x,baseline,{align:align||'left'});
   }
-  function fillR(x,yy,w,h,col){ doc.setFillColor(...col); doc.rect(x,yy,w,h,'F'); }
-  function strokeR(x,yy,w,h,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.rect(x,yy,w,h,'S'); }
-  function hline(yy,x1,x2,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.line(x1||LM,yy,x2||RM,yy); }
-
-  // Wrapped text — returns new y
-  function Twrap(text, x, yy, maxW, sz, bold, col){
-    doc.setFontSize(sz||8.5);
+  function Tsz(text,x,boxTop,sz,bold,col,align){
+    const baseline = boxTop + sz*0.35;
+    doc.setFontSize(sz);
     doc.setFont('helvetica',bold?'bold':'normal');
     doc.setTextColor(...(col||BLK));
-    const lines = doc.splitTextToSize(String(text||''), maxW);
-    const lh = (sz||8.5)*0.45;
-    lines.forEach((ln,i)=>{ doc.text(ln, x, yy+i*lh); });
-    return yy + lines.length*lh;
+    doc.text(String(text||''),x,baseline,{align:align||'left'});
   }
+  function fillR(x,y,w,h,col){ doc.setFillColor(...col); doc.rect(x,y,w,h,'F'); }
+  function stkR(x,y,w,h,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.rect(x,y,w,h,'S'); }
+  function hln(y,x1,x2,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.line(x1||LM,y,x2||RM,y); }
 
   const THB_KEYS=['THC','Seal','Surrender','B/L','HDL','DOC','Doc'];
   function isThb(name,idx){
-    if(j.thbFlags && idx!==undefined) return !!j.thbFlags[idx];
+    if(j.thbFlags && idx!=null) return !!j.thbFlags[idx];
     return THB_KEYS.some(k=>(name||'').includes(k));
   }
   function fmtDate(d){
@@ -6792,51 +6790,48 @@ function buildSopPdfFromJob(j){
     catch(e){ return d; }
   }
 
-  // Volume
   const volParts=[];
   if(j.q20)   volParts.push(j.q20+'x20 GP');
   if(j.q40)   volParts.push(j.q40+'x40 GP');
   if(j.q40hc) volParts.push(j.q40hc+'x40 HC');
-  const volStr = volParts.join(', ') || j.volume || '—';
+  const volStr = volParts.join(', ')||j.volume||'—';
+  const vesselStr=[j.vessel,j.voyage].filter(Boolean).join(' / ')||'—';
+  const cyrtn=j.cyrtn||[j.cyDate?'CY '+j.cyDate:'',j.rtnDate?'RTN '+j.rtnDate:''].filter(Boolean).join(' / ')||'';
 
-  const vesselStr = [j.vessel,j.voyage].filter(Boolean).join(' / ')||'—';
-  const cyrtn = j.cyrtn||[j.cyDate?'CY '+j.cyDate:'',j.rtnDate?'RTN '+j.rtnDate:''].filter(Boolean).join(' / ')||'';
+  const names=j.chargeNames||[];
+  const sells=j.sells||[], costs=j.costs||[];
+  const oceanSell=sells[0]||0, oceanCost=costs[0]||0;
+  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
+  const localCost=names.slice(1).map((n,i)=>({name:n,val:costs[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
 
-  const names = j.chargeNames||[];
-  const sells = j.sells||[];
-  const costs = j.costs||[];
-  const oceanSell = sells[0]||0;
-  const oceanCost = costs[0]||0;
-  const localSell = names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
-  const localCost = names.slice(1).map((n,i)=>({name:n,val:costs[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
+  /* ── HEADER ── */
+  fillR(LM,y,TW,13,RED);
+  Tsz('Sea Freight Pro — SOP',LM+4,y+1,11,true,WHITE);
+  Tsz('STANDARD OPERATING PROCEDURE',LM+4,y+7,7,false,[255,200,200]);
+  Tsz(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}),RM,y+4,8,false,WHITE,'right');
+  y+=17;
 
-  /* ─── HEADER ─── */
-  fillR(LM,y,TW,12,RED);
-  T('Sea Freight Pro — SOP',LM+4,y+5,11,true,WHITE);
-  T('STANDARD OPERATING PROCEDURE',LM+4,y+10,7,false,[255,200,200]);
-  T(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}),RM,y+7.5,8,false,WHITE,'right');
-  y+=16;
+  /* ── GREETING ── */
+  needY(12);
+  Tsz("Dear P'Aut,",LM,y,9,false,BLK); y+=6;
+  Tsz('Please find detail as below, thanks',LM,y,8.5,false,DGRAY); y+=9;
 
-  /* ─── GREETING ─── */
-  T("Dear P'Aut,",LM,y,9,false,BLK); y+=5.5;
-  T('Please find detail as below, thanks',LM,y,9,false,DGRAY); y+=9;
-
-  /* ─── SHIPMENT DETAILS ─── */
-  checkNewPage(70);
+  /* ── SHIPMENT DETAILS ── */
+  needY(60);
   const secY1=y;
-  fillR(LM,y,TW,7,LBLUE); strokeR(LM,y,TW,7,[180,210,240]);
-  T('SHIPMENT DETAILS',LM+3,y+5,8.5,true,DBLUE);
+  fillR(LM,y,TW,7,LBLUE); stkR(LM,y,TW,7,[180,210,240]);
+  Tb('SHIPMENT DETAILS',LM+3,y,7,true,DBLUE);
   y+=9;
 
-  const C1=LM, C2=LM+40, C3=LM+TW*0.52, C4=LM+TW*0.52+38;
-  const LH=6;
+  const C1=LM+1, C2=LM+42, C3=LM+TW*0.52+1, C4=LM+TW*0.52+40;
+  const RH=6; // row height mm
 
   function infoRow(l1,v1,l2,v2,vc1,vc2){
-    checkNewPage(LH);
-    T(l1,C1,y,7.5,true,DGRAY);
-    T(String(v1||'—'),C2,y,8.5,false,vc1||BLK);
-    if(l2){ T(l2,C3,y,7.5,true,DGRAY); T(String(v2||'—'),C4,y,8.5,false,vc2||BLK); }
-    y+=LH;
+    needY(RH);
+    Tb(l1,C1,y,RH,true,DGRAY);
+    Tb(String(v1||'—'),C2,y,RH,false,vc1||BLK);
+    if(l2){ Tb(l2,C3,y,RH,true,DGRAY); Tb(String(v2||'—'),C4,y,RH,false,vc2||BLK); }
+    y+=RH;
   }
 
   infoRow('Customer name :',j.customer||'—','Booking No. :',j.no||'—');
@@ -6849,84 +6844,80 @@ function buildSopPdfFromJob(j){
   if(j.vessel) infoRow('Vessel :',vesselStr,'Mother VSL :',j.motherVessel||'—');
   if(cyrtn)    infoRow('CY / RTN :',cyrtn,'','');
   if(j.ams)    infoRow('AMS Submit :',j.ams,'','');
-
-  strokeR(LM,secY1,TW,y-secY1,MGRAY);
+  stkR(LM,secY1,TW,y-secY1,MGRAY);
   y+=5;
 
-  /* ─── COMMODITY ─── */
+  /* ── COMMODITY ── */
   if(j.commodity||j.hscode){
-    checkNewPage(16);
-    if(j.commodity){ T('Commodity : '+j.commodity,LM,y,8.5,false,BLK); y+=LH; }
-    if(j.hscode)   { T('H.S.Code  : '+j.hscode,LM,y,8.5,false,BLK); y+=LH; }
+    needY(14);
+    if(j.commodity){ Tsz('Commodity : '+j.commodity,LM,y,8.5,false,BLK); y+=6; }
+    if(j.hscode)   { Tsz('H.S.Code  : '+j.hscode,   LM,y,8.5,false,BLK); y+=6; }
     y+=3;
   }
 
-  /* ─── helper: local charge table ─── */
+  /* ── charge table helper ── */
   function chargeTable(rows){
     if(!rows.length) return;
-    checkNewPage(8+rows.length*6+2);
+    needY(14+rows.length*6);
     y+=2;
-    T('LOCAL CHARGE',LM,y,8,true,DGRAY); y+=5;
-    fillR(LM,y,TW,6,LGRAY); strokeR(LM,y,TW,6);
-    T('Description',LM+3,y+4,7.5,true,DGRAY);
-    T('Rate',LM+95,y+4,7.5,true,DGRAY,'left');
-    T('Unit',LM+135,y+4,7.5,true,DGRAY);
-    y+=6;
+    Tsz('LOCAL CHARGE',LM,y,8,true,DGRAY); y+=5.5;
+    // header row
+    const TBL_H=6;
+    fillR(LM,y,TW,TBL_H,LGRAY); stkR(LM,y,TW,TBL_H);
+    Tb('Description',LM+3,y,TBL_H,true,DGRAY);
+    Tb('Rate',       LM+95,y,TBL_H,true,DGRAY);
+    Tb('Unit',       LM+138,y,TBL_H,true,DGRAY);
+    y+=TBL_H;
     rows.forEach((ch,ri)=>{
-      checkNewPage(6);
-      fillR(LM,y,TW,6,ri%2===0?WHITE:LGRAY);
-      strokeR(LM,y,TW,6,MGRAY,0.15);
-      T(ch.name,LM+3,y+4,8,false,BLK);
-      T(ch.val.toLocaleString()+(ch.thb?' THB':' USD'),LM+95,y+4,8,false,BLK);
-      T(ch.thb?'Container':'SET',LM+135,y+4,8,false,DGRAY);
-      y+=6;
+      needY(TBL_H);
+      fillR(LM,y,TW,TBL_H,ri%2===0?WHITE:LGRAY);
+      stkR(LM,y,TW,TBL_H,MGRAY,0.15);
+      Tb(ch.name, LM+3,y,TBL_H,false,BLK);
+      Tb(ch.val.toLocaleString()+(ch.thb?' THB':' USD'), LM+95,y,TBL_H,false,BLK);
+      Tb(ch.thb?'Container':'SET', LM+138,y,TBL_H,false,DGRAY);
+      y+=TBL_H;
     });
   }
 
-  /* ─── SELLING RATES ─── */
-  checkNewPage(20);
-  const sellY=y;
-  fillR(LM,y,TW,7,[235,248,235]); strokeR(LM,y,TW,7,[160,215,160]);
-  T('SELLING RATES — Charge to '+(j.customer||'Customer'),LM+3,y+5,8.5,true,GREEN);
+  /* ── SELLING RATES ── */
+  needY(20);
+  fillR(LM,y,TW,7,[235,248,235]); stkR(LM,y,TW,7,[155,210,155]);
+  Tb('SELLING RATES — Charge to '+(j.customer||'Customer'),LM+3,y,7,true,GREEN);
   y+=9;
-
-  if(j.q20  && oceanSell){ checkNewPage(LH); T('USD '+oceanSell.toLocaleString()+' / 20 GP',LM+6,y,9,true,[30,120,60]); y+=LH; }
-  if(j.q40  && oceanSell){ checkNewPage(LH); T('USD '+oceanSell.toLocaleString()+' / 40 GP',LM+6,y,9,true,[30,120,60]); y+=LH; }
-  if(j.q40hc&& oceanSell){ checkNewPage(LH); T('USD '+oceanSell.toLocaleString()+' / 40 HC',LM+6,y,9,true,[30,120,60]); y+=LH; }
-
+  if(j.q20   && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 20 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
+  if(j.q40   && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 40 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
+  if(j.q40hc && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 40 HC',LM+6,y,9,true,[30,120,60]); y+=6.5; }
   chargeTable(localSell);
-  y+=4;
+  y+=5;
 
-  /* ─── COST RATES ─── */
-  checkNewPage(20);
-  fillR(LM,y,TW,7,[255,240,240]); strokeR(LM,y,TW,7,[230,170,170]);
-  T((j.carrier||j.selCarrier||'CARRIER')+' COST',LM+3,y+5,8.5,true,RED);
+  /* ── COST RATES ── */
+  needY(20);
+  fillR(LM,y,TW,7,[255,240,240]); stkR(LM,y,TW,7,[225,165,165]);
+  Tb((j.carrier||j.selCarrier||'CARRIER')+' COST',LM+3,y,7,true,RED);
   y+=9;
-
-  if(j.q20  && oceanCost){ checkNewPage(LH); T('USD '+oceanCost.toLocaleString()+' / 20 GP',LM+6,y,9,true,RED); y+=LH; }
-  if(j.q40  && oceanCost){ checkNewPage(LH); T('USD '+oceanCost.toLocaleString()+' / 40 GP',LM+6,y,9,true,RED); y+=LH; }
-  if(j.q40hc&& oceanCost){ checkNewPage(LH); T('USD '+oceanCost.toLocaleString()+' / 40 HC',LM+6,y,9,true,RED); y+=LH; }
-
+  if(j.q20   && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 20 GP',LM+6,y,9,true,RED); y+=6.5; }
+  if(j.q40   && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 40 GP',LM+6,y,9,true,RED); y+=6.5; }
+  if(j.q40hc && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 40 HC',LM+6,y,9,true,RED); y+=6.5; }
   chargeTable(localCost);
-  y+=4;
+  y+=5;
 
-  /* ─── REMARKS ─── */
-  if((j.remarks||'').trim()){
-    checkNewPage(20);
-    const remark = j.remarks.trim();
-    doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...DGRAY);
-    doc.text('Note :', LM, y);
+  /* ── CONNOTE / NOTE (จาก Container Note field ตาม SOP Email) ── */
+  const noteText=(j.connote||'').trim();
+  if(noteText){
+    needY(16);
+    doc.setFontSize(8.5); doc.setFont('helvetica','bold'); doc.setTextColor(...DGRAY);
+    doc.text('Note :',LM,y+5.5);
     doc.setFont('helvetica','normal'); doc.setTextColor(...BLK);
-    const noteLines = doc.splitTextToSize(remark, TW-18);
-    noteLines.forEach((ln,i)=>{ checkNewPage(5); doc.text(ln, LM+16, y+i*5); });
-    y += noteLines.length*5 + 3;
+    const noteLines=doc.splitTextToSize(noteText,TW-18);
+    noteLines.forEach((ln,i)=>{ needY(5); doc.text(ln,LM+18,y+5.5+i*5); });
+    y+=noteLines.length*5+8;
   }
 
-  /* ─── FOOTER ─── */
-  const footY = Math.max(y+6, MARGIN_BOTTOM-2);
-  hline(footY,LM,RM,MGRAY,0.3);
-  T('Best regards, / Sea Freight Pro',LM,footY+5,7.5,false,DGRAY);
-  T((j.no||'SOP')+' · '+new Date().toLocaleDateString('en-GB'),RM,footY+5,7,false,DGRAY,'right');
+  /* ── FOOTER ── */
+  const footY=Math.max(y+4,MARGIN_BOT);
+  hln(footY,LM,RM,MGRAY,0.3);
+  Tsz('Best regards, / Sea Freight Pro',LM,footY+2,7.5,false,DGRAY);
+  Tsz((j.no||'SOP')+' · '+new Date().toLocaleDateString('en-GB'),RM,footY+2,7,false,DGRAY,'right');
 
   return doc;
 }
