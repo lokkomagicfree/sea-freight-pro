@@ -1007,79 +1007,281 @@ function toast(msg){
 
 // ── Init: sign in anonymously then start live sync ─────────
 
-// ── SOP Panel ──────────────────────────────────────────────
-let _csSopDocs = [];
+// ── SOP Panel (Shipment → PDF) ─────────────────────────────
 let _sopPanelOpen = false;
+let _allShipmentsForSOP = [];
 
-window.toggleSOPPanel = function(){
+window.toggleSOPPanel = async function(){
   const panel = document.getElementById('sop_panel');
   _sopPanelOpen = !_sopPanelOpen;
   panel.style.display = _sopPanelOpen ? '' : 'none';
-  if(_sopPanelOpen) loadAndRenderCSSOPDocs();
+  if(_sopPanelOpen){
+    try{
+      const snap = await fbGet('data/jobs');
+      _allShipmentsForSOP = snap?.jobs || [];
+    }catch(e){ _allShipmentsForSOP = allJobs; }
+    renderCSSOPDocs();
+  }
 };
 
-async function loadAndRenderCSSOPDocs(){
-  try{
-    const snap = await fbGet('data/sopDocs');
-    _csSopDocs = snap?.docs || [];
-    renderCSSOPDocs();
-  }catch(e){ console.warn('SOP load error', e); }
-}
-
 window.renderCSSOPDocs = function(){
-  const catFil = document.getElementById('cs_sop_cat')?.value || '';
   const search = (document.getElementById('cs_sop_search')?.value || '').toLowerCase();
   const list   = document.getElementById('cs_sop_list');
   const count  = document.getElementById('cs_sop_count');
   if(!list) return;
 
-  let docs = _csSopDocs.filter(d => {
-    if(catFil && d.category !== catFil) return false;
-    if(search && !(d.name||'').toLowerCase().includes(search)) return false;
+  // Show all shipments assigned to this CS agent (or all if not filtered)
+  let jobs = (_allShipmentsForSOP.length ? _allShipmentsForSOP : allJobs).filter(j => {
+    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
     return true;
-  }).sort((a,b) => (b.uploadedAt||'').localeCompare(a.uploadedAt||''));
+  }).sort((a,b) => (b.etd||'').localeCompare(a.etd||''));
 
-  if(count) count.textContent = docs.length + ' ไฟล์';
+  if(count) count.textContent = jobs.length + ' shipments';
 
-  if(!docs.length){
-    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12px">'
-      + (_csSopDocs.length ? '🔍 ไม่พบไฟล์' : '📂 ยังไม่มีไฟล์ SOP')
-      + '</div>';
+  if(!jobs.length){
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12px">📋 ไม่พบ Shipment</div>';
     return;
   }
 
-  const catIcon  = {booking:'📋',bl:'📄',customs:'🛃',invoice:'💰',other:'📎'};
-  const catLabel = {booking:'Booking',bl:'B/L',customs:'Customs',invoice:'Invoice',other:'Other'};
+  const stCol = {pending:'var(--gold)',confirmed:'var(--green)',loaded:'var(--cyan)',completed:'#888',cancelled:'var(--red)'};
 
-  list.innerHTML = docs.map(d => {
-    const date = d.uploadedAt
-      ? new Date(d.uploadedAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})
-      : '—';
-    const size = d.size
-      ? (d.size > 1048576 ? (d.size/1048576).toFixed(1)+' MB' : Math.round(d.size/1024)+' KB')
-      : '';
-    const icon = catIcon[d.category] || '📎';
-    return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span style="font-size:18px">${icon}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:11px;font-weight:700;color:var(--text);word-break:break-word">${d.name||'Untitled'}</div>
-          <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${catLabel[d.category]||'Other'} · ${size} · ${date}</div>
-        </div>
+  list.innerHTML = jobs.map((j,i) => {
+    const etd = j.etd ? new Date(j.etd+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
+    const vessel = [j.vessel, j.voyage].filter(Boolean).join(' / ') || '—';
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${j.no||'—'}</span>
+        <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${stCol[j.status]||'var(--muted)'}">${(j.status||'—').toUpperCase()}</span>
       </div>
-      ${d.description ? `<div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4">${d.description}</div>` : ''}
-      <div style="display:flex;gap:6px">
-        <a href="${d.url}" target="_blank" rel="noopener"
-          style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--red);color:#fff;border-radius:6px;padding:6px 8px;font-size:11px;font-weight:700;text-decoration:none">
-          👁 ดู PDF
-        </a>
-        <a href="${d.url}" target="_blank" rel="noopener"
-          style="display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--s1);border:1.5px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;text-decoration:none">
-          ⬇ โหลด
-        </a>
-      </div>
+      <div style="font-size:11px;font-weight:600;margin-bottom:2px">${j.customer||j.shipper||'—'}</div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px">${j.carrier||'—'} · ETD ${etd} · ${vessel}</div>
+      <button onclick="csGenerateSopPDF(${i})"
+        style="width:100%;background:var(--red);color:#fff;border:none;border-radius:6px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans)">
+        📄 Generate SOP PDF
+      </button>
     </div>`;
   }).join('');
+  // Store ref for PDF generation
+  window._csSopJobs = jobs;
+};
+
+
+// ── SOP PDF — shared generator (format matches SOP Email) ──
+function buildSopPdfFromJob(j){
+  if(!window.jspdf) return null;
+  const { jsPDF } = window.jspdf;
+
+  const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+  const LM=15, RM=195, TW=RM-LM, W=210;
+
+  /* ── palette ── */
+  const BLK=[30,30,30], WHITE=[255,255,255], RED=[180,30,30];
+  const LGRAY=[248,248,248], MGRAY=[200,200,200], DGRAY=[100,100,100];
+  const LBLUE=[235,245,255], DBLUE=[30,100,180], GREEN=[30,130,80];
+
+  /* ── helpers ── */
+  function T(text,x,y,sz,bold,col,align){
+    doc.setFontSize(sz||8.5);
+    doc.setFont('helvetica',bold?'bold':'normal');
+    doc.setTextColor(...(col||BLK));
+    doc.text(String(text||''),x,y,{align:align||'left'});
+  }
+  function fillR(x,y,w,h,col){ doc.setFillColor(...col); doc.rect(x,y,w,h,'F'); }
+  function strokeR(x,y,w,h,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.rect(x,y,w,h,'S'); }
+  function hline(y,x1,x2,col,lw){ doc.setDrawColor(...(col||MGRAY)); doc.setLineWidth(lw||0.25); doc.line(x1||LM,y,x2||RM,y); }
+
+  /* ── charge helpers ── */
+  const THB_KEYS=['THC','Seal','Surrender','B/L','HDL','DOC','Doc'];
+  function isThb(name){ return THB_KEYS.some(k=>(name||'').includes(k)); }
+  function fmtCharge(val, name){
+    if(!val) return '—';
+    const thb = j.thbFlags ? j.thbFlags[j.chargeNames?.indexOf(name)] : isThb(name);
+    return thb ? val.toLocaleString()+' THB' : 'USD '+val.toLocaleString();
+  }
+  function fmtDate(d){
+    if(!d) return '—';
+    try{ return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+    catch(e){ return d; }
+  }
+
+  /* ── volume string ── */
+  const volParts=[];
+  if(j.q20) volParts.push(j.q20+'x20 GP');
+  if(j.q40) volParts.push(j.q40+'x40 GP');
+  if(j.q40hc) volParts.push(j.q40hc+'x40 HC');
+  const volStr = volParts.join(', ') || j.volume || '—';
+
+  /* ── vessel string ── */
+  const vesselStr = [j.vessel, j.voyage].filter(Boolean).join(' / ') || '—';
+  const cyrtn = j.cyrtn || [j.cyDate?'CY '+j.cyDate:'', j.rtnDate?'RTN '+j.rtnDate:''].filter(Boolean).join(' / ') || '';
+
+  /* ── charges array ── */
+  const names  = j.chargeNames || [];
+  const sells  = j.sells  || [];
+  const costs  = j.costs  || [];
+
+  // Ocean freight = row 0, local = rest
+  const ocean20sell = sells[0]||0, ocean40sell = sells[0]||0;
+  const ocean20cost = costs[0]||0, ocean40cost = costs[0]||0;
+  const localSell = names.slice(1).map((n,i)=>({name:n, val:sells[i+1]||0})).filter(x=>x.val);
+  const localCost = names.slice(1).map((n,i)=>({name:n, val:costs[i+1]||0})).filter(x=>x.val);
+
+  let y = 12;
+
+  /* ══════════ HEADER ══════════ */
+  fillR(LM, y, TW, 12, RED);
+  T('Sea Freight Pro — SOP', LM+4, y+5, 11, true, WHITE);
+  T('STANDARD OPERATING PROCEDURE', LM+4, y+10, 7, false, [255,200,200]);
+  T(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}), RM, y+7.5, 8, false, WHITE, 'right');
+  y += 16;
+
+  /* ══════════ GREETING ══════════ */
+  T('Dear P\'Aut,', LM, y, 9, false, BLK); y+=5;
+  T('Please find detail as below, thanks', LM, y, 9, false, DGRAY); y+=8;
+
+  /* ══════════ MAIN INFO BLOCK ══════════ */
+  const infoY = y;
+  fillR(LM, y, TW, 7, LBLUE);
+  strokeR(LM, y, TW, 7, [180,210,240]);
+  T('SHIPMENT DETAILS', LM+3, y+5, 8.5, true, DBLUE);
+  y += 9;
+
+  const COL1=LM, COL2=LM+38, COL3=LM+TW*0.52, COL4=LM+TW*0.52+38;
+  const LH=5.8;
+
+  function infoRow(l1,v1,l2,v2,vc1,vc2){
+    T(l1, COL1, y, 8, true, DGRAY);
+    T(v1||'—', COL2, y, 8.5, false, vc1||BLK);
+    if(l2){ T(l2, COL3, y, 8, true, DGRAY); T(v2||'—', COL4, y, 8.5, false, vc2||BLK); }
+    y+=LH;
+  }
+
+  infoRow('Customer name :', j.customer||'—', 'Booking No. :', j.no||'—');
+  infoRow('Shipper :', j.shipper||'—', 'Consignee :', j.consignee||'—');
+  infoRow('Incoterm :', j.incoterm||'—', 'Ship Mode :', 'Ocean');
+  infoRow('Carrier :', j.carrier||j.selCarrier||'—', 'BL Type :', j.bltype||'—');
+  infoRow('Vol :', volStr, 'SC :', j.sc||'—');
+  infoRow('Origin :', j.pol||'—', 'Destination :', j.pod||'—');
+  infoRow('ETD :', fmtDate(j.etd), 'ETA :', fmtDate(j.eta), DBLUE, DBLUE);
+  if(j.vessel) infoRow('Vessel :', vesselStr, 'Mother VSL :', j.motherVessel||(j.motherVoy?'see below':'—'));
+  if(cyrtn)  infoRow('CY / RTN :', cyrtn, '', '');
+  if(j.ams)  infoRow('AMS Submit :', j.ams, '', '');
+
+  strokeR(LM, infoY, TW, y-infoY+1, MGRAY);
+  y += 4;
+
+  /* ══════════ COMMODITY / HS ══════════ */
+  if(j.commodity || j.hscode){
+    T('Commodity : '+(j.commodity||'—'), LM, y, 8.5, false, BLK); y+=LH;
+    if(j.hscode){ T('H.S.Code : '+j.hscode, LM, y, 8.5, false, BLK); y+=LH; }
+    y+=2;
+  }
+
+  /* ══════════ SELLING RATES ══════════ */
+  fillR(LM, y, TW, 7, [235,248,235]);
+  strokeR(LM, y, TW, 7, [170,220,170]);
+  T('SELLING RATES — Charge to '+( j.customer||'Customer'), LM+3, y+5, 8.5, true, GREEN);
+  y += 9;
+
+  // Ocean freight sell rates per container type
+  if(j.q20 && ocean20sell){ T('USD '+ocean20sell.toLocaleString()+' / 20 GP', LM+6, y, 9, true, [30,100,50]); y+=LH; }
+  if(j.q40 && ocean40sell){ T('USD '+ocean40sell.toLocaleString()+' / 40 GP', LM+6, y, 9, true, [30,100,50]); y+=LH; }
+  if(j.q40hc){ T('USD '+ocean40sell.toLocaleString()+' / 40 HC', LM+6, y, 9, true, [30,100,50]); y+=LH; }
+
+  // Local charges table (sell)
+  if(localSell.length){
+    y+=2;
+    T('LOCAL CHARGE', LM, y, 8, true, DGRAY); y+=5;
+    // Table header
+    fillR(LM, y, TW, 6, LGRAY); strokeR(LM, y, TW, 6);
+    T('Description', LM+3, y+4, 7.5, true, DGRAY);
+    T('Rate', LM+90, y+4, 7.5, true, DGRAY);
+    T('Unit', LM+130, y+4, 7.5, true, DGRAY);
+    y+=6;
+    localSell.forEach((ch,ri)=>{
+      fillR(LM, y, TW, 6, ri%2===0?WHITE:LGRAY); strokeR(LM, y, TW, 6, MGRAY, 0.15);
+      T(ch.name, LM+3, y+4, 8, false, BLK);
+      const thb = j.thbFlags ? j.thbFlags[names.indexOf(ch.name)] : isThb(ch.name);
+      T(ch.val.toLocaleString()+(thb?' THB':' USD'), LM+90, y+4, 8, false, BLK);
+      T(thb?'Container/SET':'SET', LM+130, y+4, 8, false, DGRAY);
+      y+=6;
+    });
+  }
+  strokeR(LM, y-localSell.length*6-6-(localSell.length?13:0)-(j.q20||j.q40||j.q40hc?LH*(volParts.length):0)-9, TW, y - (y-localSell.length*6-6-(localSell.length?13:0)-(j.q20||j.q40||j.q40hc?LH*(volParts.length):0)-9));
+  y+=4;
+
+  /* ══════════ COST RATES ══════════ */
+  fillR(LM, y, TW, 7, [255,240,240]);
+  strokeR(LM, y, TW, 7, [240,180,180]);
+  T((j.carrier||j.selCarrier||'CARRIER')+' COST', LM+3, y+5, 8.5, true, RED);
+  y += 9;
+
+  if(j.q20 && ocean20cost){ T('USD '+ocean20cost.toLocaleString()+' / 20 GP', LM+6, y, 9, true, RED); y+=LH; }
+  if(j.q40 && ocean40cost){ T('USD '+ocean40cost.toLocaleString()+' / 40 GP', LM+6, y, 9, true, RED); y+=LH; }
+  if(j.q40hc){ T('USD '+ocean40cost.toLocaleString()+' / 40 HC', LM+6, y, 9, true, RED); y+=LH; }
+
+  if(localCost.length){
+    y+=2;
+    T('LOCAL CHARGE', LM, y, 8, true, DGRAY); y+=5;
+    fillR(LM, y, TW, 6, LGRAY); strokeR(LM, y, TW, 6);
+    T('Description', LM+3, y+4, 7.5, true, DGRAY);
+    T('Rate', LM+90, y+4, 7.5, true, DGRAY);
+    T('Unit', LM+130, y+4, 7.5, true, DGRAY);
+    y+=6;
+    localCost.forEach((ch,ri)=>{
+      fillR(LM, y, TW, 6, ri%2===0?WHITE:LGRAY); strokeR(LM, y, TW, 6, MGRAY, 0.15);
+      T(ch.name, LM+3, y+4, 8, false, BLK);
+      const thb = j.thbFlags ? j.thbFlags[names.indexOf(ch.name)] : isThb(ch.name);
+      T(ch.val.toLocaleString()+(thb?' THB':' USD'), LM+90, y+4, 8, false, BLK);
+      T(thb?'Container/SET':'SET', LM+130, y+4, 8, false, DGRAY);
+      y+=6;
+    });
+  }
+  y+=4;
+
+
+
+  /* ══════════ REMARKS ══════════ */
+  if(j.remarks){
+    T('Note : '+j.remarks, LM, y, 8, false, DGRAY); y+=LH+2;
+  }
+
+  /* ══════════ FOOTER ══════════ */
+  const footY = Math.min(y+4, 283);
+  hline(footY, LM, RM, MGRAY, 0.3);
+  T('Best regards, / Sea Freight Pro', LM, footY+5, 7.5, false, DGRAY);
+  T(j.no+' · '+new Date().toLocaleDateString('en-GB'), RM, footY+5, 7, false, DGRAY, 'right');
+
+  return doc;
+}
+
+window.generateSopPDF = function(idx){
+  if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
+  const j = (window.savedJobs||[])[idx];
+  if(!j){ toast('❌ Shipment not found'); return; }
+  toast('⏳ Generating SOP PDF…');
+  const doc = buildSopPdfFromJob(j);
+  if(!doc){ toast('❌ PDF error'); return; }
+  doc.save('SOP_'+(j.no||'DRAFT').replace(/[^A-Za-z0-9]/g,'_')+'.pdf');
+  toast('📥 Downloaded: SOP_'+(j.no||'DRAFT')+'.pdf');
+};
+
+
+window.csGenerateSopPDF = function(idx){
+  if(!window.jspdf){
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>csGenerateSopPDF(idx);
+    document.head.appendChild(s);
+    toast('⏳ Loading PDF library…'); return;
+  }
+  const j=(window._csSopJobs||[])[idx];
+  if(!j){ toast('❌ Shipment not found'); return; }
+  toast('⏳ Generating SOP PDF…');
+  const doc=buildSopPdfFromJob(j);
+  if(!doc){ toast('❌ PDF error'); return; }
+  doc.save('SOP_'+(j.no||'DRAFT').replace(/[^A-Za-z0-9]/g,'_')+'.pdf');
+  toast('📥 Downloaded SOP PDF!');
 };
 
 signInAnonymously(auth)
@@ -1097,26 +1299,16 @@ signInAnonymously(auth)
 <div id="sop_panel" style="display:none;position:fixed;top:52px;right:0;bottom:0;width:min(420px,100vw);background:var(--s1);border-left:1px solid var(--border2);z-index:300;overflow-y:auto;box-shadow:-4px 0 20px rgba(192,57,43,.1)">
   <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--s1);z-index:10">
     <div>
-      <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red)">📂 SOP Documents</div>
-      <div style="font-size:10px;color:var(--muted);margin-top:1px">คลิกเพื่อดู / โหลด PDF</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red)">📋 SOP — Generate PDF</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:1px">เลือก Shipment แล้วกด Generate PDF</div>
     </div>
     <button onclick="toggleSOPPanel()" style="border:none;background:var(--s2);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px">✕</button>
   </div>
 
   <div style="padding:12px 18px 8px">
-    <div style="display:flex;gap:6px;margin-bottom:10px">
-      <select id="cs_sop_cat" onchange="renderCSSOPDocs()" style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono)">
-        <option value="">📁 ทุกหมวด</option>
-        <option value="booking">📋 Booking</option>
-        <option value="bl">📄 B/L</option>
-        <option value="customs">🛃 Customs</option>
-        <option value="invoice">💰 Invoice</option>
-        <option value="other">📎 Other</option>
-      </select>
-      <input id="cs_sop_search" placeholder="🔍 ค้นหา…" oninput="renderCSSOPDocs()"
-        style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono)">
-    </div>
-    <div id="cs_sop_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:10px"></div>
+    <input id="cs_sop_search" placeholder="🔍 Booking / Customer…" oninput="renderCSSOPDocs()"
+      style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;font-family:var(--mono);box-sizing:border-box;outline:none;margin-bottom:8px">
+    <div id="cs_sop_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px"></div>
   </div>
 
   <div id="cs_sop_list" style="padding:0 18px 24px;display:flex;flex-direction:column;gap:8px">
