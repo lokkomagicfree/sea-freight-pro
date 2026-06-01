@@ -2666,7 +2666,7 @@ function showAlertPanel(){
 function updateAlertCount(){checkAlerts();}
 
 // ── Status helpers ─────────────────────────────────────────
-const SC={pending:{cls:'st-pending',icon:'⏳'},confirmed:{cls:'st-confirmed',icon:'📋'},shipped:{cls:'st-shipped',icon:'🚢'},arrived:{cls:'st-arrived',icon:'📦'},completed:{cls:'st-completed',icon:'✅'}};
+const SC={pending:{cls:'st-pending',icon:'⏳'},confirmed:{cls:'st-confirmed',icon:'📋'},shipped:{cls:'st-shipped',icon:'🚢'},arrived:{cls:'st-arrived',icon:'📦'},completed:{cls:'st-completed',icon:'✅'},cancelled:{cls:'st-cancelled',icon:'❌'}};
 function statusSel(cur,idx){
   return `<select class="status-sel ${(SC[cur]||SC.pending).cls}" onchange="updateStatus(${idx},this.value)" style="font-size:10px;padding:3px 8px;border-radius:4px;border:none;cursor:pointer;outline:none;width:100%;min-width:100px">
     ${Object.entries(SC).map(([k,v])=>`<option value="${k}"${k===cur?' selected':''}>${v.icon} ${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('')}
