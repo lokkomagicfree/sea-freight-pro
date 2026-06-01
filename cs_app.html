@@ -118,7 +118,10 @@ select.inp{cursor:pointer}
   <!-- Filter -->
   <div class="filter-bar">
     <input class="fi" id="search_inp" placeholder="🔍 Booking / Customer…" oninput="renderTable()" style="width:200px">
-    <select class="fi" id="status_fil" onchange="renderTable()">
+    <select class="fi" id="status_fil"
+      onfocus="window._filterFocused=true"
+      onblur="window._filterFocused=false"
+      onchange="window._filterFocused=false;renderTable()">
       <option value="">All Status</option>
       <option value="pending">Pending</option>
       <option value="confirmed">Confirmed</option>
@@ -126,7 +129,10 @@ select.inp{cursor:pointer}
       <option value="completed">Completed</option>
       <option value="cancelled">Cancelled</option>
     </select>
-    <select class="fi" id="month_fil" onchange="renderTable()">
+    <select class="fi" id="month_fil"
+      onfocus="window._filterFocused=true"
+      onblur="window._filterFocused=false"
+      onchange="window._filterFocused=false;renderTable()">
       <option value="">All Months</option>
     </select>
     <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;font-family:var(--mono)">
@@ -396,7 +402,14 @@ function startLiveSync(){
     buildMonthFilter();
     renderStats();
     renderCutoffAlerts();
-    renderTable();
+    // Debounce renderTable so it doesn't interrupt user filter interactions
+    clearTimeout(window._renderDebounce);
+    window._renderDebounce = setTimeout(()=>{
+      if(!window._filterFocused) renderTable();
+      else { // retry after focus released
+        const retry = setInterval(()=>{ if(!window._filterFocused){ clearInterval(retry); renderTable(); } }, 200);
+      }
+    }, 300);
     startPresence();
     // Show live badge
     const badge = document.getElementById('live_badge');
@@ -674,11 +687,15 @@ window.inlineUpdate = async function(idx, field, value, el){
 };
 
 // ── Render table ───────────────────────────────────────────
+let _renderPending = false;
 function renderTable(){
   const search = (document.getElementById('search_inp').value||'').toLowerCase();
   const stFil  = document.getElementById('status_fil').value;
   const mFil   = document.getElementById('month_fil').value;
   const tasksOnly = document.getElementById('tasks_only').checked;
+  // Preserve filter selections after innerHTML rebuild
+  const _savedStatus = stFil;
+  const _savedMonth  = mFil;
 
   const jobs = allJobs.filter((j,i)=>{
     j._idx = i;
@@ -709,6 +726,14 @@ function renderTable(){
     tbody.innerHTML = `<tr><td colspan="10"><div class="empty">ไม่มี Shipment ที่ assign ให้ <b>${AGENT}</b></div></td></tr>`;
     return;
   }
+
+  // Restore filter values (innerHTML rebuild resets nothing but snapshot re-renders can conflict)
+  requestAnimationFrame(()=>{
+    const sf = document.getElementById('status_fil');
+    const mf = document.getElementById('month_fil');
+    if(sf && sf.value !== _savedStatus) sf.value = _savedStatus;
+    if(mf && mf.value !== _savedMonth)  mf.value = _savedMonth;
+  });
 
   tbody.innerHTML = jobs.map(j=>{
     const tasks = parseTasks(j.csTasks||'');
