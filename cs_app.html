@@ -85,6 +85,7 @@ select.inp{cursor:pointer}
     <div id="online_users" style="display:flex;align-items:center;gap:5px;font-size:10px;font-family:'DM Mono',monospace"></div>
     <span id="live_badge" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--green);opacity:.4;transition:opacity .3s">● LIVE</span>
     <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px" onclick="refreshData()">🔄 Refresh</button>
+    <button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4)" onclick="toggleSOPPanel()">📂 SOP</button>
   </div>
 </div>
 
@@ -1005,6 +1006,82 @@ function toast(msg){
 }
 
 // ── Init: sign in anonymously then start live sync ─────────
+
+// ── SOP Panel ──────────────────────────────────────────────
+let _csSopDocs = [];
+let _sopPanelOpen = false;
+
+window.toggleSOPPanel = function(){
+  const panel = document.getElementById('sop_panel');
+  _sopPanelOpen = !_sopPanelOpen;
+  panel.style.display = _sopPanelOpen ? '' : 'none';
+  if(_sopPanelOpen) loadAndRenderCSSOPDocs();
+};
+
+async function loadAndRenderCSSOPDocs(){
+  try{
+    const snap = await fbGet('data/sopDocs');
+    _csSopDocs = snap?.docs || [];
+    renderCSSOPDocs();
+  }catch(e){ console.warn('SOP load error', e); }
+}
+
+window.renderCSSOPDocs = function(){
+  const catFil = document.getElementById('cs_sop_cat')?.value || '';
+  const search = (document.getElementById('cs_sop_search')?.value || '').toLowerCase();
+  const list   = document.getElementById('cs_sop_list');
+  const count  = document.getElementById('cs_sop_count');
+  if(!list) return;
+
+  let docs = _csSopDocs.filter(d => {
+    if(catFil && d.category !== catFil) return false;
+    if(search && !(d.name||'').toLowerCase().includes(search)) return false;
+    return true;
+  }).sort((a,b) => (b.uploadedAt||'').localeCompare(a.uploadedAt||''));
+
+  if(count) count.textContent = docs.length + ' ไฟล์';
+
+  if(!docs.length){
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12px">'
+      + (_csSopDocs.length ? '🔍 ไม่พบไฟล์' : '📂 ยังไม่มีไฟล์ SOP')
+      + '</div>';
+    return;
+  }
+
+  const catIcon  = {booking:'📋',bl:'📄',customs:'🛃',invoice:'💰',other:'📎'};
+  const catLabel = {booking:'Booking',bl:'B/L',customs:'Customs',invoice:'Invoice',other:'Other'};
+
+  list.innerHTML = docs.map(d => {
+    const date = d.uploadedAt
+      ? new Date(d.uploadedAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})
+      : '—';
+    const size = d.size
+      ? (d.size > 1048576 ? (d.size/1048576).toFixed(1)+' MB' : Math.round(d.size/1024)+' KB')
+      : '';
+    const icon = catIcon[d.category] || '📎';
+    return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:18px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:700;color:var(--text);word-break:break-word">${d.name||'Untitled'}</div>
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${catLabel[d.category]||'Other'} · ${size} · ${date}</div>
+        </div>
+      </div>
+      ${d.description ? `<div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4">${d.description}</div>` : ''}
+      <div style="display:flex;gap:6px">
+        <a href="${d.url}" target="_blank" rel="noopener"
+          style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--red);color:#fff;border-radius:6px;padding:6px 8px;font-size:11px;font-weight:700;text-decoration:none">
+          👁 ดู PDF
+        </a>
+        <a href="${d.url}" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--s1);border:1.5px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;text-decoration:none">
+          ⬇ โหลด
+        </a>
+      </div>
+    </div>`;
+  }).join('');
+};
+
 signInAnonymously(auth)
   .then(() => loadData())
   .catch(err => {
@@ -1015,5 +1092,37 @@ signInAnonymously(auth)
       </div>`;
   });
 </script>
+
+<!-- SOP Panel -->
+<div id="sop_panel" style="display:none;position:fixed;top:52px;right:0;bottom:0;width:min(420px,100vw);background:var(--s1);border-left:1px solid var(--border2);z-index:300;overflow-y:auto;box-shadow:-4px 0 20px rgba(192,57,43,.1)">
+  <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--s1);z-index:10">
+    <div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red)">📂 SOP Documents</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:1px">คลิกเพื่อดู / โหลด PDF</div>
+    </div>
+    <button onclick="toggleSOPPanel()" style="border:none;background:var(--s2);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px">✕</button>
+  </div>
+
+  <div style="padding:12px 18px 8px">
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <select id="cs_sop_cat" onchange="renderCSSOPDocs()" style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono)">
+        <option value="">📁 ทุกหมวด</option>
+        <option value="booking">📋 Booking</option>
+        <option value="bl">📄 B/L</option>
+        <option value="customs">🛃 Customs</option>
+        <option value="invoice">💰 Invoice</option>
+        <option value="other">📎 Other</option>
+      </select>
+      <input id="cs_sop_search" placeholder="🔍 ค้นหา…" oninput="renderCSSOPDocs()"
+        style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono)">
+    </div>
+    <div id="cs_sop_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:10px"></div>
+  </div>
+
+  <div id="cs_sop_list" style="padding:0 18px 24px;display:flex;flex-direction:column;gap:8px">
+    <div style="text-align:center;padding:40px;color:var(--muted);font-size:12px">⏳ กำลังโหลด…</div>
+  </div>
+</div>
+
 </body>
 </html>

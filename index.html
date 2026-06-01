@@ -230,6 +230,7 @@ body{font-size:14px;font-weight:450}
     <button class="nav-tab" onclick="showPage('news')">📰 News</button>
     <button class="nav-tab" onclick="showPage('salereport');renderSaleReport()">📊 Sale</button>
     <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 Transit</button>
+    <button class="nav-tab" onclick="showPage('sop');renderSOP()">📂 SOP</button>
   </div>
   <div class="topbar-right">
     <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 5px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">💾<span id="rate_cache_count">0</span></div>
@@ -5767,12 +5768,57 @@ function clearImgExtract(){
   </div>
 </div>
 
+<div id="page-sop" class="page">
+  <div style="max-width:900px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text)">📂 SOP Documents</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Standard Operating Procedures — คลิกเพื่อดู / โหลด PDF</div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:8px;background:var(--red);color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--sans)">
+        ⬆ Upload PDF
+        <input type="file" accept=".pdf" multiple onchange="sopUpload(this.files)" style="display:none">
+      </label>
+    </div>
+
+    <!-- Category filter -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <select id="sop_cat_fil" class="fi" onchange="renderSOP()" style="font-size:12px;padding:5px 10px">
+        <option value="">📁 ทุกหมวด</option>
+        <option value="booking">📋 Booking</option>
+        <option value="bl">📄 B/L</option>
+        <option value="customs">🛃 Customs</option>
+        <option value="invoice">💰 Invoice</option>
+        <option value="other">📎 Other</option>
+      </select>
+      <input id="sop_search" class="fi" placeholder="🔍 ค้นหาชื่อไฟล์…" oninput="renderSOP()" style="width:200px;font-size:12px">
+      <span id="sop_count" style="font-size:11px;color:var(--muted);font-family:var(--mono)"></span>
+    </div>
+
+    <!-- Upload progress -->
+    <div id="sop_upload_bar" style="display:none;margin-bottom:12px;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:12px 16px">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--muted);margin-bottom:6px" id="sop_upload_msg">กำลัง upload…</div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div id="sop_upload_prog" style="height:100%;background:var(--red);border-radius:2px;width:0%;transition:width .3s"></div>
+      </div>
+    </div>
+
+    <!-- Files grid -->
+    <div id="sop_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+      <div style="text-align:center;padding:60px;color:var(--muted);font-size:13px;grid-column:1/-1">⏳ กำลังโหลด…</div>
+    </div>
+  </div>
+</div>
+
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject }
+  from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyD7uD5a2HnYuBeX0pkL17-H8hf2ZTybb6s",
@@ -5786,6 +5832,7 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
+const storage = getStorage(app);
 let _currentUser = null;
 
 // Remember login for 30 days
@@ -6604,6 +6651,148 @@ function duplicateBookingPDF(){
     }, 4000);
   }
   toast('📋 Duplicate — กรอก Booking No. ใหม่แล้ว Download PDF ได้เลยครับ');
+
+// ── SOP Document System ─────────────────────────────────────
+let _sopDocs = [];
+
+async function loadSOPDocs(){
+  const snap = await fbGet('data/sopDocs');
+  _sopDocs = snap?.docs || [];
+}
+
+window.renderSOP = async function(){
+  if(!_sopDocs.length) await loadSOPDocs();
+  const catFil = document.getElementById('sop_cat_fil')?.value || '';
+  const search = (document.getElementById('sop_search')?.value || '').toLowerCase();
+  const grid = document.getElementById('sop_grid');
+  if(!grid) return;
+
+  let docs = _sopDocs.filter(d => {
+    if(catFil && d.category !== catFil) return false;
+    if(search && !(d.name||'').toLowerCase().includes(search)) return false;
+    return true;
+  }).sort((a,b) => (b.uploadedAt||'').localeCompare(a.uploadedAt||''));
+
+  const count = document.getElementById('sop_count');
+  if(count) count.textContent = docs.length + ' ไฟล์';
+
+  if(!docs.length){
+    grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:13px;grid-column:1/-1">'
+      + (_sopDocs.length ? '🔍 ไม่พบไฟล์ที่ค้นหา' : '📂 ยังไม่มีไฟล์ — กด Upload PDF เพื่อเพิ่ม')
+      + '</div>';
+    return;
+  }
+
+  const catIcon  = {booking:'📋',bl:'📄',customs:'🛃',invoice:'💰',other:'📎'};
+  const catLabel = {booking:'Booking',bl:'B/L',customs:'Customs',invoice:'Invoice',other:'Other'};
+
+  grid.innerHTML = docs.map(d => {
+    const date = d.uploadedAt
+      ? new Date(d.uploadedAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})
+      : '—';
+    const size = d.size
+      ? (d.size > 1048576 ? (d.size/1048576).toFixed(1)+' MB' : Math.round(d.size/1024)+' KB')
+      : '';
+    const icon = catIcon[d.category] || '📎';
+    return `<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 4px rgba(192,57,43,.06);transition:box-shadow .15s"
+      onmouseover="this.style.boxShadow='0 4px 16px rgba(192,57,43,.12)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(192,57,43,.06)'">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="font-size:22px;flex-shrink:0">${icon}</span>
+          <div style="min-width:0">
+            <div style="font-size:12px;font-weight:700;color:var(--text);word-break:break-word;line-height:1.3">${d.name||'Untitled'}</div>
+            <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">${catLabel[d.category]||'Other'} · ${size}</div>
+          </div>
+        </div>
+        <button onclick="sopDelete('${d.id}')" title="Delete"
+          style="border:none;background:rgba(192,57,43,.08);color:var(--red);cursor:pointer;width:26px;height:26px;border-radius:6px;font-size:12px;flex-shrink:0">✕</button>
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono)">📅 ${date}${d.uploadedBy?' · 👤 '+d.uploadedBy:''}</div>
+      ${d.description ? `<div style="font-size:11px;color:var(--muted);line-height:1.4">${d.description}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:2px">
+        <a href="${d.url}" target="_blank" rel="noopener"
+          style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;background:var(--red);color:#fff;border-radius:7px;padding:7px 10px;font-size:11px;font-weight:700;text-decoration:none">
+          👁 ดู PDF
+        </a>
+        <a href="${d.url}" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;justify-content:center;gap:5px;background:var(--s2);border:1.5px solid var(--border2);color:var(--text);border-radius:7px;padding:7px 10px;font-size:11px;font-weight:700;text-decoration:none">
+          ⬇ โหลด
+        </a>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+window.sopUpload = async function(files){
+  if(!files?.length) return;
+  const bar  = document.getElementById('sop_upload_bar');
+  const msg  = document.getElementById('sop_upload_msg');
+  const prog = document.getElementById('sop_upload_prog');
+  bar.style.display = '';
+
+  for(let i = 0; i < files.length; i++){
+    const file = files[i];
+    msg.textContent = `⬆ (${i+1}/${files.length}) ${file.name}`;
+    prog.style.width = '0%';
+
+    const cats      = ['booking','bl','customs','invoice','other'];
+    const catLabels = ['📋 Booking','📄 B/L','🛃 Customs','💰 Invoice','📎 Other'];
+    const catChoice = prompt(`หมวดหมู่ของ "${file.name}"?\n\n${catLabels.map((l,j)=>`${j+1}. ${l}`).join('\n')}\n\nพิมพ์ 1-5:`) || '5';
+    const category  = cats[parseInt(catChoice)-1] || 'other';
+    const description = prompt('คำอธิบาย (ไม่บังคับ):') || '';
+
+    try{
+      const storageRef = ref(storage, `users/${uid()}/sop/${Date.now()}_${file.name}`);
+      const task = uploadBytesResumable(storageRef, file);
+
+      await new Promise((resolve, reject) => {
+        task.on('state_changed',
+          snap => { prog.style.width = Math.round(snap.bytesTransferred / snap.totalBytes * 100) + '%'; },
+          reject,
+          async () => {
+            const url = await getDownloadURL(task.snapshot.ref);
+            const docMeta = {
+              id: Date.now().toString() + '_' + i,
+              name: file.name,
+              url,
+              storagePath: storageRef.fullPath,
+              size: file.size,
+              category,
+              description,
+              uploadedAt: new Date().toISOString(),
+              uploadedBy: _currentUser?.displayName || _currentUser?.email || 'User'
+            };
+            _sopDocs.push(docMeta);
+            await fbSet('data/sopDocs', { docs: _sopDocs, updatedAt: new Date().toISOString() });
+            resolve();
+          }
+        );
+      });
+      prog.style.width = '100%';
+    }catch(e){
+      toast('❌ Upload error: ' + e.message);
+      console.error(e);
+    }
+  }
+
+  msg.textContent = '✅ Upload สำเร็จ!';
+  setTimeout(() => { bar.style.display = 'none'; }, 2500);
+  renderSOP();
+};
+
+window.sopDelete = async function(id){
+  if(!confirm('ลบไฟล์นี้?')) return;
+  const d = _sopDocs.find(x => x.id === id);
+  if(!d) return;
+  try{
+    if(d.storagePath){ await deleteObject(ref(storage, d.storagePath)); }
+    _sopDocs = _sopDocs.filter(x => x.id !== id);
+    await fbSet('data/sopDocs', { docs: _sopDocs, updatedAt: new Date().toISOString() });
+    toast('🗑 ลบไฟล์แล้ว');
+    renderSOP();
+  }catch(e){ toast('❌ ' + e.message); }
+};
+
 }
 </script>
 
