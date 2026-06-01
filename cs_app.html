@@ -151,7 +151,7 @@ select.inp{cursor:pointer}
             <th>STATUS</th>
             <th style="min-width:180px">CS TASKS</th>
             <th style="min-width:200px">REMARKS</th>
-            <th style="text-align:center">PRE-ALERT</th>
+            <th style="text-align:center;min-width:160px">PRE-ALERT &amp; INV</th>
             <th style="text-align:center">ACTION</th>
           </tr>
         </thead>
@@ -789,11 +789,25 @@ function renderTable(){
           ${remarkTime?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);font-weight:${isRecent?'700':'400'};color:${isRecent?'var(--red)':'var(--muted)'};">${isRecent?'● UPDATED ':''} ${remarkTime}</div>`:''}
         </div>
       </td>
-      <td style="text-align:center">
-        <input type="checkbox" ${j.preAlert?'checked':''} 
-          onchange="updatePreAlert(${j._idx}, this.checked)"
-          style="width:18px;height:18px;cursor:pointer;accent-color:#22c55e">
-        ${j.preAlert?'<div style="font-size:9px;color:#22c55e;font-family:var(--mono);font-weight:700;margin-top:2px">✓ Done</div>':''}
+      <td style="text-align:center;padding:6px 10px">
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid ${j.preAlert?'rgba(34,197,94,.4)':'var(--border2)'};background:${j.preAlert?'rgba(34,197,94,.08)':'transparent'};transition:all .15s;width:100%">
+            <input type="checkbox" ${j.preAlert?'checked':''}
+              onchange="updatePreAlert(${j._idx},'preAlert',this.checked)"
+              style="width:15px;height:15px;cursor:pointer;accent-color:#22c55e;flex-shrink:0">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${j.preAlert?'#16a34a':'var(--muted)'}">
+              Pre-Alert${j.preAlert?' ✓':''}
+            </span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid ${j.invToCustomer?'rgba(34,197,94,.4)':'var(--border2)'};background:${j.invToCustomer?'rgba(34,197,94,.08)':'transparent'};transition:all .15s;width:100%">
+            <input type="checkbox" ${j.invToCustomer?'checked':''}
+              onchange="updatePreAlert(${j._idx},'invToCustomer',this.checked)"
+              style="width:15px;height:15px;cursor:pointer;accent-color:#22c55e;flex-shrink:0">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${j.invToCustomer?'#16a34a':'var(--muted)'}">
+              INV to Cust${j.invToCustomer?' ✓':''}
+            </span>
+          </label>
+        </div>
       </td>
       <td style="text-align:center">
         <button class="btn btn-cyan" style="font-size:10px;padding:4px 10px" onclick="openModal(${j._idx})">✏ Edit</button>
@@ -803,19 +817,20 @@ function renderTable(){
 }
 
 // ── Modal ──────────────────────────────────────────────────
-window.updatePreAlert = async function(idx, val){
+window.updatePreAlert = async function(idx, field, val){
   const j = allJobs[idx]; if(!j) return;
-  j.preAlert = val;
+  j[field] = val;
   try{
-    if(window.fbSet && window._ownerJobs){
-      const target = window._ownerJobs.find(x=>x.no===j.no);
-      if(target){
-        target.preAlert = val;
-        await window.fbSet('data/jobs', {jobs: window._ownerJobs, updatedAt: new Date().toISOString()});
-      }
+    const snap = await fbGet('data/jobs');
+    if(!snap?.jobs) throw new Error('No jobs data');
+    const target = snap.jobs.find(x => x.no === j.no);
+    if(target){
+      target[field] = val;
+      await fbSet('data/jobs', {jobs: snap.jobs, updatedAt: new Date().toISOString()});
     }
-  }catch(e){ console.warn('preAlert sync error',e); }
-  toast(val ? '✅ Pre-Alert: Done' : 'Pre-Alert cleared');
+  }catch(e){ console.warn('updatePreAlert error', e); }
+  const labels = {preAlert:'Pre-Alert', invToCustomer:'INV to Customer'};
+  toast(val ? `✅ ${labels[field]||field}: Done` : `${labels[field]||field} cleared`);
   renderTable();
 };
 
