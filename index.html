@@ -6037,7 +6037,7 @@ async function initFirestoreSync(){
   window.renderCSTeam?.();
   window.renderCSDatalist?.();
   // Restore saved filter preferences (must run after renderShipments populates month options)
-  await loadFilterPrefs();
+  await window.loadFilterPrefs?.();
   // loadFilterPrefs calls renderShipments again internally to apply the filter
 
   if(window.ALL_RATES?.length){
