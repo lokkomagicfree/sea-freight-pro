@@ -5147,10 +5147,9 @@ function renderForecastTable(){
     const target = srData['target_'+ym] || 12000;
     const actual = getProfitForMonth(ym);
     const process = getProcessForMonth(ym);
+    const manualProfit = srData['manual_profit_'+ym] || 0;
     totalTarget+=target; totalActual+=(process+manualProfit); totalProcess+=(process+manualProfit);
     qTarget+=target; qActual+=(process+manualProfit); qProcess+=(process+manualProfit);
-
-    const manualProfit = srData['manual_profit_'+ym] || 0;
     const displayActual = process + manualProfit;
     const isManual = process <= 0 && manualProfit > 0;
     const actColor = displayActual>0 ? (isManual?'color:var(--gold)':'color:var(--green)') : 'color:var(--muted)';
