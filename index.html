@@ -6386,7 +6386,7 @@ function openBookingPdfModal(idx){
   set('bpdf_port_transit',  j.portTransit || '');
   set('bpdf_volume',        vol);
   set('bpdf_si_cutoff',     j.siCutoff || '');
-  set('bpdf_cfm_bl',        j.cfmBl || '');
+  set('bpdf_cfm_bl',        j.docCutoff || j.cfmBl || '');
   set('bpdf_vgm_cutoff',    j.vgmCutoff || '');
   set('bpdf_gate_closing',  j.gateClosing || '');
   set('bpdf_paperless',     j.paperlessCode || '');
