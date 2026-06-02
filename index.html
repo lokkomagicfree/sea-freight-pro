@@ -6336,7 +6336,16 @@ window.closeShipmentDetail = closeShipmentDetail;
         <div class="inp-group"><label class="inp-lbl">Commodity</label><input class="inp" id="bpdf_commodity"></div>
         <div class="inp-group"><label class="inp-lbl">Weight (KGS)</label><input class="inp" id="bpdf_weight"></div>
         <div class="inp-group"><label class="inp-lbl">HS. Code</label><input class="inp" id="bpdf_hs_code"></div>
-        <div class="inp-group full-col"><label class="inp-lbl">Special Cargo Remark</label><textarea class="inp" id="bpdf_special_remark" rows="3"></textarea></div>
+        <div class="inp-group full-col">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <label class="inp-lbl" style="margin-bottom:0">Special Cargo Remark</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span id="bpdf_remark_default_badge" style="font-size:9px;color:var(--green);font-family:var(--mono);display:none">✓ Default saved</span>
+              <button type="button" onclick="saveDefaultSpecialRemark()" style="font-size:10px;padding:2px 10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--muted);font-family:var(--mono)">💾 Set as Default</button>
+            </div>
+          </div>
+          <textarea class="inp" id="bpdf_special_remark" rows="3"></textarea>
+        </div>
       </div>
     </div>
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;background:var(--s2)">
@@ -6414,6 +6423,16 @@ function openBookingPdfModal(idx){
     'bpdf_ti_ref','bpdf_ti_date','bpdf_ti_at','bpdf_ti_pic',
     'bpdf_commodity','bpdf_weight','bpdf_hs_code','bpdf_special_remark'];
   BPDF_IDS.forEach(id=>{ if(saved[id] !== undefined){ const el=document.getElementById(id); if(el) el.value=saved[id]; } });
+
+  // Load default special remark if field is still empty
+  const srEl = document.getElementById('bpdf_special_remark');
+  if(srEl && !srEl.value){
+    const defaultRemark = localStorage.getItem('sfp_default_special_remark') || '';
+    srEl.value = defaultRemark;
+  }
+  // Show badge if default exists
+  const defBadge = document.getElementById('bpdf_remark_default_badge');
+  if(defBadge) defBadge.style.display = localStorage.getItem('sfp_default_special_remark') ? '' : 'none';
 
   const modal = document.getElementById('booking_pdf_modal');
   const titleEl = modal?.querySelector('.bpdf-title');
@@ -6987,6 +7006,17 @@ window.applyFilterPrefs = function(){
   if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
   window.renderShipments?.();
 };
+
+// ── Default Special Remark ──────────────────────────────────
+window.saveDefaultSpecialRemark = function(){
+  const val = (document.getElementById('bpdf_special_remark')?.value || '').trim();
+  localStorage.setItem('sfp_default_special_remark', val);
+  const badge = document.getElementById('bpdf_remark_default_badge');
+  if(badge){ badge.style.display = val ? '' : 'none'; badge.textContent = '✓ Default saved'; }
+  // brief flash
+  setTimeout(()=>{ if(badge) badge.textContent = val ? '✓ Default saved' : ''; }, 2000);
+};
+
 
 </script>
 
