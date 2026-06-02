@@ -6953,7 +6953,7 @@ window.saveFilterPrefs = function(){
         status_filter: document.getElementById('status_filter')?.value || '',
         savedAt: new Date().toISOString()
       };
-      await fbSet('users/'+uid()+'/prefs', prefs);
+      await fbSet('prefs', prefs);
     }catch(e){ console.warn('saveFilterPrefs', e); }
   }, 600);
 };
@@ -6961,7 +6961,7 @@ window.saveFilterPrefs = function(){
 window.loadFilterPrefs = async function(){
   if(!uid()) return;
   try{
-    const prefs = await fbGet('users/'+uid()+'/prefs');
+    const prefs = await fbGet('prefs');
     if(!prefs) return;
     // status filter — options already exist, set directly
     const sf = document.getElementById('status_filter');
