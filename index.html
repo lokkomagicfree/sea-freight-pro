@@ -5979,6 +5979,7 @@ async function fbSet(path, data){
   catch(e){ console.warn('fbSet',e); }
 }
 window.fbSet = fbSet;
+window.fbGet = fbGet;
 
 async function fbGet(path){
   if(!uid()) return null;
