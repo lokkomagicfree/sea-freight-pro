@@ -760,7 +760,7 @@ function renderTable(){
     const isRecent = j.lastRemarked && (Date.now()-new Date(j.lastRemarked).getTime()) < 24*60*60*1000;
 
     return `<tr>
-      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${j.no||'—'}</span></td>
+      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span title="New Shipment" style="color:#f59e0b;margin-right:3px">★</span>':''} ${j.no||'—'}</span></td>
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
       <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
