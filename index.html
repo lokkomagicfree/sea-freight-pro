@@ -2822,8 +2822,9 @@ function renderShipments(){
   const mthSel=g('month_filter');
   if(mthSel){
     const allMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))].sort();
-    const curVal=mthSel.value;
+    const curVal = window._pendingMonthFilter !== undefined ? window._pendingMonthFilter : mthSel.value;
     mthSel.innerHTML='<option value="">📅 All Months</option>'+allMonths.map(m=>{const[y,mo]=m.split('-');const label=new Date(+y,+mo-1).toLocaleString('en',{month:'short',year:'2-digit'});return`<option value="${m}"${m===curVal?' selected':''}>${label}</option>`;}).join('');
+    if(window._pendingMonthFilter !== undefined){ mthSel.value = window._pendingMonthFilter; window._pendingMonthFilter = undefined; }
   }
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
@@ -6961,19 +6962,12 @@ window.loadFilterPrefs = async function(){
   try{
     const prefs = await fbGet('users/'+uid()+'/prefs');
     if(!prefs) return;
-    const mf = document.getElementById('month_filter');
+    // status filter — options already exist, set directly
     const sf = document.getElementById('status_filter');
-    if(mf && prefs.month_filter){
-      // Wait for month options to be populated first
-      const trySet = (attempts=0)=>{
-        const opt = [...mf.options].find(o=>o.value===prefs.month_filter);
-        if(opt){ mf.value = prefs.month_filter; renderShipments(); }
-        else if(attempts < 10){ setTimeout(()=>trySet(attempts+1), 200); }
-      };
-      trySet();
-    }
-    if(sf && prefs.status_filter){
-      sf.value = prefs.status_filter;
+    if(sf && prefs.status_filter) sf.value = prefs.status_filter;
+    // month filter — options are rebuilt inside renderShipments(), use pending flag
+    if(prefs.month_filter){
+      window._pendingMonthFilter = prefs.month_filter;
     }
     renderShipments();
   }catch(e){ console.warn('loadFilterPrefs', e); }
