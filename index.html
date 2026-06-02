@@ -2816,15 +2816,23 @@ function clearForm(){
 // ── Render Shipments ───────────────────────────────────────
 function renderShipments(){
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
-  const stFilt=v('status_filter')||'',mthFilt=v('month_filter')||'';
-  // Populate month dropdown
+  const stFilt=v('status_filter')||'';
+  // Populate month dropdown — apply pending pref FIRST before reading value
   const mthSel=g('month_filter');
   if(mthSel){
     const allMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))].sort();
     const curVal = window._pendingMonthFilter !== undefined ? window._pendingMonthFilter : mthSel.value;
     mthSel.innerHTML='<option value="">📅 All Months</option>'+allMonths.map(m=>{const[y,mo]=m.split('-');const label=new Date(+y,+mo-1).toLocaleString('en',{month:'short',year:'2-digit'});return`<option value="${m}"${m===curVal?' selected':''}>${label}</option>`;}).join('');
     if(window._pendingMonthFilter !== undefined){ mthSel.value = window._pendingMonthFilter; window._pendingMonthFilter = undefined; }
+    // Re-apply saved pref if dropdown got reset to '' by a re-render
+    else if(window._savedFilterPrefs?.month_filter && !mthSel.value){
+      const pref = window._savedFilterPrefs.month_filter;
+      const opt = [...mthSel.options].find(o=>o.value===pref);
+      if(opt) mthSel.value = pref;
+    }
   }
+  // Read mthFilt AFTER dropdown is updated
+  const mthFilt=v('month_filter')||'';
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
     if(bkg&&!(j.no||'').toLowerCase().includes(bkg))return false;
@@ -6028,8 +6036,9 @@ async function initFirestoreSync(){
   window.updateRateCacheBadge?.();
   window.renderCSTeam?.();
   window.renderCSDatalist?.();
-  // Restore saved filter preferences
+  // Restore saved filter preferences (must run after renderShipments populates month options)
   await loadFilterPrefs();
+  // loadFilterPrefs calls renderShipments again internally to apply the filter
 
   if(window.ALL_RATES?.length){
     setTimeout(()=>{
@@ -6958,20 +6967,25 @@ window.saveFilterPrefs = function(){
   }, 600);
 };
 
+window._savedFilterPrefs = null; // persisted in memory after load
+
 window.loadFilterPrefs = async function(){
   if(!uid()) return;
   try{
     const prefs = await fbGet('prefs');
     if(!prefs) return;
-    // status filter — options already exist, set directly
-    const sf = document.getElementById('status_filter');
-    if(sf && prefs.status_filter) sf.value = prefs.status_filter;
-    // month filter — options are rebuilt inside renderShipments(), use pending flag
-    if(prefs.month_filter){
-      window._pendingMonthFilter = prefs.month_filter;
-    }
-    renderShipments();
+    window._savedFilterPrefs = prefs; // keep in memory
+    applyFilterPrefs();
   }catch(e){ console.warn('loadFilterPrefs', e); }
+};
+
+window.applyFilterPrefs = function(){
+  const prefs = window._savedFilterPrefs;
+  if(!prefs) return;
+  const sf = document.getElementById('status_filter');
+  if(sf && prefs.status_filter !== undefined) sf.value = prefs.status_filter;
+  if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
+  renderShipments();
 };
 
 </script>
