@@ -4928,6 +4928,11 @@ async function saveNewBizList(list){
 function renderNewBizList(){
   const el = g('sr_new_biz');
   if(!el) return;
+  if(_newBizList === null){
+    el.innerHTML='<div style="color:var(--muted);font-size:11px">⏳ กำลังโหลด…</div>';
+    loadNewBizList().then(()=>renderNewBizList());
+    return;
+  }
   const ids = getNewBizList();
   const jobs = ids.map(no => savedJobs.find(j=>j.no===no)).filter(Boolean);
   if(!jobs.length){
@@ -6137,6 +6142,7 @@ async function initFirestoreSync(){
   window.loadFilterPrefs?.();
   // Pre-load newBizList so Sale report shows it immediately
   await loadNewBizList();
+  renderNewBizList(); // refresh if Sale page already rendered
   // loadFilterPrefs calls renderShipments again internally to apply the filter
 
   if(window.ALL_RATES?.length){
