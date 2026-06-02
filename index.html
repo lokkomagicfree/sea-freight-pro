@@ -106,8 +106,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .ss{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:10px;font-family:var(--mono);font-weight:500;cursor:pointer;border:1px solid transparent}
 .ss-pending{background:rgba(158,107,107,.15);color:#7A4444;border-color:rgba(158,107,107,.3)}
 .ss-confirmed{background:rgba(183,128,10,.12);color:var(--gold);border-color:rgba(183,128,10,.3)}
-.ss-shipped{background:rgba(41,128,185,.12);color:var(--cyan);border-color:rgba(41,128,185,.3)}
-.ss-arrived{background:rgba(142,68,173,.15);color:var(--purple);border-color:rgba(142,68,173,.3)}
+.ss-loaded{background:rgba(41,128,185,.12);color:var(--cyan);border-color:rgba(41,128,185,.3)}
+.st-loaded{background:rgba(41,128,185,.12);color:var(--cyan);border-color:rgba(41,128,185,.3)}
+
 .ss-completed{background:rgba(39,174,96,.15);color:#1a7a40;border-color:rgba(39,174,96,.3)}
 .status-sel{background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:3px 7px;color:var(--text);font-family:var(--mono);font-size:10px;cursor:pointer;outline:none;width:100%}
 
@@ -479,9 +480,9 @@ body{font-size:14px;font-weight:450}
             <select class="inp" id="s_jobtype"><option value="export">Export</option><option value="import">Import</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Status</label>
             <select class="inp" id="s_status">
-              <option value="pending">⏳ Pending</option><option value="confirmed">📋 Confirmed</option>
-              <option value="shipped">🚢 Shipped</option><option value="arrived">📦 Arrived</option>
-              <option value="completed">✅ Completed</option>
+              <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
+              <option value="loaded">🚢 Loaded</option>
+              <option value="completed">✔ Completed</option>
               <option value="cancelled">❌ Cancelled</option>
             </select></div>
           <div class="inp-group full-col" id="s_qty_card">
@@ -663,9 +664,9 @@ body{font-size:14px;font-weight:450}
       </select>
       <select class="fi" id="status_filter" onchange="renderShipments()" style="width:130px;font-size:11px;padding:4px 8px">
         <option value="">All Status</option>
-        <option value="pending">⏳ Pending</option><option value="confirmed">📋 Confirmed</option>
-        <option value="shipped">🚢 Shipped</option><option value="arrived">📦 Arrived</option>
-        <option value="completed">✅ Completed</option>
+        <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
+        <option value="loaded">🚢 Loaded</option>
+        <option value="completed">✔ Completed</option>
         <option value="cancelled">❌ Cancelled</option>
       </select>
       <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
@@ -2580,9 +2581,9 @@ function checkAlerts(){
   const today=new Date().toISOString().slice(0,10);
   const alerts=savedJobs.filter(j=>{
     if(['pending','confirmed'].includes(j.status)&&j.etd&&j.etd<=new Date(Date.now()+3*86400000).toISOString().slice(0,10))return true;
-    if(j.status==='shipped'&&j.etd&&j.etd<today)return true;
-    if(['shipped','arrived'].includes(j.status)&&j.eta&&j.eta<=new Date(Date.now()+2*86400000).toISOString().slice(0,10))return true;
-    if(j.status==='arrived'&&j.eta){const diff=Math.ceil((new Date(today)-new Date(j.eta))/86400000);if(diff>3)return true;}
+    if(j.status==='loaded'&&j.etd&&j.etd<today)return true;
+    if(j.status==='loaded'&&j.eta&&j.eta<=new Date(Date.now()+2*86400000).toISOString().slice(0,10))return true;
+    if(j.status==='completed'&&j.eta){const diff=Math.ceil((new Date(today)-new Date(j.eta))/86400000);if(diff>3)return true;}
     return false;
   });
   const btn=g('alert_btn');
@@ -2630,10 +2631,10 @@ function showAlertPanel(){
           if(['pending','confirmed'].includes(j.status) && etdD!==null && etdD<=3){
             msg = etdD<0 ? `ETD เลยกำหนดไป ${Math.abs(etdD)} วัน` : etdD===0 ? 'ETD วันนี้!' : `ETD อีก ${etdD} วัน`;
             color = etdD<=0?'var(--red)':'var(--yellow)'; icon = etdD<=0?'🚨':'⏰';
-          } else if(['shipped','arrived'].includes(j.status) && etaD!==null && etaD<=2){
+          } else if(['loaded','completed'].includes(j.status) && etaD!==null && etaD<=2){
             msg = etaD<0 ? `ETA เลยกำหนดไป ${Math.abs(etaD)} วัน` : etaD===0 ? 'ETA วันนี้!' : `ETA อีก ${etaD} วัน`;
             color = etaD<=0?'var(--red)':'var(--cyan)'; icon = '📦';
-          } else if(j.status==='arrived' && j.eta){
+          } else if(j.status==='completed' && j.eta){
             const over = Math.ceil((new Date(today)-new Date(j.eta))/86400000);
             msg = `ค้างอยู่ที่ Arrived ${over} วัน`;
             color='var(--orange)'; icon='⚠️';
@@ -2667,7 +2668,7 @@ function showAlertPanel(){
 function updateAlertCount(){checkAlerts();}
 
 // ── Status helpers ─────────────────────────────────────────
-const SC={pending:{cls:'st-pending',icon:'⏳'},confirmed:{cls:'st-confirmed',icon:'📋'},shipped:{cls:'st-shipped',icon:'🚢'},arrived:{cls:'st-arrived',icon:'📦'},completed:{cls:'st-completed',icon:'✅'},cancelled:{cls:'st-cancelled',icon:'❌'}};
+const SC={pending:{cls:'st-pending',icon:'⏳'},confirmed:{cls:'st-confirmed',icon:'✅'},loaded:{cls:'st-loaded',icon:'🚢'},completed:{cls:'st-completed',icon:'✔'},cancelled:{cls:'st-cancelled',icon:'❌'}};
 function statusSel(cur,idx){
   return `<select class="status-sel ${(SC[cur]||SC.pending).cls}" onchange="updateStatus(${idx},this.value)" style="font-size:10px;padding:3px 8px;border-radius:4px;border:none;cursor:pointer;outline:none;width:100%;min-width:100px">
     ${Object.entries(SC).map(([k,v])=>`<option value="${k}"${k===cur?' selected':''}>${v.icon} ${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('')}
