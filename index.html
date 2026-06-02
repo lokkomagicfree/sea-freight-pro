@@ -1157,7 +1157,7 @@ body{font-size:14px;font-weight:450}
       <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">
         <table class="tbl" style="min-width:400px">
           <thead><tr>
-            <th>Month</th><th style="text-align:right">Target (USD)</th><th style="text-align:right">Actual (USD)</th><th style="text-align:right">Process</th><th style="width:28px"></th>
+            <th>Month</th><th style="text-align:right">Target (USD)</th><th style="text-align:right">Actual (USD)</th><th style="width:28px"></th>
           </tr></thead>
           <tbody id="sr_forecast_body"></tbody>
           <tfoot><tr id="sr_forecast_foot" style="border-top:2px solid var(--border2)"></tr></tfoot>
@@ -5129,8 +5129,8 @@ function renderForecastTable(){
         html+=`<tr style="background:rgba(192,57,43,.06);border-top:1.5px solid var(--border2)">
           <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;font-weight:800;color:var(--red)">▸ ${getQuarterLabel(qy,qq)} TOTAL</td>
           <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow)">$${qTarget.toFixed(0)}</td>
-          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qActual>0?'var(--green)':'var(--muted)'}">$${qActual.toFixed(0)}</td>
-          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qProcess>0?'var(--cyan)':'var(--muted)'}">$${qProcess.toFixed(0)}</td>
+          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qProcess>0?'var(--green)':'var(--muted)'}">$${qProcess.toFixed(0)}</td>
+          <td></td>
         </tr>`;
       }
       // New quarter header
@@ -5147,14 +5147,13 @@ function renderForecastTable(){
     const target = srData['target_'+ym] || 12000;
     const actual = getProfitForMonth(ym);
     const process = getProcessForMonth(ym);
-    totalTarget+=target; totalActual+=actual; totalProcess+=process;
-    qTarget+=target; qActual+=actual; qProcess+=process;
+    totalTarget+=target; totalActual+=process; totalProcess+=process;
+    qTarget+=target; qActual+=process; qProcess+=process;
 
     const manualProfit = srData['manual_profit_'+ym] || 0;
-    const displayActual = actual > 0 ? actual : manualProfit;
-    const isManual = actual <= 0 && manualProfit > 0;
+    const displayActual = process > 0 ? process : manualProfit;
+    const isManual = process <= 0 && manualProfit > 0;
     const actColor = displayActual>0 ? (isManual?'color:var(--gold)':'color:var(--green)') : 'color:var(--muted)';
-    const procColor = process>0?'color:var(--cyan)':'color:var(--muted)';
     const isCustomMonth = srData['custom_month_'+ym];
     html+=`<tr>
       <td style="padding:8px 12px 8px 22px;font-family:var(--mono);font-size:12px;color:var(--text)">
@@ -5168,10 +5167,8 @@ function renderForecastTable(){
       </td>
       <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;${actColor}">
         ${displayActual>0?'$'+displayActual.toFixed(0):'—'}
-        ${isManual?'':''}
-        ${actual<=0&&!isManual?'<input type="number" placeholder="+ manual" data-ym="'+ym+'" onchange="saveManualProfit(this)" style="width:70px;background:transparent;border:none;border-bottom:1px dashed var(--border);text-align:right;color:var(--gold);font-family:var(--mono);font-size:10px;padding:1px 2px;outline:none;display:block;margin-top:2px">':''}
+        ${process<=0&&!isManual?'<input type="number" placeholder="+ manual" data-ym="'+ym+'" onchange="saveManualProfit(this)" style="width:70px;background:transparent;border:none;border-bottom:1px dashed var(--border);text-align:right;color:var(--gold);font-family:var(--mono);font-size:10px;padding:1px 2px;outline:none;display:block;margin-top:2px">':''}
       </td>
-      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;${procColor}">${process>0?'$'+process.toFixed(0):'—'}</td>
       <td style="padding:4px 6px;text-align:center">${isCustomMonth?`<button onclick="removeCustomMonth('${ym}')" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11px;opacity:.5" title="Remove">✕</button>`:''}
       </td>
     </tr>`;
@@ -5191,8 +5188,8 @@ function renderForecastTable(){
   if(tfoot) tfoot.innerHTML=`
     <td style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700">TOTAL</td>
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--yellow)">$${totalTarget.toFixed(0)}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${totalActual>=0?'var(--green)':'var(--red)'}">$${totalActual.toFixed(0)}</td>
-    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">$${totalProcess.toFixed(0)}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${totalProcess>=0?'var(--green)':'var(--red)'}">$${totalProcess.toFixed(0)}</td>
+    <td></td>
   `;
 }
 
