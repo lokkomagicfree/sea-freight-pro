@@ -4912,7 +4912,7 @@ let _newBizList = null; // in-memory cache
 
 async function loadNewBizList(){
   try{
-    const snap = await window.fbGet('newBizList');
+    const snap = await window.fbGet('data/newBizList');
     _newBizList = snap?.list || [];
   }catch(e){ _newBizList = []; }
 }
@@ -4921,7 +4921,7 @@ function getNewBizList(){
 }
 async function saveNewBizList(list){
   _newBizList = list;
-  try{ await window.fbSet('newBizList', { list, updatedAt: new Date().toISOString() }); }
+  try{ await window.fbSet('data/newBizList', { list, updatedAt: new Date().toISOString() }); }
   catch(e){ console.warn('saveNewBizList error', e); }
 }
 
