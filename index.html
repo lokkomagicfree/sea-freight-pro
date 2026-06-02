@@ -5041,11 +5041,7 @@ function renderSaleReport(){
   }
 
   // ── Section 1: New Secured Business (manually pinned shipments)
-  if(_newBizList === null){
-    loadNewBizList().then(()=>renderNewBizList());
-  } else {
-    renderNewBizList();
-  }
+  renderNewBizList();
 
   // ── Section 3: Profit Forecast table
   renderForecastTable();
@@ -6139,6 +6135,8 @@ async function initFirestoreSync(){
   window.renderCSDatalist?.();
   // Restore saved filter preferences (must run after renderShipments populates month options)
   window.loadFilterPrefs?.();
+  // Pre-load newBizList so Sale report shows it immediately
+  await loadNewBizList();
   // loadFilterPrefs calls renderShipments again internally to apply the filter
 
   if(window.ALL_RATES?.length){
