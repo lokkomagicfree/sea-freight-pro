@@ -1150,15 +1150,41 @@ body{font-size:14px;font-weight:450}
       </div>
 
       <!-- Quarterly actual table -->
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-family:var(--mono)">ACTUAL MONTHLY PROFIT (auto-pulled from Shipments)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">ACTUAL MONTHLY PROFIT (auto-pulled from Shipments)</div>
+        <button onclick="openAddMonthModal()" style="font-size:10px;padding:3px 12px;background:var(--s2);border:1.5px solid var(--border2);border-radius:6px;cursor:pointer;color:var(--text);font-family:var(--mono);font-weight:700">+ Add Month</button>
+      </div>
       <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">
         <table class="tbl" style="min-width:400px">
           <thead><tr>
-            <th>Month</th><th style="text-align:right">Target (USD)</th><th style="text-align:right">Actual (USD)</th><th style="text-align:right">Process</th>
+            <th>Month</th><th style="text-align:right">Target (USD)</th><th style="text-align:right">Actual (USD)</th><th style="text-align:right">Process</th><th style="width:28px"></th>
           </tr></thead>
           <tbody id="sr_forecast_body"></tbody>
           <tfoot><tr id="sr_forecast_foot" style="border-top:2px solid var(--border2)"></tr></tfoot>
         </table>
+      </div>
+
+      <!-- Add Month Modal -->
+      <div id="add_month_modal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+        <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:360px;padding:20px 22px">
+          <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red);margin-bottom:16px">+ Add Month</div>
+          <div class="inp-group" style="margin-bottom:12px">
+            <label class="inp-lbl">Month</label>
+            <input type="month" id="add_month_ym" class="inp" style="width:100%">
+          </div>
+          <div class="inp-group" style="margin-bottom:12px">
+            <label class="inp-lbl">Target (USD)</label>
+            <input type="number" id="add_month_target" class="inp" placeholder="e.g. 12000" style="width:100%">
+          </div>
+          <div class="inp-group" style="margin-bottom:16px">
+            <label class="inp-lbl">Manual Profit (USD) <span style="font-size:9px;color:var(--muted)">(ถ้าไม่มี Shipment)</span></label>
+            <input type="number" id="add_month_profit" class="inp" placeholder="e.g. 5000" style="width:100%">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="confirmAddMonth()" class="btn btn-cyan" style="flex:1">✅ Add</button>
+            <button onclick="document.getElementById('add_month_modal').style.display='none'" class="btn btn-ghost" style="flex:1">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -5074,31 +5100,93 @@ function renderForecastTable(){
     const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     if(!allMonths.includes(ym)) allMonths.push(ym);
   }
+  // Add manually added custom months
+  Object.keys(srData).filter(k=>k.startsWith('custom_month_')).forEach(k=>{
+    const ym=k.replace('custom_month_','');
+    if(!allMonths.includes(ym)) allMonths.push(ym);
+  });
   allMonths.sort();
 
   let totalTarget=0, totalActual=0, totalProcess=0;
   let html='';
-  allMonths.forEach(ym=>{
+
+  // Group months by quarter
+  const getQuarter = ym => { const m=parseInt(ym.split('-')[1]); return Math.ceil(m/3); };
+  const getQuarterLabel = (y,q) => `Q${q} ${y}`;
+
+  let lastQKey='', qTarget=0, qActual=0, qProcess=0;
+
+  allMonths.forEach((ym,idx)=>{
     const [y,m]=ym.split('-');
+    const q = getQuarter(ym);
+    const qKey = y+'-Q'+q;
+
+    // Insert quarter header when quarter changes
+    if(qKey !== lastQKey){
+      // First flush previous quarter subtotal
+      if(lastQKey){
+        const [qy,qq]=lastQKey.split('-Q');
+        html+=`<tr style="background:rgba(192,57,43,.06);border-top:1.5px solid var(--border2)">
+          <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;font-weight:800;color:var(--red)">▸ ${getQuarterLabel(qy,qq)} TOTAL</td>
+          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow)">$${qTarget.toFixed(0)}</td>
+          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qActual>0?'var(--green)':'var(--muted)'}">$${qActual.toFixed(0)}</td>
+          <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qProcess>0?'var(--cyan)':'var(--muted)'}">$${qProcess.toFixed(0)}</td>
+        </tr>`;
+      }
+      // New quarter header
+      const qMonths=['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][q-1];
+      html+=`<tr style="background:var(--s2)">
+        <td colspan="4" style="padding:5px 12px;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.1em">
+          Q${q} ${y} &nbsp;·&nbsp; ${qMonths}
+        </td>
+      </tr>`;
+      lastQKey=qKey; qTarget=0; qActual=0; qProcess=0;
+    }
+
     const label=new Date(+y,+m-1).toLocaleString('en',{month:'short',year:'numeric'});
     const target = srData['target_'+ym] || 12000;
     const actual = getProfitForMonth(ym);
     const process = getProcessForMonth(ym);
     totalTarget+=target; totalActual+=actual; totalProcess+=process;
-    const actColor=actual>0?'color:var(--green)':'color:var(--muted)';
-    const procColor=process>0?'color:var(--cyan)':'color:var(--muted)';
+    qTarget+=target; qActual+=actual; qProcess+=process;
+
+    const manualProfit = srData['manual_profit_'+ym] || 0;
+    const displayActual = actual > 0 ? actual : manualProfit;
+    const isManual = actual <= 0 && manualProfit > 0;
+    const actColor = displayActual>0 ? (isManual?'color:var(--gold)':'color:var(--green)') : 'color:var(--muted)';
+    const procColor = process>0?'color:var(--cyan)':'color:var(--muted)';
+    const isCustomMonth = srData['custom_month_'+ym];
     html+=`<tr>
-      <td style="padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--text)">${label}</td>
+      <td style="padding:8px 12px 8px 22px;font-family:var(--mono);font-size:12px;color:var(--text)">
+        ${label}${isManual?'<span style="font-size:9px;color:var(--gold);margin-left:4px">✎ manual</span>':''}
+      </td>
       <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px">
         <input type="number" value="${target}" data-ym="${ym}"
           onchange="saveForecastTarget(this)"
           style="width:90px;background:transparent;border:none;border-bottom:1px solid var(--border);text-align:right;color:var(--yellow);font-family:var(--mono);font-size:12px;padding:2px 4px;outline:none"
           onfocus="this.style.borderBottomColor='var(--yellow)'" onblur="this.style.borderBottomColor='var(--border)'">
       </td>
-      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;${actColor}">${actual>0?'$'+actual.toFixed(0):'—'}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;${actColor}">
+        ${displayActual>0?'$'+displayActual.toFixed(0):'—'}
+        ${isManual?'':''}
+        ${actual<=0&&!isManual?'<input type="number" placeholder="+ manual" data-ym="'+ym+'" onchange="saveManualProfit(this)" style="width:70px;background:transparent;border:none;border-bottom:1px dashed var(--border);text-align:right;color:var(--gold);font-family:var(--mono);font-size:10px;padding:1px 2px;outline:none;display:block;margin-top:2px">':''}
+      </td>
       <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;${procColor}">${process>0?'$'+process.toFixed(0):'—'}</td>
+      <td style="padding:4px 6px;text-align:center">${isCustomMonth?`<button onclick="removeCustomMonth('${ym}')" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11px;opacity:.5" title="Remove">✕</button>`:''}
+      </td>
     </tr>`;
   });
+
+  // Flush last quarter subtotal
+  if(lastQKey){
+    const [qy,qq]=lastQKey.split('-Q');
+    html+=`<tr style="background:rgba(192,57,43,.06);border-top:1.5px solid var(--border2)">
+      <td style="padding:6px 12px;font-family:var(--mono);font-size:11px;font-weight:800;color:var(--red)">▸ ${getQuarterLabel(qy,qq)} TOTAL</td>
+      <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow)">$${qTarget.toFixed(0)}</td>
+      <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qActual>0?'var(--green)':'var(--muted)'}">$${qActual.toFixed(0)}</td>
+      <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:${qProcess>0?'var(--cyan)':'var(--muted)'}">$${qProcess.toFixed(0)}</td>
+    </tr>`;
+  }
   tbody.innerHTML=html||'<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted)">ยังไม่มีข้อมูล Shipment</td></tr>';
   if(tfoot) tfoot.innerHTML=`
     <td style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700">TOTAL</td>
@@ -5107,6 +5195,54 @@ function renderForecastTable(){
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">$${totalProcess.toFixed(0)}</td>
   `;
 }
+
+
+// ── Manual Month & Profit ────────────────────────────────────
+window.openAddMonthModal = function(){
+  const now = new Date();
+  const ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const el = document.getElementById('add_month_ym');
+  if(el) el.value = ym;
+  document.getElementById('add_month_target').value = '';
+  document.getElementById('add_month_profit').value = '';
+  document.getElementById('add_month_modal').style.display = 'flex';
+};
+
+window.confirmAddMonth = function(){
+  const ym     = document.getElementById('add_month_ym')?.value;
+  const target = parseFloat(document.getElementById('add_month_target')?.value)||12000;
+  const profit = parseFloat(document.getElementById('add_month_profit')?.value)||0;
+  if(!ym){ alert('กรุณาเลือกเดือน'); return; }
+  const data = srLoad();
+  data['custom_month_'+ym] = true;
+  data['target_'+ym] = target;
+  if(profit > 0) data['manual_profit_'+ym] = profit;
+  srSave(data);
+  document.getElementById('add_month_modal').style.display = 'none';
+  renderForecastTable();
+  toast('✅ Added: '+ym);
+};
+
+window.saveManualProfit = function(inp){
+  const ym  = inp.dataset.ym;
+  const val = parseFloat(inp.value)||0;
+  const data = srLoad();
+  if(val > 0) data['manual_profit_'+ym] = val;
+  else delete data['manual_profit_'+ym];
+  srSave(data);
+  renderForecastTable();
+};
+
+window.removeCustomMonth = function(ym){
+  if(!confirm('ลบ '+ym+' ออก?')) return;
+  const data = srLoad();
+  delete data['custom_month_'+ym];
+  delete data['target_'+ym];
+  delete data['manual_profit_'+ym];
+  srSave(data);
+  renderForecastTable();
+  toast('🗑 Removed: '+ym);
+};
 
 function saveForecastTarget(inp){
   const ym = inp.dataset.ym;
