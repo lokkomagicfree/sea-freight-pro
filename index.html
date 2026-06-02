@@ -1300,7 +1300,6 @@ function storageImport(){
         else savedJobs = jobs;
         storageSave();
         renderShipments(); updateAlertCount();
-        if(window._filterPrefsLoaded!==true){ window._filterPrefsLoaded=true; setTimeout(loadFilterPrefs, 300); }
         toast('✅ Imported '+jobs.length+' jobs');
       }catch(ex){ toast('❌ Import failed: '+ex.message); }
     };
@@ -6029,6 +6028,8 @@ async function initFirestoreSync(){
   window.updateRateCacheBadge?.();
   window.renderCSTeam?.();
   window.renderCSDatalist?.();
+  // Restore saved filter preferences
+  await loadFilterPrefs();
 
   if(window.ALL_RATES?.length){
     setTimeout(()=>{
