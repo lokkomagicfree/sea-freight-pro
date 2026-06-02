@@ -477,6 +477,7 @@ body{font-size:14px;font-weight:450}
     <!-- Filters -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:140px;font-size:11px;padding:4px 8px">
+      <input class="fi" id="ref_search" placeholder="🔍 REF No…" oninput="renderShipments()" spellcheck="false" style="width:120px;font-size:11px;padding:4px 8px">
       <select class="fi" id="month_filter" onchange="renderShipments();saveFilterPrefs()" style="width:120px;font-size:11px;padding:4px 8px">
         <option value="">📅 All Months</option>
       </select>
@@ -2816,6 +2817,7 @@ function clearForm(){
 // ── Render Shipments ───────────────────────────────────────
 function renderShipments(){
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
+  const ref=(v('ref_search')||'').toLowerCase().trim();
   const stFilt=v('status_filter')||'';
   // Populate month dropdown — apply pending pref FIRST before reading value
   const mthSel=g('month_filter');
@@ -2836,6 +2838,7 @@ function renderShipments(){
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
     if(bkg&&!(j.no||'').toLowerCase().includes(bkg))return false;
+    if(ref&&!(j.refno||'').toLowerCase().includes(ref))return false;
     if(stFilt&&j.status!==stFilt)return false;
     if(mthFilt){const jm=j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'');if(jm!==mthFilt)return false;}
     return true;
