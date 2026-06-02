@@ -451,8 +451,98 @@ body{font-size:14px;font-weight:450}
     <span style="font-size:11px;color:var(--gold);font-family:var(--mono)">%</span>
     <span id="comm_rate_display" style="display:none"></span>
   </div>
+  <div id="saved_wrap" style="display:none;margin-bottom:16px;width:100%">
 
-  <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;align-items:start">
+    <!-- CS Team Manager -->
+    <div class="card" style="margin-bottom:12px;padding:12px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em">👥 CS TEAM</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="cs_new_inp" class="fi" placeholder="ชื่อ CS ใหม่…" style="width:140px;font-size:11px" onkeydown="if(event.key==='Enter')addCSAgent()">
+          <button onclick="addCSAgent()" class="btn btn-cyan" style="font-size:11px;padding:3px 10px">+ Add</button>
+        </div>
+      </div>
+      <div id="cs_team_list" style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">ยังไม่มี CS — กด + Add เพื่อเพิ่ม</span>
+      </div>
+    </div>
+      <div class="card-title" style="margin-bottom:0">📦 Saved Shipments</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="autosave_badge" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
+        <button onclick="storageExport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📦 Backup</button>
+        <button onclick="storageImport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📂 Import</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:140px;font-size:11px;padding:4px 8px">
+      <select class="fi" id="month_filter" onchange="renderShipments();saveFilterPrefs()" style="width:120px;font-size:11px;padding:4px 8px">
+        <option value="">📅 All Months</option>
+      </select>
+      <select class="fi" id="status_filter" onchange="renderShipments();saveFilterPrefs()" style="width:130px;font-size:11px;padding:4px 8px">
+        <option value="">All Status</option>
+        <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
+        <option value="loaded">🚢 Loaded</option>
+        <option value="completed">✔ Completed</option>
+        <option value="cancelled">❌ Cancelled</option>
+      </select>
+      <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
+      <button onclick="showGroupEmail()" class="btn btn-cyan" style="font-size:11px">✉️ Group Email</button>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(245,197,66,.08);border:1px solid rgba(245,197,66,.3);border-radius:6px;padding:3px 8px">
+        <span style="font-size:10px;color:var(--gold);white-space:nowrap">📅</span>
+        <input type="date" id="export_from" style="background:transparent;border:none;color:var(--gold);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:110px">
+        <span style="font-size:10px;color:var(--muted)">→</span>
+        <input type="date" id="export_to" style="background:transparent;border:none;color:var(--gold);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:110px">
+        <button onclick="exportDateRange()" class="btn btn-gold" style="font-size:11px;padding:3px 10px;margin-left:2px">Export</button>
+      </div>
+    </div>
+
+    <!-- Jobs Table -->
+    <div id="saved_tbl_wrap" class="tbl-wrap" style="max-height:510px;overflow-y:auto;overflow-x:auto">
+      <table class="tbl" style="min-width:1200px">
+        <thead><tr>
+          <th style="width:32px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
+          <th>Booking No.</th><th>Ref No.</th><th>Customer</th>
+          <th>ETD</th><th>ETA</th><th>Vessel</th>
+          <th>POL</th><th>POD</th><th>Carrier</th>
+          <th style="text-align:right;color:var(--green)">Sell</th>
+          <th style="text-align:right;color:var(--red)">Cost</th>
+          <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
+          <th style="text-align:right">Comm USD</th><th style="text-align:right">Comm THB</th>
+          <th>Status</th><th style="min-width:160px">Remarks</th><th style="text-align:center">Actions</th>
+        </tr></thead>
+        <tbody id="saved_body"></tbody>
+        <tfoot id="saved_foot"></tfoot>
+      </table>
+    </div>
+<!-- Monthly Summary -->
+    <div id="monthly_wrap" style="display:none;margin-bottom:14px">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:900px">
+            <thead><tr>
+              <th>Month</th><th style="text-align:right">Jobs</th>
+              <th style="text-align:right">Sell (USD)</th><th style="text-align:right">Cost (USD)</th>
+              <th style="text-align:right;color:var(--green)">Profit (USD)</th>
+              <th style="text-align:right">Margin</th>
+              <th style="text-align:right;color:var(--gold)">Commission (USD)</th>
+              <th style="text-align:right;color:var(--gold)">Commission (THB)</th>
+              <th style="text-align:right;color:var(--cyan);min-width:110px">🚛 CB Profit (฿)</th>
+              <th style="text-align:right;color:var(--cyan);min-width:130px">Profit THB <span style="font-size:9px;opacity:.7">(ใส่เอง)</span></th>
+              <th style="text-align:right;color:var(--gold);min-width:120px">Comm จาก THB</th>
+              <th style="text-align:center;color:var(--muted);min-width:90px">Comm Due</th>
+            </tr></thead>
+            <tbody id="monthly_body"></tbody>
+            <tfoot id="monthly_foot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;align-items:start;margin-top:0">
     <!-- LEFT: Form -->
     <div>
       <div class="card" id="shipment_form_card">
@@ -633,96 +723,6 @@ body{font-size:14px;font-weight:450}
   </div>
 
   <!-- Saved Shipments -->
-  <div id="saved_wrap" style="display:none;margin-top:20px;width:100%">
-
-    <!-- CS Team Manager -->
-    <div class="card" style="margin-bottom:12px;padding:12px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em">👥 CS TEAM</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input id="cs_new_inp" class="fi" placeholder="ชื่อ CS ใหม่…" style="width:140px;font-size:11px" onkeydown="if(event.key==='Enter')addCSAgent()">
-          <button onclick="addCSAgent()" class="btn btn-cyan" style="font-size:11px;padding:3px 10px">+ Add</button>
-        </div>
-      </div>
-      <div id="cs_team_list" style="display:flex;flex-wrap:wrap;gap:6px">
-        <span style="font-size:11px;color:var(--muted)">ยังไม่มี CS — กด + Add เพื่อเพิ่ม</span>
-      </div>
-    </div>
-      <div class="card-title" style="margin-bottom:0">📦 Saved Shipments</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <span id="autosave_badge" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
-        <button onclick="storageExport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📦 Backup</button>
-        <button onclick="storageImport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📂 Import</button>
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-      <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:140px;font-size:11px;padding:4px 8px">
-      <select class="fi" id="month_filter" onchange="renderShipments();saveFilterPrefs()" style="width:120px;font-size:11px;padding:4px 8px">
-        <option value="">📅 All Months</option>
-      </select>
-      <select class="fi" id="status_filter" onchange="renderShipments();saveFilterPrefs()" style="width:130px;font-size:11px;padding:4px 8px">
-        <option value="">All Status</option>
-        <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
-        <option value="loaded">🚢 Loaded</option>
-        <option value="completed">✔ Completed</option>
-        <option value="cancelled">❌ Cancelled</option>
-      </select>
-      <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
-      <button onclick="showGroupEmail()" class="btn btn-cyan" style="font-size:11px">✉️ Group Email</button>
-      <div style="display:flex;align-items:center;gap:4px;background:rgba(245,197,66,.08);border:1px solid rgba(245,197,66,.3);border-radius:6px;padding:3px 8px">
-        <span style="font-size:10px;color:var(--gold);white-space:nowrap">📅</span>
-        <input type="date" id="export_from" style="background:transparent;border:none;color:var(--gold);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:110px">
-        <span style="font-size:10px;color:var(--muted)">→</span>
-        <input type="date" id="export_to" style="background:transparent;border:none;color:var(--gold);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:110px">
-        <button onclick="exportDateRange()" class="btn btn-gold" style="font-size:11px;padding:3px 10px;margin-left:2px">Export</button>
-      </div>
-    </div>
-
-    <!-- Jobs Table -->
-    <div id="saved_tbl_wrap" class="tbl-wrap" style="max-height:510px;overflow-y:auto;overflow-x:auto">
-      <table class="tbl" style="min-width:1200px">
-        <thead><tr>
-          <th style="width:32px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
-          <th>Booking No.</th><th>Ref No.</th><th>Customer</th>
-          <th>ETD</th><th>ETA</th><th>Vessel</th>
-          <th>POL</th><th>POD</th><th>Carrier</th>
-          <th style="text-align:right;color:var(--green)">Sell</th>
-          <th style="text-align:right;color:var(--red)">Cost</th>
-          <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
-          <th style="text-align:right">Comm USD</th><th style="text-align:right">Comm THB</th>
-          <th>Status</th><th style="min-width:160px">Remarks</th><th style="text-align:center">Actions</th>
-        </tr></thead>
-        <tbody id="saved_body"></tbody>
-        <tfoot id="saved_foot"></tfoot>
-      </table>
-    </div>
-<!-- Monthly Summary -->
-    <div id="monthly_wrap" style="display:none;margin-bottom:14px">
-      <div class="card" style="padding:0;overflow:hidden">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
-        <div style="overflow-x:auto">
-          <table class="tbl" style="min-width:900px">
-            <thead><tr>
-              <th>Month</th><th style="text-align:right">Jobs</th>
-              <th style="text-align:right">Sell (USD)</th><th style="text-align:right">Cost (USD)</th>
-              <th style="text-align:right;color:var(--green)">Profit (USD)</th>
-              <th style="text-align:right">Margin</th>
-              <th style="text-align:right;color:var(--gold)">Commission (USD)</th>
-              <th style="text-align:right;color:var(--gold)">Commission (THB)</th>
-              <th style="text-align:right;color:var(--cyan);min-width:110px">🚛 CB Profit (฿)</th>
-              <th style="text-align:right;color:var(--cyan);min-width:130px">Profit THB <span style="font-size:9px;opacity:.7">(ใส่เอง)</span></th>
-              <th style="text-align:right;color:var(--gold);min-width:120px">Comm จาก THB</th>
-              <th style="text-align:center;color:var(--muted);min-width:90px">Comm Due</th>
-            </tr></thead>
-            <tbody id="monthly_body"></tbody>
-            <tfoot id="monthly_foot"></tfoot>
-          </table>
-        </div>
-      </div>
-    </div>
-
   </div>
 
 </div>
