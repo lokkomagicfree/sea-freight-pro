@@ -5147,11 +5147,11 @@ function renderForecastTable(){
     const target = srData['target_'+ym] || 12000;
     const actual = getProfitForMonth(ym);
     const process = getProcessForMonth(ym);
-    totalTarget+=target; totalActual+=process; totalProcess+=process;
-    qTarget+=target; qActual+=process; qProcess+=process;
+    totalTarget+=target; totalActual+=(process+manualProfit); totalProcess+=(process+manualProfit);
+    qTarget+=target; qActual+=(process+manualProfit); qProcess+=(process+manualProfit);
 
     const manualProfit = srData['manual_profit_'+ym] || 0;
-    const displayActual = process > 0 ? process : manualProfit;
+    const displayActual = process + manualProfit;
     const isManual = process <= 0 && manualProfit > 0;
     const actColor = displayActual>0 ? (isManual?'color:var(--gold)':'color:var(--green)') : 'color:var(--muted)';
     const isCustomMonth = srData['custom_month_'+ym];
@@ -5165,9 +5165,17 @@ function renderForecastTable(){
           style="width:90px;background:transparent;border:none;border-bottom:1px solid var(--border);text-align:right;color:var(--yellow);font-family:var(--mono);font-size:12px;padding:2px 4px;outline:none"
           onfocus="this.style.borderBottomColor='var(--yellow)'" onblur="this.style.borderBottomColor='var(--border)'">
       </td>
-      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;${actColor}">
-        ${displayActual>0?'$'+displayActual.toFixed(0):'—'}
-        ${process<=0&&!isManual?'<input type="number" placeholder="+ manual" data-ym="'+ym+'" onchange="saveManualProfit(this)" style="width:70px;background:transparent;border:none;border-bottom:1px dashed var(--border);text-align:right;color:var(--gold);font-family:var(--mono);font-size:10px;padding:1px 2px;outline:none;display:block;margin-top:2px">':''}
+      <td style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:12px">
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
+          <span style="font-weight:700;${actColor}">${displayActual>0?'$'+displayActual.toFixed(0):'—'}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:3px">
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">+</span>
+          <input type="number" placeholder="add profit" value="${manualProfit||''}" data-ym="${ym}"
+            onchange="saveManualProfit(this)"
+            style="width:80px;background:transparent;border:none;border-bottom:1px dashed var(--border2);text-align:right;color:var(--gold);font-family:var(--mono);font-size:10px;padding:1px 3px;outline:none"
+            onfocus="this.style.borderBottomColor='var(--gold)'" onblur="this.style.borderBottomColor='var(--border2)'">
+        </div>
       </td>
       <td style="padding:4px 6px;text-align:center">${isCustomMonth?`<button onclick="removeCustomMonth('${ym}')" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11px;opacity:.5" title="Remove">✕</button>`:''}
       </td>
