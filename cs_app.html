@@ -64,6 +64,20 @@ select.inp{cursor:pointer}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tasks-progress{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:4px}
 .tasks-progress-bar{height:100%;background:var(--red);border-radius:2px;transition:width .3s}
+
+  @keyframes starPulse {
+    0%,100% { opacity:1; transform:scale(1); text-shadow:0 0 4px #f59e0b; }
+    50%      { opacity:.5; transform:scale(1.35); text-shadow:0 0 12px #fbbf24, 0 0 20px #f59e0b; }
+  }
+  .new-star {
+    display:inline-block;
+    font-size:16px;
+    color:#f59e0b;
+    animation:starPulse 1.2s ease-in-out infinite;
+    vertical-align:middle;
+    margin-right:4px;
+    line-height:1;
+  }
 </style>
 </head>
 <body>
@@ -760,7 +774,7 @@ function renderTable(){
     const isRecent = j.lastRemarked && (Date.now()-new Date(j.lastRemarked).getTime()) < 24*60*60*1000;
 
     return `<tr>
-      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span title="New Shipment" style="color:#f59e0b;margin-right:3px">★</span>':''} ${j.no||'—'}</span></td>
+      <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span class="new-star" title="New Shipment">★</span>':''} ${j.no||'—'}</span></td>
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
       <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
