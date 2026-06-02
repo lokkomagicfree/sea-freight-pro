@@ -6953,7 +6953,7 @@ window.generateSopPDF = function(idx){
 // ── Filter Preferences (persisted to Firestore per user) ────
 let _filterSaveTimer = null;
 window.saveFilterPrefs = function(){
-  if(!uid()) return;
+  if(!window._currentUid) return;
   clearTimeout(_filterSaveTimer);
   _filterSaveTimer = setTimeout(async ()=>{
     try{
@@ -6962,9 +6962,7 @@ window.saveFilterPrefs = function(){
         status_filter: document.getElementById('status_filter')?.value || '',
         savedAt: new Date().toISOString()
       };
-      console.log('💾 saveFilterPrefs saving:', prefs, 'uid:', uid());
-      await fbSet('prefs', prefs);
-      console.log('💾 saveFilterPrefs DONE');
+      await window.fbSet('prefs', prefs);
     }catch(e){ console.warn('saveFilterPrefs ERROR', e); }
   }, 600);
 };
@@ -6972,25 +6970,22 @@ window.saveFilterPrefs = function(){
 window._savedFilterPrefs = null; // persisted in memory after load
 
 window.loadFilterPrefs = async function(){
-  if(!uid()) return;
+  if(!window._currentUid) return;
   try{
-    console.log('📥 loadFilterPrefs start, uid:', uid());
-    const prefs = await fbGet('prefs');
-    console.log('📥 loadFilterPrefs got prefs:', prefs);
-    if(!prefs) { console.log('📥 no prefs found'); return; }
+    const prefs = await window.fbGet('prefs');
+    if(!prefs) return;
     window._savedFilterPrefs = prefs;
-    applyFilterPrefs();
+    window.applyFilterPrefs();
   }catch(e){ console.warn('loadFilterPrefs ERROR', e); }
 };
 
 window.applyFilterPrefs = function(){
   const prefs = window._savedFilterPrefs;
   if(!prefs) return;
-  console.log('🔧 applyFilterPrefs:', prefs);
   const sf = document.getElementById('status_filter');
   if(sf && prefs.status_filter !== undefined) sf.value = prefs.status_filter;
   if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
-  renderShipments();
+  window.renderShipments?.();
 };
 
 </script>
