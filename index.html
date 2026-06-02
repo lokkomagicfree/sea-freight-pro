@@ -6037,7 +6037,7 @@ async function initFirestoreSync(){
   window.renderCSTeam?.();
   window.renderCSDatalist?.();
   // Restore saved filter preferences (must run after renderShipments populates month options)
-  await window.loadFilterPrefs?.();
+  window.loadFilterPrefs?.();
   // loadFilterPrefs calls renderShipments again internally to apply the filter
 
   if(window.ALL_RATES?.length){
@@ -6950,33 +6950,27 @@ window.generateSopPDF = function(idx){
 
 }
 
-// ── Filter Preferences (persisted to Firestore per user) ────
-let _filterSaveTimer = null;
+// ── Filter Preferences (localStorage — simple & reliable) ──
 window.saveFilterPrefs = function(){
-  if(!window._currentUid) return;
-  clearTimeout(_filterSaveTimer);
-  _filterSaveTimer = setTimeout(async ()=>{
-    try{
-      const prefs = {
-        month_filter:  document.getElementById('month_filter')?.value  || '',
-        status_filter: document.getElementById('status_filter')?.value || '',
-        savedAt: new Date().toISOString()
-      };
-      await window.fbSet('prefs', prefs);
-    }catch(e){ console.warn('saveFilterPrefs ERROR', e); }
-  }, 600);
+  try{
+    const prefs = {
+      month_filter:  document.getElementById('month_filter')?.value  || '',
+      status_filter: document.getElementById('status_filter')?.value || '',
+    };
+    localStorage.setItem('sfp_filter_prefs', JSON.stringify(prefs));
+  }catch(e){}
 };
 
-window._savedFilterPrefs = null; // persisted in memory after load
+window._savedFilterPrefs = null;
 
-window.loadFilterPrefs = async function(){
-  if(!window._currentUid) return;
+window.loadFilterPrefs = function(){
   try{
-    const prefs = await window.fbGet('prefs');
-    if(!prefs) return;
+    const raw = localStorage.getItem('sfp_filter_prefs');
+    if(!raw) return;
+    const prefs = JSON.parse(raw);
     window._savedFilterPrefs = prefs;
     window.applyFilterPrefs();
-  }catch(e){ console.warn('loadFilterPrefs ERROR', e); }
+  }catch(e){}
 };
 
 window.applyFilterPrefs = function(){
