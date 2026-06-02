@@ -4990,7 +4990,7 @@ window.renderNewBizPicker = function(){
   const jobs = savedJobs.filter(j=>{
     if(search && !(j.no||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
     return true;
-  }).slice(0,50);
+  }).sort((a,b)=>(b.etd||'').localeCompare(a.etd||'')).slice(0,50);
 
   if(!jobs.length){ list.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">ไม่พบ Shipment</div>'; return; }
 
