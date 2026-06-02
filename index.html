@@ -659,10 +659,10 @@ body{font-size:14px;font-weight:450}
     <!-- Filters -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:140px;font-size:11px;padding:4px 8px">
-      <select class="fi" id="month_filter" onchange="renderShipments()" style="width:120px;font-size:11px;padding:4px 8px">
+      <select class="fi" id="month_filter" onchange="renderShipments();saveFilterPrefs()" style="width:120px;font-size:11px;padding:4px 8px">
         <option value="">📅 All Months</option>
       </select>
-      <select class="fi" id="status_filter" onchange="renderShipments()" style="width:130px;font-size:11px;padding:4px 8px">
+      <select class="fi" id="status_filter" onchange="renderShipments();saveFilterPrefs()" style="width:130px;font-size:11px;padding:4px 8px">
         <option value="">All Status</option>
         <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
         <option value="loaded">🚢 Loaded</option>
@@ -1300,6 +1300,7 @@ function storageImport(){
         else savedJobs = jobs;
         storageSave();
         renderShipments(); updateAlertCount();
+        if(window._filterPrefsLoaded!==true){ window._filterPrefsLoaded=true; setTimeout(loadFilterPrefs, 300); }
         toast('✅ Imported '+jobs.length+' jobs');
       }catch(ex){ toast('❌ Import failed: '+ex.message); }
     };
@@ -6937,6 +6938,47 @@ window.generateSopPDF = function(idx){
 
 
 }
+
+// ── Filter Preferences (persisted to Firestore per user) ────
+let _filterSaveTimer = null;
+window.saveFilterPrefs = function(){
+  if(!uid()) return;
+  clearTimeout(_filterSaveTimer);
+  _filterSaveTimer = setTimeout(async ()=>{
+    try{
+      const prefs = {
+        month_filter:  document.getElementById('month_filter')?.value  || '',
+        status_filter: document.getElementById('status_filter')?.value || '',
+        savedAt: new Date().toISOString()
+      };
+      await fbSet('users/'+uid()+'/prefs', prefs);
+    }catch(e){ console.warn('saveFilterPrefs', e); }
+  }, 600);
+};
+
+window.loadFilterPrefs = async function(){
+  if(!uid()) return;
+  try{
+    const prefs = await fbGet('users/'+uid()+'/prefs');
+    if(!prefs) return;
+    const mf = document.getElementById('month_filter');
+    const sf = document.getElementById('status_filter');
+    if(mf && prefs.month_filter){
+      // Wait for month options to be populated first
+      const trySet = (attempts=0)=>{
+        const opt = [...mf.options].find(o=>o.value===prefs.month_filter);
+        if(opt){ mf.value = prefs.month_filter; renderShipments(); }
+        else if(attempts < 10){ setTimeout(()=>trySet(attempts+1), 200); }
+      };
+      trySet();
+    }
+    if(sf && prefs.status_filter){
+      sf.value = prefs.status_filter;
+    }
+    renderShipments();
+  }catch(e){ console.warn('loadFilterPrefs', e); }
+};
+
 </script>
 
 <!-- Edit Rate Modal -->
