@@ -2251,6 +2251,36 @@ const THB_CHARGES = ['THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee
 function isThbCharge(name){ return THB_CHARGES.some(t=>name===t); }
 
 
+
+window.toggleAPR = function(btn){
+  const isOn = btn.dataset.apr === '1';
+  const costInp = btn.previousElementSibling;
+  if(!costInp) return;
+  if(!isOn){
+    // Turn ON: disable cost input, show APR
+    costInp.dataset.aprVal = costInp.value; // save current value
+    costInp.value = 0;
+    costInp.disabled = true;
+    costInp.style.opacity = '0.3';
+    btn.dataset.apr = '1';
+    btn.style.background = 'rgba(192,57,43,.15)';
+    btn.style.color = 'var(--red)';
+    btn.style.borderColor = 'var(--red)';
+    btn.textContent = 'APR ✓';
+  } else {
+    // Turn OFF: re-enable
+    costInp.value = costInp.dataset.aprVal || 0;
+    costInp.disabled = false;
+    costInp.style.opacity = '1';
+    btn.dataset.apr = '0';
+    btn.style.background = 'var(--s2)';
+    btn.style.color = 'var(--muted)';
+    btn.style.borderColor = 'var(--border2)';
+    btn.textContent = 'APR';
+  }
+  recalc();
+};
+
 // ── Local Charge Templates ──────────────────────────────────
 async function loadLCTemplates(){
   const sel = g('lc_template_sel');
@@ -2275,12 +2305,17 @@ window.saveLocalChargeTemplate = async function(){
   const rows = [...document.querySelectorAll('#charge_body tr')];
   const sells = [...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costs = [...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
-  const charges = rows.slice(1).map((r,i)=>({
-    name: r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'',
-    thb: r.dataset?.thb==='true',
-    sell: sells[i+1]||0,
-    cost: costs[i+1]||0
-  })).filter(c=>c.sell||c.cost);
+  const charges = rows.slice(1).map((r,i)=>{
+    const aprBtn = r.querySelector('button[data-apr]');
+    const isAPR = aprBtn?.dataset?.apr === '1';
+    return {
+      name: r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'',
+      thb: r.dataset?.thb==='true',
+      sell: sells[i+1]||0,
+      cost: isAPR ? 0 : (costs[i+1]||0),
+      apr: isAPR
+    };
+  }).filter(c=>c.sell||c.cost||c.apr);
 
   if(!charges.length){ toast('❌ ไม่มี Local Charges ที่กรอก'); return; }
 
@@ -2314,7 +2349,13 @@ window.applyLocalChargeTemplate = async function(){
       const match = tmpl.charges.find(c=>c.name===rowName);
       if(match){
         if(sells[i+1]) sells[i+1].value = match.sell||0;
-        if(costs[i+1]) costs[i+1].value = match.cost||0;
+        const aprBtn = r.querySelector('button[data-apr]');
+        if(match.apr && aprBtn && aprBtn.dataset.apr !== '1'){
+          window.toggleAPR(aprBtn); // enable APR
+        } else if(!match.apr && aprBtn && aprBtn.dataset.apr === '1'){
+          window.toggleAPR(aprBtn); // disable APR
+        }
+        if(!match.apr && costs[i+1]) costs[i+1].value = match.cost||0;
       }
     });
     recalc();
@@ -2344,10 +2385,17 @@ function buildCharges(){
     const ccy=isTHB
       ? `<span style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(183,128,10,.15);color:var(--gold);border:1px solid rgba(183,128,10,.3);border-radius:4px;padding:1px 5px;margin-left:5px">THB</span>`
       : `<span style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(41,128,185,.1);color:var(--cyan);border:1px solid rgba(41,128,185,.25);border-radius:4px;padding:1px 5px;margin-left:5px">USD</span>`;
+    const isLocal = i > 0;
+    const aprBtn = isLocal ? `<button type="button" onclick="toggleAPR(this)"
+      style="font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;white-space:nowrap;font-family:var(--mono);margin-left:3px"
+      data-apr="0" title="Toggle As per receipt">APR</button>` : '';
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}">
     <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
-    <td style="padding:4px 6px"><input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px"></td>
+    <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
+      <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
+      ${aprBtn}
+    </td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
   </tr>`;
@@ -2890,6 +2938,7 @@ function saveShipment(){
     q40hc: _ctnRows.filter(r=>['40HC','45HC'].includes(r.type)).reduce((s,r)=>s+r.qty,0),
     chargeNames: [...document.querySelectorAll('#charge_body tr td:first-child')].map(e=>e.textContent.trim()),
     thbFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.dataset?.thb==='true'),
+    aprFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1'),
     totalSell: ts, totalCost: tc,
   };
   // Override POL if LKB or BKK is ticked
@@ -4029,6 +4078,9 @@ function showEmailPreview(emailType){
   const costLines = chargeNames.map((name,i)=>{
     if(!costVals[i]) return null;
     const isThb = thbFlags[i];
+    const aprRows = [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
+    const isAPR = aprRows[i];
+    if(isAPR) return `  ${name.padEnd(18)} : As per receipt`;
     return `  ${name.padEnd(18)} : ${isThb ? costVals[i].toFixed(0)+' THB' : 'USD '+costVals[i].toFixed(0)}`;
   }).filter(Boolean).join('\n');
 
