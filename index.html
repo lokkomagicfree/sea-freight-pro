@@ -1129,7 +1129,7 @@ body{font-size:14px;font-weight:450}
       <div style="background:rgba(255,255,0,.06);border:1px solid rgba(255,255,0,.2);border-radius:8px;padding:12px 16px;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
           <div style="font-size:11px;font-weight:700;color:var(--yellow)">📅 Estimate Profit Month:</div>
-          <select id="sr_est_month" class="fi" style="width:140px;font-size:11px" onchange="renderSaleReport()">
+          <select id="sr_est_month" class="fi" style="width:140px;font-size:11px" onchange="renderSaleReport();loadForecastForMonth()">
             <option value="">-- เลือกเดือน --</option>
           </select>
         </div>
@@ -5074,6 +5074,8 @@ function renderSaleReport(){
 
   // ── Section 1: New Secured Business (manually pinned shipments)
   renderNewBizList();
+  // Load forecast values for currently selected month
+  loadForecastForMonth();
 
   // ── Section 3: Profit Forecast table
   renderForecastTable();
@@ -5271,29 +5273,30 @@ function saveForecastData(){
 }
 
 function renderForecastCalc(){
+  // Only update the progress display — do NOT overwrite target/forecast fields
   const ym = g('sr_est_month')?.value;
-  const target = parseFloat(g('sr_est_target')?.value)||0;
-  const forecast = parseFloat(g('sr_est_forecast')?.value)||0;
   const progressEl = g('sr_est_progress');
-
-  // Auto-pull actual profit for selected month
-  let progress = 0;
   if(ym){
-    progress = getProcessForMonth(ym);
+    const progress = getProcessForMonth(ym);
     if(progressEl){
       progressEl.textContent = '$'+progress.toFixed(0);
       progressEl.style.color = progress>0?'var(--green)':'var(--muted)';
     }
-    // Also auto-fill target from saved data
-    const srData = srLoad();
-    const savedTarget = srData['target_'+ym];
-    const targetInp = g('sr_est_target');
-    if(targetInp) targetInp.value = savedTarget || 12000;
-    const forecastInp = g('sr_est_forecast');
-    if(forecastInp) forecastInp.value = srData['forecast_'+ym] !== undefined ? srData['forecast_'+ym] : '';
   } else {
     if(progressEl) progressEl.textContent='$0';
   }
+}
+
+function loadForecastForMonth(){
+  // Called only when month selector changes — fills target & forecast from saved data
+  const ym = g('sr_est_month')?.value;
+  if(!ym) return;
+  const srData = srLoad();
+  const targetInp   = g('sr_est_target');
+  const forecastInp = g('sr_est_forecast');
+  if(targetInp)   targetInp.value   = srData['target_'+ym] || 12000;
+  if(forecastInp) forecastInp.value = srData['forecast_'+ym] !== undefined ? srData['forecast_'+ym] : '';
+  renderForecastCalc();
 }
 
 // ── Key Account Visiting Record (simple: customer + feedback) ──
