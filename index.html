@@ -3852,9 +3852,21 @@ function showEmailPreview(emailType){
   const bkgno   = v2('s_bkgno');
 
   // Qty string
-  const q20 = parseInt(v2('s_q20'))||0;
-  const q40 = parseInt(v2('s_q40'))||0;
-  const q4h = parseInt(v2('s_q40hc'))||0;
+  // Get container qty — prefer ctnRows (detailed), fallback to q20/q40/q40hc fields
+  let q20 = 0, q40 = 0, q4h = 0;
+  if(typeof _ctnRows !== 'undefined' && _ctnRows.length){
+    _ctnRows.forEach(r=>{
+      const t = (r.type||'').toUpperCase();
+      if(t==='20GP') q20 += r.qty||0;
+      else if(t==='40GP') q40 += r.qty||0;
+      else if(t==='40HC'||t==='45HC') q4h += r.qty||0;
+    });
+  }
+  if(!q20 && !q40 && !q4h){
+    q20 = parseInt(v2('s_q20'))||0;
+    q40 = parseInt(v2('s_q40'))||0;
+    q4h = parseInt(v2('s_q40hc'))||0;
+  }
   const qParts = [];
   if(q20) qParts.push(q20+'x20 GP');
   if(q40) qParts.push(q40+'x40 GP');
