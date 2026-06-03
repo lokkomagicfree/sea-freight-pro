@@ -2767,7 +2767,7 @@ function filterRoutes(){
     if(!isThaiPOL(r.pol)) return false;
     if(car&&normalizeCarrier(r.carrier)!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
-    if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
+    if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod))return false;
     if(vstatus&&r.valid_status!==vstatus)return false;
     return true;
   }).slice(0,100);
@@ -4537,7 +4537,7 @@ function qFilterRates(){
   const results = ALL_RATES.filter(r=>{
     if(car&&!(r.carrier||'').toLowerCase().includes(car)) return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol)) return false;
-    if(pod&&!(r.pod||'').toLowerCase().includes(pod)) return false;
+    if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod)) return false;
     return true;
   }).sort((a,b)=>{
     const a20=parseFloat(a.gp20||a.hc40||0), b20=parseFloat(b.gp20||b.hc40||0);
