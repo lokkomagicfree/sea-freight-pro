@@ -786,6 +786,7 @@ body{font-size:14px;font-weight:450}
             <thead><tr style="border-bottom:1px solid var(--border)">
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:80px">Carrier</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:140px">POD</th>
+              <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:120px">DEL</th>
               <th style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
@@ -4215,8 +4216,8 @@ function showEmailPreview(emailType){
 Please find competitive rate as below, thank you for your support.
 
 ${selCarrier}:
-${selPol} - ${selPod}${window._selDel?' / DEL:'+window._selDel:''}
-${rateLines.length ? rateLines.join('\n') : '  Rate   : (please fill sell rate)'}${localSection}
+${selPol} - ${selPod}
+${window._selDel?'DEL         : '+window._selDel+'\n':''}${rateLines.length ? rateLines.join('\n') : '  Rate   : (please fill sell rate)'}${localSection}
 ${transitLine ? transitLine+'\n' : ''}  Valid   : ${validStr || 'Please confirm'}
 ${inco ? '  Incoterm: '+inco : ''}${comm ? '\nCommodity: '+comm : ''}${remarks ? '\nNote     : '+remarks : ''}
 
@@ -4416,9 +4417,9 @@ function openGroupMailto(){
 
 // ── Quotation Page ─────────────────────────────────────────
 
-function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit=''){
+function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit='', del=''){
   const id = Date.now() + Math.random();
-  qRateRows.push({id, carrier, pod, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
+  qRateRows.push({id, carrier, pod, del, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
   qRenderRateRows();
   qPreview();
 }
@@ -4436,6 +4437,8 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. New York"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="e.g. Chicago"
+        oninput="qUpdateRate(${row.id},'del',this.value)" style="font-size:11px;padding:3px 6px;width:100px;color:var(--muted)"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r20||''}" placeholder="0" min="0"
         oninput="qUpdateRate(${row.id},'r20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--green);width:70px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r40||''}" placeholder="0" min="0"
@@ -4568,7 +4571,7 @@ function qApplyRate(idx){
   const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
   set('q_pol', r.pol);
   const vd = r.validity || (r.date_from&&r.date_to ? r.date_from+' ~ '+r.date_to : '');
-  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'');
+  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'', r.dem||'', r.det||'', r.combined||'', r.direct||'', r.tt||'', '', r.del||'');
   toast('✅ Added: '+r.carrier+' '+r.pol+' → '+r.pod);
   // Scroll to rate table so user can see the added row
   const tbl = document.getElementById('q_rate_tbl');
@@ -4615,7 +4618,7 @@ function qBuildEmail(){
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
       if(!parts.length) return;
-      lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}`);
+      lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
       lines.push(`  ${parts.join(' / ')}`);
       if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
       lines.push('');
@@ -4716,7 +4719,8 @@ window.exportRateSheetXLSX = function(){
   /* ── RATE TABLE ── */
   // Column definitions
   const cols = [
-    {label:'PORT DESTINATION', w:58, align:'left'},
+    {label:'PORT DESTINATION', w:52, align:'left'},
+    {label:'DEL',        w:30, align:'left'},
     {label:'POL',        w:18, align:'center'},
     {label:"20'",        w:20, align:'right'},
     {label:"40'",        w:20, align:'right'},
@@ -4761,6 +4765,7 @@ window.exportRateSheetXLSX = function(){
 
       const vals = [
         {v:row.pod||'—',                  col:BLK,  align:'left'},
+        {v:row.del||'',                   col:MUTED,align:'left'},
         {v:pol,                           col:MUTED,align:'center'},
         {v:r20?(r20+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r20?GREEN:MUTED, align:'right'},
         {v:r40?(r40+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r40?GREEN:MUTED, align:'right'},
