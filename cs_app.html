@@ -622,8 +622,10 @@ function buildMonthFilter(){
   const MN={'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
   const months = [...new Set(allJobs.map(j=>j.etdMonth||j.etaMonth||'').filter(Boolean))].sort().reverse();
   const sel = document.getElementById('month_fil');
+  const current = sel.value; // preserve current selection
   sel.innerHTML = '<option value="">All Months</option>' +
     months.map(m=>{ const[y,mo]=m.split('-'); return `<option value="${m}">${MN[mo]||mo} ${y}</option>`; }).join('');
+  if(current) sel.value = current; // restore selection
 }
 
 // ── Stats ──────────────────────────────────────────────────
