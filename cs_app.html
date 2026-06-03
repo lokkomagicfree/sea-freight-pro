@@ -666,6 +666,8 @@ function serializeTasks(arr){
   return arr.map(t=>(t.done?'✅ ':'⬜ ')+t.text).join('|');
 }
 
+window.renderTable = renderTable;
+
 // ── Inline field update ───────────────────────────────────
 window.inlineUpdate = async function(idx, field, value, el){
   const j = allJobs[idx];
