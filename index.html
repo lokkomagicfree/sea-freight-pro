@@ -4461,6 +4461,9 @@ function qFilterRates(){
     if(pol&&!(r.pol||'').toLowerCase().includes(pol)) return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod)) return false;
     return true;
+  }).sort((a,b)=>{
+    const a20=parseFloat(a.gp20||a.hc40||0), b20=parseFloat(b.gp20||b.hc40||0);
+    return a20-b20;
   }).slice(0,50);
   if(count_el) count_el.textContent = results.length+' routes found';
   if(body_el) body_el.innerHTML = results.length ? results.map(r=>`
