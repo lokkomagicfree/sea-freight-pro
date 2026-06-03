@@ -217,6 +217,19 @@ body{font-size:14px;font-weight:450}
   background: var(--s2);
 }
 
+
+  /* Sticky column cells need explicit bg to cover scrolled content */
+  #saved_body td[style*="sticky"],
+  #saved_foot td[style*="sticky"] {
+    background: var(--s1);
+  }
+  #saved_body tr:hover td[style*="sticky"] {
+    background: var(--s2) !important;
+  }
+  /* Sticky headers */
+  thead th[style*="sticky"] {
+    background: var(--s2) !important;
+  }
 </style>
 </head>
 <body>
@@ -2930,16 +2943,16 @@ function renderShipments(){
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
-        <td style="padding:4px 8px;text-align:center;position:sticky;z-index:2;background:var(--s1);left:0px"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);position:sticky;z-index:2;background:var(--s1);left:32px">${j.no||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;background:var(--s1);left:152px">${j.refno||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;background:var(--s1);left:252px">${j.customer||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;background:var(--s1);left:332px">${j.etd||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;background:var(--s1);left:402px">${j.eta||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;position:sticky;z-index:2;background:var(--s1);left:472px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap;position:sticky;z-index:2;background:var(--s1);left:592px">${j.pol||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;position:sticky;z-index:2;background:var(--s1);left:712px">${j.pod||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap;position:sticky;z-index:2;background:var(--s1);left:862px;box-shadow:2px 0 4px rgba(0,0,0,.06)">${j.carrier||j.selCarrier||'—'}</td>
+        <td style="padding:4px 8px;text-align:center;position:sticky;z-index:2;left:0px"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);position:sticky;z-index:2;left:32px">${j.no||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;left:152px">${j.refno||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;left:252px">${j.customer||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;left:332px">${j.etd||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;left:402px">${j.eta||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;position:sticky;z-index:2;left:472px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap;position:sticky;z-index:2;left:592px">${j.pol||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;position:sticky;z-index:2;left:712px">${j.pod||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap;position:sticky;z-index:2;left:862px;box-shadow:2px 0 4px rgba(0,0,0,.06)">${j.carrier||j.selCarrier||'—'}</td>
         <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
