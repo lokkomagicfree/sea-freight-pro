@@ -4982,8 +4982,20 @@ function qSaveToStorage(){
   }
   // Flash badge
   const b = document.getElementById('quot_autosave');
-  if(b){ b.textContent='● Saved ✓'; b.style.color='var(--cyan)';
-    setTimeout(()=>{ b.textContent='● Auto-saved'; b.style.color='var(--green)'; }, 1500); }
+  if(b){ b.textContent='● Saving…'; b.style.color='var(--gold)';
+    setTimeout(async ()=>{
+      // Confirm Firestore sync
+      try{
+        if(window.fbGet){
+          const check = await window.fbGet('data/quotations');
+          if(check?.quotations?.length){
+            b.textContent='☁️ Synced ✓'; b.style.color='var(--green)';
+            return;
+          }
+        }
+      }catch(e){}
+      b.textContent='● Saved (local)'; b.style.color='var(--cyan)';
+    }, 1200); }
 }
 
 async function qLoadFromStorage(){
@@ -7123,7 +7135,7 @@ async function initFirestoreSync(){
   });
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
-  if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; }
+  if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
   if(dbItSnap?.rows)         { window.dbRows = dbItSnap.rows; try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){} }
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
