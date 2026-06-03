@@ -504,10 +504,16 @@ body{font-size:14px;font-weight:450}
     <div id="saved_tbl_wrap" class="tbl-wrap" style="max-height:510px;overflow-y:auto;overflow-x:auto">
       <table class="tbl" style="min-width:1200px">
         <thead><tr>
-          <th style="width:32px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
-          <th>Booking No.</th><th>Ref No.</th><th>Customer</th>
-          <th>ETD</th><th>ETA</th><th>Vessel</th>
-          <th>POL</th><th>POD</th><th>Carrier</th>
+          <th style="width:32px;position:sticky;z-index:3;background:var(--s2);left:0px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:32px;min-width:120px">Booking No.</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:152px;min-width:100px">Ref No.</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:252px;min-width:80px">Customer</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:332px;min-width:70px">ETD</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:402px;min-width:70px">ETA</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:472px;min-width:120px">Vessel</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:592px;min-width:120px">POL</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:712px;min-width:140px">POD</th>
+          <th style="position:sticky;z-index:3;background:var(--s2);left:862px;min-width:90px;box-shadow:2px 0 4px rgba(0,0,0,.06)">Carrier</th>
           <th style="text-align:center">VOL</th>
           <th style="text-align:right;color:var(--green)">Sell</th>
           <th style="text-align:right;color:var(--red)">Cost</th>
@@ -2924,16 +2930,16 @@ function renderShipments(){
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
-        <td style="padding:4px 8px;text-align:center"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan)">${j.no||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px">${j.refno||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px">${j.customer||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px">${j.etd||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px">${j.eta||'—'}</td>
-        <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap">${j.pol||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${j.pod||'—'}</td>
-        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
+        <td style="padding:4px 8px;text-align:center;position:sticky;z-index:2;background:var(--s1);left:0px"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);position:sticky;z-index:2;background:var(--s1);left:32px">${j.no||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;background:var(--s1);left:152px">${j.refno||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;position:sticky;z-index:2;background:var(--s1);left:252px">${j.customer||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;background:var(--s1);left:332px">${j.etd||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;position:sticky;z-index:2;background:var(--s1);left:402px">${j.eta||'—'}</td>
+        <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;position:sticky;z-index:2;background:var(--s1);left:472px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap;position:sticky;z-index:2;background:var(--s1);left:592px">${j.pol||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;position:sticky;z-index:2;background:var(--s1);left:712px">${j.pod||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap;position:sticky;z-index:2;background:var(--s1);left:862px;box-shadow:2px 0 4px rgba(0,0,0,.06)">${j.carrier||j.selCarrier||'—'}</td>
         <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
