@@ -5424,7 +5424,6 @@ function saveKeyAccount(el){ saveKAField(el); }
 // ── Copy Sale Report as text ──────────────────────────────────
 function copySaleReport(){
   const wk = g('sr_week')?.value || getWeekNumber(new Date());
-  const newShips = getNewShipmentsThisWeek();
   const srData = srLoad();
 
   let txt = `Wk-${wk}\n\nNew Secured Business\n- Please list your new fresh booking detail in this week\n`;
@@ -5647,7 +5646,6 @@ function exportSaleReportXLSX(){
   const wk   = g('sr_week')?.value  || getWeekNumber(new Date());
   const year = g('sr_year')?.value  || new Date().getFullYear();
   const srData = srLoad();
-  const newShips = getNewShipmentsThisWeek();
   const wb = XLSX.utils.book_new();
 
   // ── Sheet 1: Sale Report Summary ──
@@ -5660,13 +5658,15 @@ function exportSaleReportXLSX(){
   rows.push([{v:`Wk-${wk} / ${year}  –  Weekly Sale Report`,t:'s',s:{font:{bold:true,sz:14,color:{rgb:'00B4D8'}}}}]);
   rows.push([]);
 
-  // Section 1: New Secured Business
+  // Section 1: New Secured Business (pinned list)
   rows.push([{v:'🔴 New Secured Business',t:'s',s:{font:{bold:true,color:{rgb:'FF4444'}}}}]);
   rows.push([LABEL('No.'),LABEL('Customer'),LABEL('Carrier'),LABEL('Container'),LABEL('POL–POD'),LABEL('ETD'),LABEL('Profit (USD)')]);
-  if(!newShips.length){
+  const pinnedIds = getNewBizList();
+  const pinnedJobs = pinnedIds.map(no=>savedJobs.find(j=>j.no===no)).filter(Boolean);
+  if(!pinnedJobs.length){
     rows.push([VAL(''),VAL('N/A')]);
   } else {
-    newShips.forEach((j,i)=>{
+    pinnedJobs.forEach((j,i)=>{
       const customer=(j.customer||j.shipper||'').toUpperCase();
       const carrier=(j.carrier||j.selCarrier||'').toUpperCase();
       const pol=j.pol||'',pod=j.pod||'';
@@ -5704,21 +5704,26 @@ function exportSaleReportXLSX(){
     rows.push([]);
   });
 
-  // Section 3: Profit Forecast
+  // Section 3: Profit Forecast (with custom months + manual profit)
   rows.push([{v:'💹 Profit Forecast',t:'s',s:{font:{bold:true,color:{rgb:'FF4444'}}}}]);
-  rows.push([LABEL('Month'),LABEL('Target (USD)'),LABEL('Actual (USD)'),LABEL('Process (USD)')]);
-  const allMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))].sort();
-  let totTarget=0,totActual=0,totProc=0;
-  allMonths.forEach(ym=>{
+  rows.push([LABEL('Month'),LABEL('Target (USD)'),LABEL('Actual (USD)')]);
+  const fAllMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))];
+  const now2=new Date();
+  for(let i=0;i<3;i++){const d=new Date(now2.getFullYear(),now2.getMonth()+i,1);const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(!fAllMonths.includes(ym))fAllMonths.push(ym);}
+  Object.keys(srData).filter(k=>k.startsWith('custom_month_')).forEach(k=>{const ym=k.replace('custom_month_','');if(!fAllMonths.includes(ym))fAllMonths.push(ym);});
+  fAllMonths.sort();
+  let totTarget=0,totActual=0;
+  fAllMonths.forEach(ym=>{
     const[y,m]=ym.split('-');
     const label=new Date(+y,+m-1).toLocaleString('en',{month:'short',year:'numeric'});
     const target=srData['target_'+ym]||12000;
-    const actual=getProfitForMonth(ym);
     const proc=getProcessForMonth(ym);
-    totTarget+=target; totActual+=actual; totProc+=proc;
-    rows.push([VAL(label),NUM(target),NUM(actual),NUM(proc)]);
+    const manual=srData['manual_profit_'+ym]||0;
+    const actual=proc+manual;
+    totTarget+=target; totActual+=actual;
+    rows.push([VAL(label),NUM(target),NUM(actual)]);
   });
-  rows.push([{v:'TOTAL',t:'s',s:{font:{bold:true}}},NUM(totTarget),NUM(totActual),NUM(totProc)]);
+  rows.push([{v:'TOTAL',t:'s',s:{font:{bold:true}}},NUM(totTarget),NUM(totActual)]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:6},{wch:22},{wch:18},{wch:20},{wch:18},{wch:14},{wch:14}];
