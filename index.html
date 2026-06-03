@@ -5653,7 +5653,7 @@ function exportSaleReportXLSX(){
   const H = (txt,cols=1)=>({v:txt,t:'s',s:{font:{bold:true,color:{rgb:'00B4D8'}},fill:{fgColor:{rgb:'0D1B2A'}}}});
   const LABEL = txt=>({v:txt,t:'s',s:{font:{bold:true}}});
   const VAL   = txt=>({v:txt||'',t:'s'});
-  const NUM   = n=>({v:n||0,t:'n',s:{numFmt:'#,##0.00'}});
+  const NUM   = n=>({v:n||0,t:'n',s:{numFmt:'#,##0'}});
 
   rows.push([{v:`Wk-${wk} / ${year}  –  Weekly Sale Report`,t:'s',s:{font:{bold:true,sz:14,color:{rgb:'00B4D8'}}}}]);
   rows.push([]);
