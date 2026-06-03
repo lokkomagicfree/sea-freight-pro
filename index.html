@@ -3873,23 +3873,25 @@ function showEmailPreview(emailType){
   if(q4h) qParts.push(q4h+'x40 HC');
   const volStr = qParts.join(', ') || '—';
 
-  // Charges from table
-  const chargeNames = [...document.querySelectorAll('#charge_body tr td:first-child')].map(e=>e.textContent.trim());
+  // Charges from table — use data-thb attribute for accurate currency
+  const chargeRows  = [...document.querySelectorAll('#charge_body tr')];
+  const chargeNames = chargeRows.map(r=>r.querySelector('td:first-child')?.textContent.trim()||'');
+  const thbFlags    = chargeRows.map(r=>r.dataset?.thb==='true');
   const sellVals    = [...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costVals    = [...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
 
   // Build sell charges list (non-zero)
   const sellLines = chargeNames.map((name,i)=>{
     if(!sellVals[i]) return null;
-    const isThb = ['THC Origin','THC Dest','Seal Fee','Surrender Fee','B/L Fee','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
+    const isThb = thbFlags[i];
     const unit = i===0 ? '/'+volStr.split(',')[0]?.trim().replace(/^\d+x/,'') : '';
-    return `  ${name.padEnd(18)} : ${isThb?sellVals[i].toFixed(0)+' THB':('USD '+sellVals[i].toFixed(0))}${unit ? ' '+unit : ''}`;
+    return `  ${name.padEnd(18)} : ${isThb ? sellVals[i].toFixed(0)+' THB' : 'USD '+sellVals[i].toFixed(0)}${unit ? ' '+unit : ''}`;
   }).filter(Boolean).join('\n');
 
   const costLines = chargeNames.map((name,i)=>{
     if(!costVals[i]) return null;
-    const isThb = ['THC Origin','THC Dest','Seal Fee','Surrender Fee','B/L Fee','HDL'].some(k=>name.toLowerCase().includes(k.toLowerCase().replace(' ','')));
-    return `  ${name.padEnd(18)} : ${isThb?costVals[i].toFixed(0)+' THB':('USD '+costVals[i].toFixed(0))}`;
+    const isThb = thbFlags[i];
+    return `  ${name.padEnd(18)} : ${isThb ? costVals[i].toFixed(0)+' THB' : 'USD '+costVals[i].toFixed(0)}`;
   }).filter(Boolean).join('\n');
 
   // Get POL/POD from selected rate (most accurate)
@@ -3950,8 +3952,10 @@ function showEmailPreview(emailType){
       ? `\nLocal Charges:\n${localLines.join('\n')}`
       : `\n  Subj to local charges both ends`;
 
+    const csNameQ = v2('s_cs_assigned') || '';
+    const dearNameQ = csNameQ ? `Khun ${csNameQ}` : (cust||'');
     const quotBody =
-`Dear ${cust||''},
+`Dear ${dearNameQ},
 
 Please find competitive rate as below, thank you for your support.
 
@@ -3975,8 +3979,10 @@ Worldwide Logistics`;
   // ── Booking Confirmation Email (original) ───────────────
   const subject = `(INTERNAL) ${bkgno?bkgno+' // ':''}${pol}-${pod} // ${qLabel} // ${cust||'Customer'} // Worldwide Logistics`;
 
+  const csName = v2('s_cs_assigned') || '';
+  const dearName = csName ? `Khun ${csName}` : (cust||'');
   const body =
-`Dear ${cust||''},
+`Dear ${dearName},
 
 Please find detail as below, thanks
 ${connote ? connote+'\n' : ''}
@@ -4077,7 +4083,9 @@ function showGroupEmail(){
   }).join(', ');
 
   // Build email body
-  let body = `Dear ${allCustomers},\n\nPlease find combined booking details as below, thanks\n\n`;
+  const csNameG = v2('s_cs_assigned') || '';
+  const dearNameG = csNameG ? `Khun ${csNameG}` : allCustomers;
+  let body = `Dear ${dearNameG},\n\nPlease find combined booking details as below, thanks\n\n`;
 
   groupList.forEach((grp, gi)=>{
     const j0 = grp[0]; // representative job
@@ -7417,7 +7425,9 @@ function buildSopPdfFromJob(j){
 
   /* ── GREETING ── */
   needY(12);
-  Tsz("Dear P'Aut,",LM,y,9,false,BLK); y+=6;
+  const pdfCsName = j.csAssigned || '';
+  const pdfDear = pdfCsName ? `Dear Khun ${pdfCsName},` : "Dear P'Aut,";
+  Tsz(pdfDear,LM,y,9,false,BLK); y+=6;
   Tsz('Please find detail as below, thanks',LM,y,8.5,false,DGRAY); y+=9;
 
   /* ── SHIPMENT DETAILS ── */
