@@ -2128,7 +2128,7 @@ function renderTable(filtered){
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
-    <td style="font-size:11px;color:var(--muted);font-family:var(--mono)">${r.validity||'—'}</td>
+    <td style="font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap">${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td>${vBadge(r.valid_status)}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
     <td style="padding:4px 6px;text-align:center;white-space:nowrap">
@@ -4702,7 +4702,7 @@ window.exportRateSheetXLSX = function(){
   fillR(LM, y, TW, 14, RED);
   T('RATE SHEET', LM+4, y+5.5, 13, true, WHITE);
   T(cust.toUpperCase(), LM+4, y+11, 9, false, [255,200,200]);
-  T('Sea Freight Pro', RM, y+5.5, 9, false, WHITE, 'right');
+
   T(today, RM, y+11, 8, false, [255,200,200], 'right');
   y += 18;
 
@@ -4719,9 +4719,9 @@ window.exportRateSheetXLSX = function(){
   /* ── RATE TABLE ── */
   // Column definitions
   const cols = [
-    {label:'PORT DESTINATION', w:52, align:'left'},
-    {label:'DEL',        w:30, align:'left'},
     {label:'POL',        w:18, align:'center'},
+    {label:'POD',        w:45, align:'left'},
+    {label:'DEL',        w:35, align:'left'},
     {label:"20'",        w:20, align:'right'},
     {label:"40'",        w:20, align:'right'},
     {label:"40'HC",      w:20, align:'right'},
@@ -4764,9 +4764,9 @@ window.exportRateSheetXLSX = function(){
       const r4h = parseFloat(row.r4h)||0;
 
       const vals = [
+        {v:pol,                           col:MUTED,align:'center'},
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
-        {v:pol,                           col:MUTED,align:'center'},
         {v:r20?(r20+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r20?GREEN:MUTED, align:'right'},
         {v:r40?(r40+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r40?GREEN:MUTED, align:'right'},
         {v:r4h?(r4h+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r4h?GREEN:MUTED, align:'right'},
