@@ -5648,85 +5648,156 @@ function exportSaleReportXLSX(){
   const srData = srLoad();
   const wb = XLSX.utils.book_new();
 
-  // ── Sheet 1: Sale Report Summary ──
-  const rows = [];
-  const H = (txt,cols=1)=>({v:txt,t:'s',s:{font:{bold:true,color:{rgb:'00B4D8'}},fill:{fgColor:{rgb:'0D1B2A'}}}});
-  const LABEL = txt=>({v:txt,t:'s',s:{font:{bold:true}}});
-  const VAL   = txt=>({v:txt||'',t:'s'});
-  const NUM   = n=>({v:Math.round(n||0),t:'n'});
+  // Helpers
+  const RED  = {font:{bold:true, color:{rgb:'FF0000'}}};
+  const REDC = {font:{bold:true, color:{rgb:'FF0000'}}, alignment:{horizontal:'right'}};
+  const BOLD = {font:{bold:true}};
+  const BOLDR= {font:{bold:true}, alignment:{horizontal:'right'}};
+  const YELLOW_BG = {font:{bold:true}, fill:{fgColor:{rgb:'FFFF00'}}, alignment:{horizontal:'left'}};
+  const WRAP = {alignment:{wrapText:true, vertical:'top'}};
+  const RIGHT= {alignment:{horizontal:'right'}};
 
-  rows.push([{v:`Wk-${wk} / ${year}  –  Weekly Sale Report`,t:'s',s:{font:{bold:true,sz:14,color:{rgb:'00B4D8'}}}}]);
+  const S=(v,s)=>({v:v||'',t:'s',s});
+  const N=(n,s)=>({v:Math.round(n||0),t:'n',s:s||{}});
+
+  // ── Build rows ──
+  const rows = [];
+
+  // Row 1: Week header
+  rows.push([null,null,null,null,null, S(`Wk-${wk}`, {font:{bold:false}})]);
   rows.push([]);
 
-  // Section 1: New Secured Business (pinned list)
-  rows.push([{v:'🔴 New Secured Business',t:'s',s:{font:{bold:true,color:{rgb:'FF4444'}}}}]);
-  rows.push([LABEL('No.'),LABEL('Customer'),LABEL('Carrier'),LABEL('Container'),LABEL('POL–POD'),LABEL('ETD'),LABEL('Profit (USD)')]);
+  // New Secured Business
+  rows.push([null,null,null,null,null, S('New Secured Business', RED)]);
+  rows.push([null,null,null,null,null, S('- Please list your new fresh booking detail in this week, if don\'t have then fill as N/A', {})]);
+  rows.push([]);
+
   const pinnedIds = getNewBizList();
   const pinnedJobs = pinnedIds.map(no=>savedJobs.find(j=>j.no===no)).filter(Boolean);
   if(!pinnedJobs.length){
-    rows.push([VAL(''),VAL('N/A')]);
+    rows.push([null,null,null,null,null, S('N/A', {})]);
   } else {
     pinnedJobs.forEach((j,i)=>{
-      const customer=(j.customer||j.shipper||'').toUpperCase();
-      const carrier=(j.carrier||j.selCarrier||'').toUpperCase();
-      const pol=j.pol||'',pod=j.pod||'';
-      rows.push([VAL(i+1),VAL(customer),VAL(carrier),VAL(fmtQty(j)),VAL(pol+'–'+pod),VAL(fmtETD(j.etd)),NUM(j.profit||0)]);
+      const cust=(j.customer||j.shipper||'').toUpperCase();
+      const carr=(j.carrier||j.selCarrier||'').toUpperCase();
+      const qty=fmtQty(j);
+      const route=(j.pol||'')+'–'+(j.pod||'');
+      const etd=fmtETD(j.etd);
+      rows.push([null,null,null,null,null, S(`${i+1}.${cust} ${carr} ${qty} ${route} ETD ${etd}`, {})]);
     });
   }
   rows.push([]);
-
-  // Section 2: Key Accounts Visiting Record
-  rows.push([{v:'🔑 Key Accounts Visiting Record',t:'s',s:{font:{bold:true,color:{rgb:'FF4444'}}}}]);
-  rows.push([LABEL('No.'),LABEL('Customer name'),LABEL('Business type'),LABEL('Feedback situation')]);
-  const kaRows = srData['ka_rows']||[];
-  if(!kaRows.length) rows.push([VAL(''),VAL('N/A')]);
-  else kaRows.forEach((r,i)=>rows.push([VAL(i+1),VAL(r.customer||''),VAL(r.biztype||''),VAL(r.feedback||'')]));
   rows.push([]);
 
-  // Section 2b: Regular BCO / Co-loader / Potential
-  const subSecs=[
-    {title:'Regular BCO',        key:'bco',        count:5},
-    {title:'Regular Co-loader',  key:'coloader',   count:5},
-    {title:'Potential BCO',      key:'pot_bco',    count:3},
-    {title:'Potential Co-loader',key:'pot_coloader',count:3},
-  ];
-  subSecs.forEach(sec=>{
-    rows.push([{v:sec.title,t:'s',s:{font:{bold:true}}}]);
-    rows.push([LABEL('No.'),LABEL('Customer name'),LABEL('Business type'),LABEL('Biz port-pairs / Volume'),LABEL('Feedback situation')]);
-    for(let i=1;i<=sec.count;i++){
-      rows.push([VAL(i),
-        VAL(srData[`${sec.key}_${i}_name`]||''),
-        VAL(srData[`${sec.key}_${i}_type`]||''),
-        VAL(srData[`${sec.key}_${i}_biz`]||''),
-        VAL(srData[`${sec.key}_${i}_feedback`]||'')
-      ]);
-    }
-    rows.push([]);
-  });
+  // Key Accounts Visiting Record
+  rows.push([null,null,null,null,null, S('Key Accounts Visiting Record', RED)]);
+  rows.push([null,null,null,null,null, S('- list and feedback situation for your visit or phone call with BCO or Co-loader', {})]);
+  rows.push([]);
 
-  // Section 3: Profit Forecast (with custom months + manual profit)
-  rows.push([{v:'💹 Profit Forecast',t:'s',s:{font:{bold:true,color:{rgb:'FF4444'}}}}]);
-  rows.push([LABEL('Month'),LABEL('Target (USD)'),LABEL('Actual (USD)')]);
+  // Regular BCO
+  rows.push([null,null,null,null,null, S('Regular BCO - better everyone report your top 5 BCO accounts. If not have 5 then just share what you have.', BOLD)]);
+  for(let i=1;i<=5;i++){
+    const nm=srData[`bco_${i}_name`]||'';
+    const tp=srData[`bco_${i}_type`]||'';
+    const bz=srData[`bco_${i}_biz`]||'';
+    const fb=srData[`bco_${i}_feedback`]||'';
+    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:' -'}`;
+    rows.push([null,null,null,null,null, {v:txt,t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
+  }
+  rows.push([]);
+
+  // Regular Co-loader
+  rows.push([null,null,null,null,null, S('Regular Co-loader - better everyone report your top 5 co-loader accounts. If not have 5 then just share what you have.', BOLD)]);
+  for(let i=1;i<=5;i++){
+    const nm=srData[`coloader_${i}_name`]||'';
+    const tp=srData[`coloader_${i}_type`]||'';
+    const bz=srData[`coloader_${i}_biz`]||'';
+    const fb=srData[`coloader_${i}_feedback`]||'';
+    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:' -'}`;
+    rows.push([null,null,null,null,null, {v:txt,t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
+  }
+  rows.push([]);
+
+  // Potential BCO
+  rows.push([null,null,null,null,null, S('Potential BCO - better everyone report your top 3 BCO accounts. If not have 5 then just share what you have.', BOLD)]);
+  for(let i=1;i<=3;i++){
+    const nm=srData[`pot_bco_${i}_name`]||'';
+    const tp=srData[`pot_bco_${i}_type`]||'';
+    const bz=srData[`pot_bco_${i}_biz`]||'';
+    const fb=srData[`pot_bco_${i}_feedback`]||'';
+    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:''}`;
+    rows.push([null,null,null,null,null, {v:txt||String(i),t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
+  }
+  rows.push([]);
+
+  // Potential Co-loader
+  rows.push([null,null,null,null,null, S('Potential Co-loader - better everyone report your top 3 co-loader accounts. If not have 5 then just share what you have.', BOLD)]);
+  for(let i=1;i<=3;i++){
+    const nm=srData[`pot_coloader_${i}_name`]||'';
+    const tp=srData[`pot_coloader_${i}_type`]||'';
+    const bz=srData[`pot_coloader_${i}_biz`]||'';
+    const fb=srData[`pot_coloader_${i}_feedback`]||'';
+    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:''}`;
+    rows.push([null,null,null,null,null, {v:txt||String(i),t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
+  }
+  rows.push([]);
+
+  // Profit Forecast
+  rows.push([null,null,null,null,null, S('Profit forecast', RED)]);
+
+  // Estimate Profit section (current month)
+  const curYM = new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+  const estYM  = g('sr_est_month')?.value || curYM;
+  const [ey,em] = estYM.split('-');
+  const estLabel = new Date(+ey,+em-1).toLocaleString('en',{month:'short',year:'2-digit'}).toUpperCase()+"'"+ey.slice(2);
+  const estTarget= srData['target_'+estYM]||12000;
+  const estFcast = srData['forecast_'+estYM]||0;
+  const estProc  = getProcessForMonth(estYM)+(srData['manual_profit_'+estYM]||0);
+
+  rows.push([null,null,null,null,null, S(estLabel+' Estimate Profit', YELLOW_BG), S('',{})]);
+  rows.push([null,null,null,null,null, S('Target(USD)', BOLD), N(estTarget, BOLDR)]);
+  rows.push([null,null,null,null,null, S('Forecast', BOLD), N(estFcast, BOLDR)]);
+  rows.push([null,null,null,null,null, S('Progress', BOLD), N(estProc, REDC)]);
+  rows.push([]);
+
+  // Monthly table grouped by Q
   const fAllMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))];
   const now2=new Date();
   for(let i=0;i<3;i++){const d=new Date(now2.getFullYear(),now2.getMonth()+i,1);const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(!fAllMonths.includes(ym))fAllMonths.push(ym);}
   Object.keys(srData).filter(k=>k.startsWith('custom_month_')).forEach(k=>{const ym=k.replace('custom_month_','');if(!fAllMonths.includes(ym))fAllMonths.push(ym);});
   fAllMonths.sort();
-  let totTarget=0,totActual=0;
+
+  // Group by quarter
+  const quarters = {};
   fAllMonths.forEach(ym=>{
-    const[y,m]=ym.split('-');
-    const label=new Date(+y,+m-1).toLocaleString('en',{month:'short',year:'numeric'});
-    const target=srData['target_'+ym]||12000;
-    const proc=getProcessForMonth(ym);
-    const manual=srData['manual_profit_'+ym]||0;
-    const actual=proc+manual;
-    totTarget+=target; totActual+=actual;
-    rows.push([VAL(label),NUM(target),NUM(actual)]);
+    const [y,m]=ym.split('-');
+    const q='Q'+Math.ceil(+m/3)+' '+y;
+    if(!quarters[q]) quarters[q]=[];
+    quarters[q].push(ym);
   });
-  rows.push([{v:'TOTAL',t:'s',s:{font:{bold:true}}},NUM(totTarget),NUM(totActual)]);
+
+  const qKeys = Object.keys(quarters).sort();
+  qKeys.forEach(qk=>{
+    let qTotal=0;
+    const startRow = rows.length;
+    quarters[qk].forEach(ym=>{
+      const [y,m]=ym.split('-');
+      const mon=new Date(+y,+m-1).toLocaleString('en',{month:'short'}).toUpperCase();
+      const label=mon+" '"+String(y).slice(2);
+      const target=srData['target_'+ym]||12000;
+      const proc=getProcessForMonth(ym)+(srData['manual_profit_'+ym]||0);
+      qTotal+=proc;
+      rows.push([null,null,null,null,null, S('Target '+mon+' '+y, BOLDR), N(target, BOLDR)]);
+      rows.push([null,null,null,null,null, S('Actual '+mon, REDC), N(proc, REDC)]);
+    });
+    // Quarter total
+    rows.push([null,null,null,null,null, S('Total '+qk, BOLDR), N(qTotal, BOLDR)]);
+    rows.push([]);
+  });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:6},{wch:22},{wch:18},{wch:20},{wch:18},{wch:14},{wch:14}];
+  // Column widths: A-E narrow, F wide, G medium
+  ws['!cols']=[{wch:2},{wch:2},{wch:2},{wch:2},{wch:2},{wch:80},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, `Wk-${wk}`);
 
   XLSX.writeFile(wb, `SaleReport_Wk${wk}_${year}.xlsx`);
