@@ -508,6 +508,7 @@ body{font-size:14px;font-weight:450}
           <th>Booking No.</th><th>Ref No.</th><th>Customer</th>
           <th>ETD</th><th>ETA</th><th>Vessel</th>
           <th>POL</th><th>POD</th><th>Carrier</th>
+          <th style="text-align:center">VOL</th>
           <th style="text-align:right;color:var(--green)">Sell</th>
           <th style="text-align:right;color:var(--red)">Cost</th>
           <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
@@ -2919,7 +2920,7 @@ function renderShipments(){
     const mProfit=keyJobs.reduce((s,j)=>s+(j.profit||0),0);
     const mComm=keyJobs.reduce((s,j)=>s+(j.comm||0),0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
-    html+=`<tr><td colspan="17" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
+    html+=`<tr><td colspan="18" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
@@ -2933,6 +2934,7 @@ function renderShipments(){
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap">${j.pol||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${j.pod||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
+        <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.profit>=0?'var(--green)':'var(--red)'};font-weight:600;padding:7px 10px">$${j.profit.toFixed(2)}</td>
@@ -2953,7 +2955,7 @@ function renderShipments(){
     });
     // Monthly subtotal row
     html+=`<tr style="background:rgba(232,168,56,.06);border-top:1px solid var(--border2)">
-      <td colspan="12" style="padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted)">${typeLabel} · ${label} · subtotal</td>
+      <td colspan="14" style="padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted)">${typeLabel} · ${label} · subtotal</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:${mProfit>=0?'var(--green)':'var(--red)'}">$${mProfit.toFixed(2)}</td>
       <td></td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">$${mComm.toFixed(2)}</td>
@@ -2961,11 +2963,38 @@ function renderShipments(){
       <td colspan="3"></td>
     </tr>`;
   });
-  if(!jobs.length)html='<tr><td colspan="17" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
+  if(!jobs.length)html='<tr><td colspan="18" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
-  const totP=savedJobs.reduce((s,j)=>s+j.profit,0),totC=savedJobs.reduce((s,j)=>s+j.comm,0);
+  // Total all — use filtered jobs
+  const totP=jobs.reduce((s,j)=>s+(j.profit||0),0);
+  const totS=jobs.reduce((s,j)=>s+(j.sell||0),0);
+  const totCo=jobs.reduce((s,j)=>s+(j.cost||0),0);
+  const totComm=jobs.reduce((s,j)=>s+(j.comm||0),0);
+  const totCommThb=jobs.reduce((s,j)=>s+(j.commThb||0),0);
+  const tot20=jobs.reduce((s,j)=>s+(j.q20||0),0);
+  const tot40=jobs.reduce((s,j)=>s+(j.q40||0),0);
+  const tot40hc=jobs.reduce((s,j)=>s+(j.q40hc||0),0);
+  const volTotParts=[];
+  if(tot20)  volTotParts.push(tot20+'×20GP');
+  if(tot40)  volTotParts.push(tot40+'×40GP');
+  if(tot40hc)volTotParts.push(tot40hc+'×40HC');
+  const volTotStr = volTotParts.join(' + ')||'—';
+  const avgMargin = totS>0 ? (totP/totS*100).toFixed(1) : '0.0';
   const foot=g('saved_foot');
-  if(foot)foot.innerHTML=`<tr style="border-top:2px solid var(--border2)"><td></td><td colspan="9" style="padding:8px 12px;font-size:11px;color:var(--muted)">${savedJobs.length} total jobs</td><td></td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:${totP>=0?'var(--green)':'var(--red)'}">$${totP.toFixed(2)}</td><td></td><td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--gold)">$${totC.toFixed(2)}</td><td style="text-align:right;font-family:var(--mono);padding:8px 10px;color:var(--gold)">${(totC*exRate).toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td><td colspan="4"></td></tr>`;
+  if(foot)foot.innerHTML=`<tr style="border-top:2px solid var(--border2);background:rgba(192,57,43,.04)">
+    <td></td>
+    <td colspan="9" style="padding:8px 12px;font-size:11px;font-weight:700;font-family:var(--mono);color:var(--muted)">
+      TOTAL ALL — ${jobs.length} jobs
+    </td>
+    <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text);font-weight:700;padding:8px 6px">${volTotStr}</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--green)">$${totS.toFixed(0)}</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--red)">$${totCo.toFixed(0)}</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:${totP>=0?'var(--green)':'var(--red)'}">$${totP.toFixed(0)}</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px">${avgMargin}%</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--gold)">$${totComm.toFixed(0)}</td>
+    <td style="text-align:right;font-family:var(--mono);font-weight:700;padding:8px 10px;color:var(--gold)">${totCommThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+    <td colspan="4"></td>
+  </tr>`;
   updateAlertCount();
 }
 
