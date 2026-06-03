@@ -418,7 +418,7 @@ body{font-size:14px;font-weight:450}
   <div class="tbl-wrap" style="margin-bottom:4px">
     <table class="tbl" style="table-layout:fixed">
       <thead><tr>
-        <th style="width:60px">SRC</th><th style="width:90px">CARRIER</th><th style="width:110px">POL</th><th style="width:130px">POD</th>
+        <th style="width:60px">SRC</th><th style="width:90px">CARRIER</th><th style="width:110px">POL</th><th style="width:130px">POD</th><th style="width:120px">DEL</th>
         <th style="text-align:center;width:55px">TYPE</th>
         <th style="text-align:right;width:80px">20'GP ⇅</th>
         <th style="text-align:right;width:80px">40'GP ⇅</th>
@@ -871,7 +871,7 @@ body{font-size:14px;font-weight:450}
         <div style="max-height:400px;overflow-y:auto">
           <table class="tbl" style="min-width:100%">
             <thead><tr>
-              <th>Carrier</th><th>POL → POD</th>
+              <th>Carrier</th><th>POL → POD</th><th>DEL</th>
               <th style="text-align:right;color:var(--green)">20GP</th>
               <th style="text-align:right;color:var(--cyan)">40GP</th>
               <th style="text-align:right;color:var(--cyan)">40HC</th>
@@ -4522,6 +4522,7 @@ function qFilterRates(){
     <tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
       <td style="font-size:11px;padding:6px 8px">${r.carrier}</td>
       <td style="font-size:11px;font-family:var(--mono);padding:6px 8px">${r.pol} → ${r.pod}</td>
+      <td style="font-size:10px;font-family:var(--mono);padding:6px 8px;color:var(--muted)">${r.del||'—'}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:6px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.gp40?'$'+r.gp40:'-'}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
