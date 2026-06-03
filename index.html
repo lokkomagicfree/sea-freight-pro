@@ -1136,11 +1136,11 @@ body{font-size:14px;font-weight:450}
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
           <div style="background:var(--s2);border-radius:6px;padding:10px 14px">
             <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">TARGET (USD)</div>
-            <input type="number" id="sr_est_target" class="inp" placeholder="12000" style="font-size:15px;font-weight:700;color:var(--yellow)" oninput="renderForecastCalc();saveForecastData()">
+            <input type="number" id="sr_est_target" class="inp" placeholder="12000" style="font-size:15px;font-weight:700;color:var(--yellow)" oninput="renderForecastCalc()" onchange="saveForecastData()" onblur="saveForecastData()">
           </div>
           <div style="background:var(--s2);border-radius:6px;padding:10px 14px">
             <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">FORECAST (USD)</div>
-            <input type="number" id="sr_est_forecast" class="inp" placeholder="0" style="font-size:15px;font-weight:700;color:var(--cyan)" oninput="renderForecastCalc();saveForecastData()">
+            <input type="number" id="sr_est_forecast" class="inp" placeholder="0" style="font-size:15px;font-weight:700;color:var(--cyan)" oninput="renderForecastCalc()" onchange="saveForecastData()" onblur="saveForecastData()">
           </div>
           <div style="background:var(--s2);border-radius:6px;padding:10px 14px">
             <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">PROGRESS (USD)</div>
@@ -5263,10 +5263,10 @@ function saveForecastData(){
   const ym = g('sr_est_month')?.value;
   if(!ym) return;
   const data = srLoad();
-  const target   = parseFloat(g('sr_est_target')?.value)||0;
-  const forecast = parseFloat(g('sr_est_forecast')?.value)||0;
-  if(target)   data['target_'+ym]   = target;
-  if(forecast) data['forecast_'+ym] = forecast;
+  const targetVal   = g('sr_est_target')?.value;
+  const forecastVal = g('sr_est_forecast')?.value;
+  if(targetVal   !== '' && targetVal   !== null) data['target_'+ym]   = parseFloat(targetVal)||0;
+  if(forecastVal !== '' && forecastVal !== null) data['forecast_'+ym] = parseFloat(forecastVal)||0;
   srSave(data);
 }
 
@@ -5288,9 +5288,9 @@ function renderForecastCalc(){
     const srData = srLoad();
     const savedTarget = srData['target_'+ym];
     const targetInp = g('sr_est_target');
-    if(targetInp && savedTarget) targetInp.value = savedTarget;
+    if(targetInp) targetInp.value = savedTarget || 12000;
     const forecastInp = g('sr_est_forecast');
-    if(forecastInp) forecastInp.value = srData['forecast_'+ym] || '';
+    if(forecastInp) forecastInp.value = srData['forecast_'+ym] !== undefined ? srData['forecast_'+ym] : '';
   } else {
     if(progressEl) progressEl.textContent='$0';
   }
