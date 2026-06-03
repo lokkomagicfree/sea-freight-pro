@@ -2600,6 +2600,25 @@ function normalizeTHPOL(pol){
 
 // Full port name map — abbreviation → full name
 const PORT_MAP = {
+  // Extra entries for FIX format full names
+  'HOUSTON TX':'Houston, TX','MOBILE AL':'Mobile, AL',
+  'NORFOLK VA':'Norfolk, VA','NEW YORK NY':'New York, NY',
+  'CHARLESTON SC':'Charleston, SC','JACKSONVILLE FL':'Jacksonville, FL',
+  'SAVANNAH GA':'Savannah, GA','HALIFAX NS':'Halifax, NS',
+  'OAKLAND CA':'Oakland, CA','LONG BEACH CA':'Long Beach, CA',
+  'LOS ANGELES CA':'Los Angeles, CA','VANCOUVER BC':'Vancouver, BC',
+  'TACOMA WA':'Tacoma, WA','BALTIMORE MD':'Baltimore, MD',
+  'BOSTON MA':'Boston, MA','MIAMI FL':'Miami, FL',
+  'ATLANTA GA':'Atlanta, GA','CHARLOTTE NC':'Charlotte, NC',
+  'CHICAGO IL':'Chicago, IL','CINCINNATI OH':'Cincinnati, OH',
+  'CLEVELAND OH':'Cleveland, OH','COLUMBUS OH':'Columbus, OH',
+  'DALLAS TX':'Dallas, TX','KANSAS CITY MO':'Kansas City, MO',
+  'MEMPHIS TN':'Memphis, TN','MINNEAPOLIS MN':'Minneapolis, MN',
+  'NASHVILLE TN':'Nashville, TN','PHILADELPHIA PA':'Philadelphia, PA',
+  'PITTSBURGH PA':'Pittsburgh, PA','ST LOUIS MO':'St. Louis, MO',
+  'SEATTLE WA':'Seattle, WA','PORTLAND OR':'Portland, OR',
+  'TORONTO ON':'Toronto, ON','MONTREAL QC':'Montreal, QC',
+  'CALGARY AB':'Calgary, AB','WINNIPEG MB':'Winnipeg, MB',
   // US East Coast
   'NYC':'New York, NY','USNYC':'New York, NY','NEW YORK':'New York, NY','NY':'New York, NY',
   'SAV':'Savannah, GA','USSAV':'Savannah, GA','SAVANNAH':'Savannah, GA',
@@ -2656,7 +2675,6 @@ function normalizePOD(pod){
   const parts = raw
     .split(/\n|\\n/)
     .flatMap(s=>s.split(/\/(?![^(]*\))/)) // split / but not inside parentheses
-    .flatMap(s=>s.split(/,\s*(?=[A-Z]{2,})/)) // split "Houston,TX/Tampa,FL" type
     .map(s=>s.trim())
     .filter(Boolean);
 
@@ -2687,6 +2705,14 @@ function normalizePOD(pod){
       const suffix = m[3].trim();
       const titleCity = city.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
       return `${titleCity}, ${state}${suffix?' '+suffix:''}`.trim();
+    }
+
+    // Handle "CITY, STATE" or "CITY, STATE CODE" patterns (e.g. "NORFOLK, VA")
+    const cityState = clean.match(/^([A-Z][A-Z\s\.]+),\s*([A-Z]{2,3})$/);
+    if(cityState){
+      const city = cityState[1].trim().split(' ')
+        .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+      return `${city}, ${cityState[2]}`;
     }
 
     // Title-case the city name
