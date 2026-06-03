@@ -1111,13 +1111,25 @@ body{font-size:14px;font-weight:450}
 
     <!-- ── Section 2b: Regular / Potential BCO & Co-loader ── -->
     <div class="card" style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">Regular BCO</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Regular BCO</div>
+        <button onclick="addKASection('bco')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">+ Add</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px" id="sr_bco_items"></div>
-      <div style="font-size:12px;font-weight:700;color:var(--text);margin:14px 0 10px">Regular Co-loader</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Regular Co-loader</div>
+        <button onclick="addKASection('coloader')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">+ Add</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px" id="sr_coloader_items"></div>
-      <div style="font-size:12px;font-weight:700;color:var(--text);margin:14px 0 10px">Potential BCO</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Potential BCO</div>
+        <button onclick="addKASection('pot_bco')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">+ Add</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px" id="sr_potential_bco"></div>
-      <div style="font-size:12px;font-weight:700;color:var(--text);margin:14px 0 10px">Potential Co-loader</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">Potential Co-loader</div>
+        <button onclick="addKASection('pot_coloader')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">+ Add</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:6px" id="sr_potential_coloader"></div>
     </div>
 
@@ -4839,7 +4851,31 @@ function srLoad(){
   try{ return JSON.parse(localStorage.getItem(SR_KEY)||'{}'); }catch(e){ return {}; }
 }
 function srSave(data){
+  // Save to localStorage immediately (fast, offline-capable)
   try{ localStorage.setItem(SR_KEY, JSON.stringify(data)); }catch(e){}
+  // Sync to Firestore in background (cross-device)
+  if(window.fbSet){
+    clearTimeout(window._srSaveTimer);
+    window._srSaveTimer = setTimeout(async ()=>{
+      try{ await window.fbSet('data/saleReport', { data, updatedAt: new Date().toISOString() }); }
+      catch(e){ console.warn('srSave Firestore error', e); }
+    }, 800);
+  }
+}
+async function srSyncFromFirestore(){
+  if(!window.fbGet) return;
+  try{
+    const snap = await window.fbGet('data/saleReport');
+    if(!snap?.data) return;
+    // Merge: Firestore wins if newer, otherwise keep local
+    const local = srLoad();
+    const localKeys = Object.keys(local).length;
+    const fsKeys = Object.keys(snap.data).length;
+    // Use Firestore data if it has more data (or local is empty)
+    if(fsKeys >= localKeys){
+      try{ localStorage.setItem(SR_KEY, JSON.stringify(snap.data)); }catch(e){}
+    }
+  }catch(e){ console.warn('srSyncFromFirestore error', e); }
 }
 
 // Get current ISO week number
@@ -5385,49 +5421,83 @@ const KA_FIELDS = [
   {f:'feedback',label:'Feedback situation',      placeholder:'e.g. Rate quoted, awaiting confirmation…'},
 ];
 
-function loadKeyAccountsUI(){
+// Default counts per section
+const KA_DEFAULT_COUNT = {bco:5, coloader:5, pot_bco:3, pot_coloader:3};
+const KA_SECTION_IDS   = {bco:'sr_bco_items', coloader:'sr_coloader_items', pot_bco:'sr_potential_bco', pot_coloader:'sr_potential_coloader'};
+
+function getKACount(key){
   const srData = srLoad();
-  const sections=[
-    {id:'sr_bco_items',       key:'bco',          count:5},
-    {id:'sr_coloader_items',  key:'coloader',     count:5},
-    {id:'sr_potential_bco',   key:'pot_bco',      count:3},
-    {id:'sr_potential_coloader',key:'pot_coloader',count:3},
-  ];
-  sections.forEach(sec=>{
-    const el=g(sec.id); if(!el) return;
-    let html='';
-    for(let i=1;i<=sec.count;i++){
-      const baseKey=`${sec.key}_${i}`;
-      html+=`<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">
-        <div style="font-size:10px;font-family:var(--mono);color:var(--cyan);margin-bottom:8px;letter-spacing:.06em"># ${i}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
-      KA_FIELDS.forEach(({f,label,placeholder})=>{
-        const fullKey=`${baseKey}_${f}`;
-        const saved=(srData[fullKey]||'').replace(/"/g,'&quot;');
-        const isLong = f==='feedback';
-        if(isLong){
-          html+=`<div class="full-col" style="display:flex;flex-direction:column;gap:3px">
-            <label style="font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase">${label}</label>
-            <textarea rows="2" data-key="${fullKey}" oninput="saveKAField(this)"
-              placeholder="${placeholder}"
-              style="background:var(--s1);border:1px solid var(--border2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;resize:vertical;outline:none;line-height:1.5;width:100%"
-              onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'">${saved}</textarea>
-          </div>`;
-        } else {
-          html+=`<div style="display:flex;flex-direction:column;gap:3px">
-            <label style="font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase">${label}</label>
-            <input type="text" data-key="${fullKey}" value="${saved}" oninput="saveKAField(this)"
-              placeholder="${placeholder}"
-              style="background:var(--s1);border:1px solid var(--border2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none"
-              onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'">
-          </div>`;
-        }
-      });
-      html+=`</div></div>`;
-    }
-    el.innerHTML=html;
-  });
+  return srData[`${key}_count`] || KA_DEFAULT_COUNT[key] || 3;
 }
+
+function renderKASection(key){
+  const el = g(KA_SECTION_IDS[key]); if(!el) return;
+  const srData = srLoad();
+  const count = getKACount(key);
+  let html = '';
+  for(let i=1;i<=count;i++){
+    const baseKey=`${key}_${i}`;
+    html+=`<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;position:relative">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:10px;font-family:var(--mono);color:var(--cyan);letter-spacing:.06em"># ${i}</span>
+        <button onclick="removeKASection('${key}',${i})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px" title="Remove" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
+    KA_FIELDS.forEach(({f,label,placeholder})=>{
+      const fullKey=`${baseKey}_${f}`;
+      const saved=(srData[fullKey]||'').replace(/"/g,'&quot;');
+      const isLong = f==='feedback';
+      if(isLong){
+        html+=`<div class="full-col" style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase">${label}</label>
+          <textarea rows="2" data-key="${fullKey}" oninput="saveKAField(this)"
+            placeholder="${placeholder}"
+            style="background:var(--s1);border:1px solid var(--border2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;resize:vertical;outline:none;line-height:1.5;width:100%"
+            onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'">${saved}</textarea>
+        </div>`;
+      } else {
+        html+=`<div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase">${label}</label>
+          <input type="text" data-key="${fullKey}" value="${saved}" oninput="saveKAField(this)"
+            placeholder="${placeholder}"
+            style="background:var(--s1);border:1px solid var(--border2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none"
+            onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'">
+        </div>`;
+      }
+    });
+    html+=`</div></div>`;
+  }
+  el.innerHTML=html;
+}
+
+function loadKeyAccountsUI(){
+  ['bco','coloader','pot_bco','pot_coloader'].forEach(key=>renderKASection(key));
+}
+
+window.addKASection = function(key){
+  const data = srLoad();
+  const cur = data[`${key}_count`] || KA_DEFAULT_COUNT[key] || 3;
+  data[`${key}_count`] = cur + 1;
+  srSave(data);
+  renderKASection(key);
+};
+
+window.removeKASection = function(key, idx){
+  const data = srLoad();
+  const cur = data[`${key}_count`] || KA_DEFAULT_COUNT[key] || 3;
+  if(cur <= 1){ toast('ต้องมีอย่างน้อย 1 ช่อง'); return; }
+  // Shift data up
+  for(let i=idx;i<cur;i++){
+    KA_FIELDS.forEach(({f})=>{
+      data[`${key}_${i}_${f}`] = data[`${key}_${i+1}_${f}`] || '';
+    });
+  }
+  // Clear last
+  KA_FIELDS.forEach(({f})=>{ delete data[`${key}_${cur}_${f}`]; });
+  data[`${key}_count`] = cur - 1;
+  srSave(data);
+  renderKASection(key);
+};
 
 function saveKAField(el){
   const data=srLoad();
@@ -6523,6 +6593,8 @@ async function initFirestoreSync(){
   window.renderCSDatalist?.();
   // Restore saved filter preferences (must run after renderShipments populates month options)
   window.loadFilterPrefs?.();
+  // Sync Sale Report data from Firestore
+  await srSyncFromFirestore();
   // Pre-load newBizList so Sale report shows it immediately
   await loadNewBizList();
   renderNewBizList(); // refresh if Sale page already rendered
