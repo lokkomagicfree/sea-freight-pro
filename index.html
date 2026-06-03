@@ -229,7 +229,7 @@ body{font-size:14px;font-weight:450}
     <button class="nav-tab" onclick="showPage('quotation')">💰 Quote</button>
     <button class="nav-tab" onclick="showPage('todo')">✅ Todo</button>
     <button class="nav-tab" onclick="showPage('news')">📰 News</button>
-    <button class="nav-tab" onclick="showPage('salereport');renderSaleReport()">📊 Sale</button>
+    <button class="nav-tab" onclick="showPage('salereport');renderSaleReport();setTimeout(loadForecastForMonth,100)">📊 Sale</button>
     <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 Transit</button>
     <button class="nav-tab" onclick="showPage('sop');renderSOP()">📂 SOP</button>
   </div>
@@ -5074,8 +5074,6 @@ function renderSaleReport(){
 
   // ── Section 1: New Secured Business (manually pinned shipments)
   renderNewBizList();
-  // Load forecast values for currently selected month
-  loadForecastForMonth();
 
   // ── Section 3: Profit Forecast table
   renderForecastTable();
