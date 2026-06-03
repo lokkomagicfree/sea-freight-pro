@@ -650,7 +650,7 @@ body{font-size:14px;font-weight:450}
         <div id="route_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px"></div>
         <div style="max-height:200px;overflow-y:auto">
           <table class="tbl"><thead><tr>
-            <th>Carrier</th><th>POL → POD</th>
+            <th>Carrier</th><th>POL → POD</th><th>DEL</th>
             <th style="text-align:right;color:var(--green)">20GP</th>
             <th style="text-align:right;color:var(--cyan)">40GP</th>
             <th style="text-align:right;color:var(--cyan)">40HC</th>
@@ -658,7 +658,7 @@ body{font-size:14px;font-weight:450}
             <th style="text-align:right;color:#00d4ff">40RF</th>
             <th>Valid</th><th></th>
           </tr></thead>
-          <tbody id="route_body"><tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
+          <tbody id="route_body"><tr><td colspan="10" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
           </table>
         </div>
         <div id="sel_rate_box" style="display:none;margin-top:8px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.2);border-radius:7px;padding:10px 12px">
@@ -783,13 +783,13 @@ body{font-size:14px;font-weight:450}
               <th style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
-              <th style="text-align:right;padding:5px 8px;color:var(--gold);font-size:10px;font-family:var(--mono);min-width:65px">+ Profit</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DEM</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DET</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:65px">COMBINED</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:90px">DIRECT/T/S</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:45px">T/T</th>
               <th style="padding:5px 8px;font-size:10px;font-family:var(--mono);color:var(--gold);min-width:110px">Valid Date</th>
+              <th style="text-align:right;padding:5px 8px;color:var(--gold);font-size:10px;font-family:var(--mono);min-width:65px">+ Profit</th>
               <th style="width:28px"></th>
             </tr></thead>
             <tbody id="q_rate_body"></tbody>
@@ -1748,6 +1748,9 @@ function parseSheetFIX(rows, sn, src){
     const x=parseFloat(s); return isNaN(x)||x<=0?0:x;
   };
 
+  // Carrier = sheet name (e.g. ONE, ZIM, MSC)
+  const carrierName = sn && !/sheet/i.test(sn) ? sn.toUpperCase() : '';
+
   // Find 2-row header: row with TOTAL RATE
   let hdr1=-1,hdr2=-1;
   for(let i=0;i<Math.min(8,rows.length);i++){
@@ -1762,9 +1765,12 @@ function parseSheetFIX(rows, sn, src){
   const h2=rows[hdr2]?rows[hdr2].map(S):[];
 
   // Find column positions from row1
-  const polCol = h1.findIndex(c=>/^POL$/i.test(c));
-  const podCol = h1.findIndex(c=>/^POD$|^place\s*of\s*delivery$/i.test(c));
-  const totalRateCol = h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
+  const polCol        = h1.findIndex(c=>/^POL$/i.test(c));
+  const podCol        = h1.findIndex(c=>/^POD$|^place\s*of\s*delivery$/i.test(c));
+  const delCol        = h1.findIndex(c=>/^DEL$|^delivery$/i.test(c));
+  const totalRateCol  = h1.findIndex(c=>/^TOTAL\s*RATE$/i.test(c));
+  // Validity column — per-row validity (e.g. col header "Validity")
+  const validityCol   = h1.findIndex(c=>/^validity$/i.test(c));
 
   // Find 20GP/40GP/40HC sub-columns under TOTAL RATE from row2
   let g20col=-1, g40col=-1, g4hcol=-1;
@@ -1777,28 +1783,27 @@ function parseSheetFIX(rows, sn, src){
   }
   if(g20col<0) return out;
 
-  // Extract validity from header rows
-  let validityStr='';
+  // Extract global validity from header rows (fallback)
+  let globalValidity='';
   for(let i=0;i<Math.min(10,rows.length);i++){
     const cells=rows[i].map(S);
     for(let j=0;j<cells.length;j++){
       if(/valid|expir/i.test(cells[j]) && cells[j+1] && /\d/.test(cells[j+1])){
-        validityStr=cells[j+1]; break;
+        globalValidity=cells[j+1]; break;
       }
     }
-    if(validityStr) break;
+    if(globalValidity) break;
   }
-  const[dfSheet,dtSheet]=parseValidity(validityStr);
 
   let lp='', ld='';
   for(let ri=hdr2+1;ri<rows.length;ri++){
     const row=rows[ri]; if(!row||row.every(c=>!c)) continue;
     const cs=row.map(S);
-    if(cs[g20col] && /^(20GP|40GP|40HC|45HC)$/i.test(cs[g20col])) continue; // skip repeated sub-header
+    if(cs[g20col] && /^(20GP|40GP|40HC|45HC)$/i.test(cs[g20col])) continue;
 
-    // POL — split by newline for multi-port cells
     const pRaw = polCol>=0 && cs[polCol] ? cs[polCol] : lp;
     const dRaw = podCol>=0 && cs[podCol] ? cs[podCol] : ld;
+    const delRaw = delCol>=0 ? cs[delCol] : '';
     if(pRaw) lp=pRaw;
     if(dRaw) ld=dRaw;
     if(!lp||!ld) continue;
@@ -1808,28 +1813,38 @@ function parseSheetFIX(rows, sn, src){
     const g4h=g4hcol>=0?N(row[g4hcol]):g40;
     if(!g20&&!g40&&!g4h) continue;
 
+    // Per-row validity (col 39-ish) overrides global
+    const rowValidity = validityCol>=0 && cs[validityCol] ? cs[validityCol] : globalValidity;
+    const[df,dt]=parseValidity(rowValidity);
+
     // Split multi-port POL (newline or slash separated)
-    const polParts = lp.split(/\n|\\n/).flatMap(p=>p.split('/').map(s=>s.trim())).filter(Boolean);
-    // Filter Thai POL only
+    const polParts = lp.split(/\n|\\n|\r/).flatMap(p=>p.split('/').map(s=>s.trim())).filter(Boolean);
     const thaiPols = polParts.filter(p=>isStrictThaiPOL(p.toLowerCase()));
     if(!thaiPols.length) continue;
 
-    // Normalize POD (expand USEC/USWC)
-    const podList = normalizePOD(ld);
+    // Split multi-port POD (newline separated, e.g. "LONG BEACH, CA\nLOS ANGELES, CA")
+    const podRaw = dRaw || ld;
+    const podParts = podRaw.split(/\n|\\n|\r/).map(s=>s.trim()).filter(Boolean);
 
     thaiPols.forEach(pol=>{
-      podList.forEach(pod=>{
-        out.push({
-          pol: normalizeTHPOL(pol),
-          pod,
-          gp20:g20||g40||g4h,
-          gp40:g40||g4h||g20,
-          hc40:g4h||g40||g20,
-          carrier:'',
-          validity:validityStr,
-          date_from:dfSheet, date_to:dtSheet,
-          valid_status:calcStatus(dfSheet,dtSheet),
-          sheet:sn, source:src
+      podParts.forEach(podPart=>{
+        const podList = normalizePOD(podPart);
+        podList.forEach(pod=>{
+          // Split DEL by newline too (may have multiple delivery points)
+          const delStr = delRaw ? delRaw.split(/\n|\\n|\r/).map(s=>s.trim()).filter(Boolean).join(' / ') : '';
+          out.push({
+            pol: normalizeTHPOL(pol),
+            pod,
+            del: delStr,
+            gp20:g20||g40||g4h,
+            gp40:g40||g4h||g20,
+            hc40:g4h||g40||g20,
+            carrier: carrierName,
+            validity: rowValidity,
+            date_from:df, date_to:dt,
+            valid_status:calcStatus(df,dt),
+            sheet:sn, source:src
+          });
         });
       });
     });
@@ -2712,7 +2727,7 @@ function expandAndFilterThaiPOL(rates){
 
 function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),vstatus=v('r_vstatus');
-  if(!pol&&!pod&&!car){g('route_body').innerHTML='<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
+  if(!pol&&!pod&&!car){g('route_body').innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
   let res=ALL_RATES.filter(r=>{
     if(!isThaiPOL(r.pol)) return false;
     if(car&&normalizeCarrier(r.carrier)!==car)return false;
@@ -2725,6 +2740,7 @@ function filterRoutes(){
   g('route_body').innerHTML=res.length?res.map(r=>`<tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
     <td style="font-size:11px;padding:6px 8px">${r.carrier}</td>
     <td style="font-size:11px;font-family:var(--mono);padding:6px 8px">${r.pol} → ${r.pod}</td>
+    <td style="font-size:10px;font-family:var(--mono);padding:6px 8px;color:var(--muted)">${r.del||'—'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:6px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.gp40?'$'+r.gp40:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
@@ -4388,12 +4404,6 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'r40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r4h||''}" placeholder="0" min="0"
         oninput="qUpdateRate(${row.id},'r4h',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
-      <td style="padding:3px 4px">
-        <input type="number" class="inp" value="${row.profit||''}" placeholder="+0" min="0"
-          oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
-          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:55px">
-        <div id="eff_${row.id}" style="font-size:9px;color:var(--green);font-family:var(--mono);text-align:right;margin-top:1px;white-space:nowrap">${(()=>{const p=parseFloat(row.profit)||0;const r20=parseFloat(row.r20)||0;const r4h=parseFloat(row.r4h)||0;return p&&(r20||r4h)?'→ '+(r20+p)+'/'+(r4h+p):'';})()}</div>
-      </td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.det||''}" placeholder="e.g. 5"
@@ -4406,6 +4416,12 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'tt',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:38px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.valid||''}" placeholder="e.g. May 1-31"
         oninput="qUpdateRate(${row.id},'valid',this.value)" style="font-size:11px;padding:3px 6px;color:var(--gold);width:95px"></td>
+      <td style="padding:3px 4px">
+        <input type="number" class="inp" value="${row.profit||''}" placeholder="+0" min="0"
+          oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:55px">
+        <div id="eff_${row.id}" style="font-size:9px;color:var(--green);font-family:var(--mono);text-align:right;margin-top:1px;white-space:nowrap">${(()=>{const p=parseFloat(row.profit)||0;const r20=parseFloat(row.r20)||0;const r4h=parseFloat(row.r4h)||0;return p&&(r20||r4h)?'→ '+(r20+p)+'/'+(r4h+p):'';})()}</div>
+      </td>
       <td style="padding:3px 4px;text-align:center"><button onclick="qRemoveRate(${row.id})"
         style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
     </tr>`).join('');
@@ -4479,7 +4495,7 @@ function qFilterRates(){
   const pod = (document.getElementById('q_f_pod')?.value||document.getElementById('q_pod')?.value||'').toLowerCase().trim();
   const count_el = document.getElementById('q_route_count');
   const body_el  = document.getElementById('q_route_body');
-  if(!pol&&!pod&&!car){ if(body_el) body_el.innerHTML='<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>'; if(count_el) count_el.textContent=''; return; }
+  if(!pol&&!pod&&!car){ if(body_el) body_el.innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>'; if(count_el) count_el.textContent=''; return; }
   const results = ALL_RATES.filter(r=>{
     if(car&&!(r.carrier||'').toLowerCase().includes(car)) return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol)) return false;
