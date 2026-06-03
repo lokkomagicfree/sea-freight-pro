@@ -5677,14 +5677,14 @@ window.buildStyledXLSX = function(sheetName, rows, colWidths, rowHeights){
     '<fill><patternFill patternType="gray125"/></fill>',
     '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill>', // 2 yellow
     '<fill><patternFill patternType="solid"><fgColor rgb="FFA8D5A2"/></patternFill></fill>', // 3 green light
-    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFCE"/></patternFill></fill>', // 4 cream
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFE0"/></patternFill></fill>', // 4 cream (light yellow)
   ];
   const numfmts = [];
   const numfmtMap = {'#,##0': 164};
 
   function getXfIdx(bold, red, bg, halign, wrap, numfmt, border, italic, underline){
     const fontIdx = getFontIdx(bold,red,italic,underline);
-    const fillIdx = bg==='FFFF00' ? 2 : (bg==='A8D5A2' ? 3 : (bg==='FFFFFCE' ? 4 : 0));
+    const fillIdx = bg==='FFFFFF00' ? 2 : (bg==='FFA8D5A2' ? 3 : (bg==='FFFFFFE0' ? 4 : 0));
     const alignEl = (halign||wrap) ? `<alignment horizontal="${halign||'general'}" wrapText="${wrap?1:0}" vertical="top"/>` : '';
     const numfmtId = numfmt ? (numfmtMap[numfmt]||0) : 0;
     // border: {l,r,t,b} each 'medium','thin',null
@@ -5896,7 +5896,7 @@ function exportSaleReportXLSX(){
     T(`${estLabel} Estimate Profit`,true,false,'FFFFFF00','left',false,BLR),
     N('',false,false,null,'right',false,null,BLR)
   ],15.75);
-  const CREAM='FFFFFCE';
+  const CREAM='FFFFFFE0';
   addRow([null,null,null,null,null,
     T('Target(USD)',true,false,CREAM,'left',false,BL),
     N(estTarget,true,false,CREAM,'right',false,'#,##0',{l:null,r:'medium',t:null,b:null})
@@ -5912,7 +5912,7 @@ function exportSaleReportXLSX(){
   addRow([]);
 
   // Monthly table by quarter — green bg rows with medium borders
-  const GREEN='A8D5A2';
+  const GREEN='FFA8D5A2';
   const fAllMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))];
   const now2=new Date();
   for(let i=0;i<3;i++){const d=new Date(now2.getFullYear(),now2.getMonth()+i,1);const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(!fAllMonths.includes(ym))fAllMonths.push(ym);}
