@@ -2924,7 +2924,7 @@ function renderShipments(){
   const tbody=g('saved_body');if(!tbody)return;
   let html='';
   sortedKeys.forEach(key=>{
-    const keyJobs=groups[key];
+    const keyJobs=groups[key].slice().sort((a,b)=>(b.etd||'').localeCompare(a.etd||''));
     const[y,m]=key.split('-');const label=key==='Unknown'?'Unknown':((MN[m]||m)+' '+y);
     const typeLabel=keyJobs[0]?.jobType==='import'?'📥 Import':'📤 Export';
     // Monthly subtotals
