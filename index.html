@@ -5723,11 +5723,12 @@ window.buildStyledXLSX = function(sheetName, rows, colWidths, rowHeights){
       if(ci >= 26) return; // simple, support A-Z only
       const addr = colLetter + rowNum;
       const xfIdx = getXfIdx(cell.bold, cell.red, cell.bg, cell.halign, cell.wrap, cell.numfmt, cell.border, cell.italic, cell.underline);
+      const sIdx = xfIdx+1; // +1 because xfDefault occupies slot 0
       if(typeof cell.v === 'number'){
-        cells.push(`<c r="${addr}" s="${xfIdx}" t="n"><v>${Math.round(cell.v)}</v></c>`);
+        cells.push(`<c r="${addr}" s="${sIdx}" t="n"><v>${Math.round(cell.v)}</v></c>`);
       } else {
         const si = getStrIdx(String(cell.v||''));
-        cells.push(`<c r="${addr}" s="${xfIdx}" t="s"><v>${si}</v></c>`);
+        cells.push(`<c r="${addr}" s="${sIdx}" t="s"><v>${si}</v></c>`);
       }
     });
     if(cells.length){
@@ -5938,12 +5939,12 @@ function exportSaleReportXLSX(){
       const target=srData['target_'+ym]||12000;
       const actual=Math.round(getProcessForMonth(ym)+(srData['manual_profit_'+ym]||0));
       qTot+=actual;
-      // Target row — green bg, black text
+      // Target row — green bg, BLACK text
       addRow([null,null,null,null,null,
         T(`Target ${mo} ${y}`,true,false,GREEN,'right',false,BFL),
         N(target,true,false,GREEN,'right',false,'#,##0',BGN)
       ],15.75);
-      // Actual row — green bg, red text, dash for zero
+      // Actual row — green bg, RED text, dash for zero
       const actVal = actual>0 ? actual : '-';
       addRow([null,null,null,null,null,
         T(`Actual ${mo}`,true,true,GREEN,'right',false,BFULL),
