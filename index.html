@@ -783,6 +783,7 @@ body{font-size:14px;font-weight:450}
               <th style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
+              <th style="text-align:right;padding:5px 8px;color:var(--gold);font-size:10px;font-family:var(--mono);min-width:65px">+ Profit</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DEM</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DET</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:65px">COMBINED</th>
@@ -4361,9 +4362,9 @@ function openGroupMailto(){
 
 // ── Quotation Page ─────────────────────────────────────────
 
-function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt=''){
+function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit=''){
   const id = Date.now() + Math.random();
-  qRateRows.push({id, carrier, pod, r20, r40, r4h, dem, det, combined, direct, tt, valid});
+  qRateRows.push({id, carrier, pod, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
   qRenderRateRows();
   qPreview();
 }
@@ -4382,11 +4383,17 @@ function qRenderRateRows(){
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. New York"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r20||''}" placeholder="0" min="0"
-        oninput="qUpdateRate(${row.id},'r20',this.value)" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--green);width:70px"></td>
+        oninput="qUpdateRate(${row.id},'r20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--green);width:70px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r40||''}" placeholder="0" min="0"
-        oninput="qUpdateRate(${row.id},'r40',this.value)" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
+        oninput="qUpdateRate(${row.id},'r40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
       <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r4h||''}" placeholder="0" min="0"
-        oninput="qUpdateRate(${row.id},'r4h',this.value)" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
+        oninput="qUpdateRate(${row.id},'r4h',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
+      <td style="padding:3px 4px">
+        <input type="number" class="inp" value="${row.profit||''}" placeholder="+0" min="0"
+          oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:55px">
+        <div id="eff_${row.id}" style="font-size:9px;color:var(--green);font-family:var(--mono);text-align:right;margin-top:1px;white-space:nowrap">${(()=>{const p=parseFloat(row.profit)||0;const r20=parseFloat(row.r20)||0;const r4h=parseFloat(row.r4h)||0;return p&&(r20||r4h)?'→ '+(r20+p)+'/'+(r4h+p):'';})()}</div>
+      </td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.det||''}" placeholder="e.g. 5"
@@ -4407,6 +4414,23 @@ function qRenderRateRows(){
 function qUpdateRate(id, field, val){
   const row = qRateRows.find(r=>r.id===id);
   if(row){ row[field]=val; qPreview(); }
+}
+function qUpdateRateDisplay(id){
+  const row = qRateRows.find(r=>r.id===id);
+  if(!row) return;
+  const el = document.getElementById('eff_'+id);
+  if(!el) return;
+  const p   = parseFloat(row.profit)||0;
+  const r20 = parseFloat(row.r20)||0;
+  const r40 = parseFloat(row.r40)||0;
+  const r4h = parseFloat(row.r4h)||0;
+  if(p && (r20||r4h)){
+    const parts=[];
+    if(r20) parts.push('20:'+(r20+p));
+    if(r40) parts.push('40:'+(r40+p));
+    if(r4h) parts.push('HC:'+(r4h+p));
+    el.textContent = '→ '+parts.join(' / ');
+  } else { el.textContent=''; }
 }
 function qRemoveRate(id){
   qRateRows = qRateRows.filter(r=>r.id!==id);
@@ -4683,9 +4707,9 @@ window.exportRateSheetXLSX = function(){
       const vals = [
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:pol,                           col:MUTED,align:'center'},
-        {v:r20?r20.toLocaleString():'—',  col:r20?GREEN:MUTED, align:'right'},
-        {v:r40?r40.toLocaleString():'—',  col:r40?GREEN:MUTED, align:'right'},
-        {v:r4h?r4h.toLocaleString():'—',  col:r4h?GREEN:MUTED, align:'right'},
+        {v:r20?(r20+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r20?GREEN:MUTED, align:'right'},
+        {v:r40?(r40+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r40?GREEN:MUTED, align:'right'},
+        {v:r4h?(r4h+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r4h?GREEN:MUTED, align:'right'},
         {v:car,                           col:CYAN, align:'center'},
         {v:row.dem||'—',                  col:MUTED,align:'center'},
         {v:row.det||'—',                  col:MUTED,align:'center'},
