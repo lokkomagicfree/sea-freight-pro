@@ -158,7 +158,10 @@ select.inp{cursor:pointer}
 
   <!-- Table -->
   <div class="card" style="padding:0;overflow:hidden">
-    <div class="tbl-wrap">
+    <div id="tbl_scroll_top" style="overflow-x:auto;overflow-y:hidden;height:12px;margin-bottom:-1px" onscroll="document.querySelector('.tbl-wrap').scrollLeft=this.scrollLeft">
+      <div id="tbl_scroll_inner" style="height:1px"></div>
+    </div>
+    <div class="tbl-wrap" onscroll="document.getElementById('tbl_scroll_top').scrollLeft=this.scrollLeft">
       <table>
         <thead>
           <tr>
@@ -166,6 +169,7 @@ select.inp{cursor:pointer}
             <th>CUSTOMER</th>
             <th>POL → POD</th>
             <th>CARRIER</th>
+            <th style="text-align:center">VOL</th>
             <th>ETD</th>
             <th>ETA</th>
             <th>VESSEL / VOY</th>
@@ -417,6 +421,12 @@ function startLiveSync(){
     buildMonthFilter();
     renderStats();
     renderCutoffAlerts();
+    // Sync top scrollbar width
+    requestAnimationFrame(()=>{
+      const tbl = document.querySelector('.tbl-wrap table');
+      const inner = document.getElementById('tbl_scroll_inner');
+      if(tbl && inner) inner.style.width = tbl.scrollWidth + 'px';
+    });
     // Debounce renderTable so it doesn't interrupt user filter interactions
     clearTimeout(window._renderDebounce);
     window._renderDebounce = setTimeout(()=>{
@@ -782,6 +792,7 @@ function renderTable(){
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
       <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
+      <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
       <td style="padding:6px 8px">
         <input type="date" value="${j.etd||''}"
           onchange="inlineUpdate(${j._idx},'etd',this.value,this)"
