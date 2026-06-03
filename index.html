@@ -705,6 +705,17 @@ body{font-size:14px;font-weight:450}
           </tr></thead>
           <tbody id="charge_body"></tbody>
         </table>
+
+        <!-- Local Charges Template Toolbar -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">LOCAL CHARGE TEMPLATE:</span>
+          <select id="lc_template_sel" class="fi" style="font-size:11px;padding:3px 8px;flex:1;min-width:140px">
+            <option value="">-- เลือก Customer --</option>
+          </select>
+          <button onclick="applyLocalChargeTemplate()" class="btn btn-ghost" style="font-size:11px;padding:4px 12px">📋 Apply</button>
+          <button onclick="saveLocalChargeTemplate()" class="btn btn-ghost" style="font-size:11px;padding:4px 12px;color:var(--green);border-color:var(--green)">💾 Save</button>
+          <button onclick="deleteLocalChargeTemplate()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red)">✕</button>
+        </div>
       </div>
     </div>
 
@@ -2239,6 +2250,92 @@ document.addEventListener('click',e=>{
 const THB_CHARGES = ['THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee'];
 function isThbCharge(name){ return THB_CHARGES.some(t=>name===t); }
 
+
+// ── Local Charge Templates ──────────────────────────────────
+async function loadLCTemplates(){
+  const sel = g('lc_template_sel');
+  if(!sel) return;
+  try{
+    const snap = await window.fbGet('data/lcTemplates');
+    const templates = snap?.templates || {};
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- เลือก Customer --</option>' +
+      Object.keys(templates).sort().map(k =>
+        `<option value="${k}"${k===cur?' selected':''}>${k}</option>`
+      ).join('');
+  }catch(e){ console.warn('loadLCTemplates', e); }
+}
+
+window.saveLocalChargeTemplate = async function(){
+  const customer = v('s_customer') || v('s_shipper') || '';
+  const name = prompt('บันทึก Local Charges ชื่อ:', customer || 'Customer');
+  if(!name) return;
+
+  // Collect local charges (skip row 0 = Ocean Freight)
+  const rows = [...document.querySelectorAll('#charge_body tr')];
+  const sells = [...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
+  const costs = [...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
+  const charges = rows.slice(1).map((r,i)=>({
+    name: r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'',
+    thb: r.dataset?.thb==='true',
+    sell: sells[i+1]||0,
+    cost: costs[i+1]||0
+  })).filter(c=>c.sell||c.cost);
+
+  if(!charges.length){ toast('❌ ไม่มี Local Charges ที่กรอก'); return; }
+
+  try{
+    const snap = await window.fbGet('data/lcTemplates');
+    const templates = snap?.templates || {};
+    templates[name] = { charges, updatedAt: new Date().toISOString() };
+    await window.fbSet('data/lcTemplates', { templates });
+    await loadLCTemplates();
+    document.getElementById('lc_template_sel').value = name;
+    toast('✅ Saved: '+name);
+  }catch(e){ toast('❌ '+e.message); }
+};
+
+window.applyLocalChargeTemplate = async function(){
+  const name = g('lc_template_sel')?.value;
+  if(!name){ toast('เลือก Customer ก่อนครับ'); return; }
+
+  try{
+    const snap = await window.fbGet('data/lcTemplates');
+    const tmpl = snap?.templates?.[name];
+    if(!tmpl){ toast('❌ ไม่พบ template'); return; }
+
+    const rows  = [...document.querySelectorAll('#charge_body tr')];
+    const sells = [...document.querySelectorAll('.sell-inp')];
+    const costs = [...document.querySelectorAll('.cost-inp')];
+
+    // Match by charge name, apply sell/cost (skip row 0 Ocean Freight)
+    rows.slice(1).forEach((r,i)=>{
+      const rowName = r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'';
+      const match = tmpl.charges.find(c=>c.name===rowName);
+      if(match){
+        if(sells[i+1]) sells[i+1].value = match.sell||0;
+        if(costs[i+1]) costs[i+1].value = match.cost||0;
+      }
+    });
+    recalc();
+    toast('✅ Applied: '+name);
+  }catch(e){ toast('❌ '+e.message); }
+};
+
+window.deleteLocalChargeTemplate = async function(){
+  const name = g('lc_template_sel')?.value;
+  if(!name){ toast('เลือก template ก่อนครับ'); return; }
+  if(!confirm('ลบ template "'+name+'"?')) return;
+  try{
+    const snap = await window.fbGet('data/lcTemplates');
+    const templates = snap?.templates || {};
+    delete templates[name];
+    await window.fbSet('data/lcTemplates', { templates });
+    await loadLCTemplates();
+    toast('🗑 ลบแล้ว: '+name);
+  }catch(e){ toast('❌ '+e.message); }
+};
+
 function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
@@ -2850,6 +2947,7 @@ function editShipment(idx){
   }
   renderCtnRows();
   buildCharges();
+loadLCTemplates();
   if(j.sells&&j.costs){
     const si=[...document.querySelectorAll('.sell-inp')],ci=[...document.querySelectorAll('.cost-inp')];
     j.sells.forEach((v,i)=>{if(si[i])si[i].value=v;});j.costs.forEach((v,i)=>{if(ci[i])ci[i].value=v;});
