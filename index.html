@@ -315,7 +315,7 @@ body{font-size:14px;font-weight:450}
         <div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">
           <table class="tbl" style="min-width:600px">
             <thead><tr>
-              <th>Carrier</th><th>POL</th><th>POD</th><th>Type</th>
+              <th>Carrier</th><th>POL</th><th>POD</th><th>DEL</th><th>Type</th>
               <th style="text-align:right">20GP</th><th style="text-align:right">40GP</th><th style="text-align:right">40HC</th>
               <th style="text-align:right">20RF</th><th style="text-align:right">40RF</th>
               <th>Valid From</th><th>Valid To</th><th style="text-align:center">✓</th>
@@ -518,6 +518,7 @@ body{font-size:14px;font-weight:450}
           <th style="">Vessel</th>
           <th style="">POL</th>
           <th style="">POD</th>
+          <th style="">DEL</th>
           <th>Carrier</th>
           <th style="text-align:center">VOL</th>
           <th style="text-align:right;color:var(--green)">Sell</th>
@@ -668,6 +669,11 @@ body{font-size:14px;font-weight:450}
             <span>20GP: <strong style="color:var(--cyan)" id="sel_20">—</strong></span>
             <span>40GP: <strong style="color:var(--cyan)" id="sel_40">—</strong></span>
             <span>40HC: <strong style="color:var(--cyan)" id="sel_40hc">—</strong></span>
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <label style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">DEL:</label>
+            <input spellcheck="false" class="inp" id="s_del" placeholder="Place of Delivery…"
+              style="font-size:11px;padding:3px 8px;flex:1;background:rgba(0,212,255,.04)">
           </div>
         </div>
 
@@ -2100,7 +2106,7 @@ function renderTable(filtered){
   const total=filtered.length,pages=Math.ceil(total/PER_PAGE);
   const slice=filtered.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
   const tbody=g('rate_body');if(!tbody)return;
-  if(!slice.length){tbody.innerHTML=`<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
+  if(!slice.length){tbody.innerHTML=`<tr><td colspan="14" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
     const realIdx = ALL_RATES.indexOf(r);
@@ -2112,6 +2118,7 @@ function renderTable(filtered){
     <td style="font-weight:500">${r.carrier||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pol||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pod||'—'}</td>
+    <td style="font-family:var(--mono);font-size:10px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.del||'—'}</td>
     <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${isReefer?'var(--cyan)':'var(--muted)'}">
       ${isReefer?'❄️ RF':'📦 DRY'}
     </td>
@@ -2150,6 +2157,7 @@ function openEditRate(idx){
   document.getElementById('er_carrier').value=r.carrier||'';
   document.getElementById('er_pol').value=r.pol||'';
   document.getElementById('er_pod').value=r.pod||'';
+  document.getElementById('er_del').value=r.del||'';
   document.getElementById('er_gp20').value=r.gp20||'';
   document.getElementById('er_gp40').value=r.gp40||'';
   document.getElementById('er_hc40').value=r.hc40||'';
@@ -2168,6 +2176,7 @@ function saveEditRate(){
   r.carrier=normalizeCarrier(document.getElementById('er_carrier').value.trim())||document.getElementById('er_carrier').value.trim();
   r.pol=document.getElementById('er_pol').value.trim();
   r.pod=document.getElementById('er_pod').value.trim();
+  r.del=document.getElementById('er_del').value.trim();
   r.gp20=N(document.getElementById('er_gp20').value);
   r.gp40=N(document.getElementById('er_gp40').value);
   r.hc40=N(document.getElementById('er_hc40').value);
@@ -2788,10 +2797,11 @@ function applyRate(idx){
 
   const box=g('sel_rate_box'),lbl=g('sel_label');
   if(box)box.style.display='';
-  if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod;
-  window._selPol=r.pol||''; window._selPod=r.pod||'';
+  if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod+(r.del?' / DEL:'+r.del:'');
+  window._selPol=r.pol||''; window._selPod=r.pod||''; window._selDel=r.del||'';
   window._selCarrier=r.carrier||'';
   const cf=g('s_carrier'); if(cf&&!cf.value) cf.value=r.carrier||'';
+  const df=g('s_del'); if(df) df.value=r.del||'';
 
   const set20=g('sel_20'),set40=g('sel_40'),set4h=g('sel_40hc');
   if(r.container_type==='REEFER'){
@@ -2955,7 +2965,7 @@ function saveShipment(){
     siCutoff:v('s_si_cutoff')||'', vgmCutoff:v('s_vgm_cutoff')||'', docCutoff:v('s_doc_cutoff')||'', gateClosing:v('s_gate_closing')||'',
     cyrtn:[v('s_cy_date')?'CY '+v('s_cy_date'):'',v('s_rtn_date')?'RTN '+v('s_rtn_date'):''].filter(Boolean).join(' / '),
     connote:v2('s_connote'),
-    pol:window._selPol||'',pod:window._selPod||'',
+    pol:window._selPol||'',pod:window._selPod||'',del:g('s_del')?.value||window._selDel||'',
     selCarrier:window._selCarrier||'',selLabel:g('sel_label')?g('sel_label').textContent:'',
     lkb: g('lkb_toggle')?.checked || false,
     bkk: g('bkk_toggle')?.checked || false,
@@ -3006,6 +3016,7 @@ function editShipment(idx){
   // Restore route picker
   if(j.pol){const rp=g('r_pol');if(rp)rp.value=j.pol;window._selPol=j.pol;}
   if(j.pod){const rd=g('r_pod');if(rd)rd.value=j.pod;window._selPod=j.pod;}
+  if(j.del){const dd=g('s_del');if(dd)dd.value=j.del;window._selDel=j.del;}
   if(j.selCarrier){const rc=g('r_carrier');if(rc)rc.value=j.selCarrier;window._selCarrier=j.selCarrier;}
   if(j.selLabel){const box=g('sel_rate_box'),lbl=g('sel_label');if(box)box.style.display='';if(lbl)lbl.textContent=j.selLabel;}
   const lkbT=g('lkb_toggle'); if(lkbT) lkbT.checked=j.lkb||false;
@@ -3046,7 +3057,7 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
@@ -3105,7 +3116,7 @@ function renderShipments(){
     const mProfit=keyJobs.reduce((s,j)=>s+(j.profit||0),0);
     const mComm=keyJobs.reduce((s,j)=>s+(j.comm||0),0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
-    html+=`<tr><td colspan="18" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
+    html+=`<tr><td colspan="19" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
@@ -3118,6 +3129,7 @@ function renderShipments(){
         <td style="padding:7px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${j.vessel||'—'} ${j.vessel?`<button onclick="openMap('${j.vessel}','')" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:10px">📡</button>`:''}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--cyan);white-space:nowrap">${j.pol||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${j.pod||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis">${j.del||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
         <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
@@ -3140,7 +3152,7 @@ function renderShipments(){
     });
     // Monthly subtotal row
     html+=`<tr style="background:rgba(232,168,56,.06);border-top:1px solid var(--border2)">
-      <td colspan="14" style="padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted)">${typeLabel} · ${label} · subtotal</td>
+      <td colspan="15" style="padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted)">${typeLabel} · ${label} · subtotal</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:${mProfit>=0?'var(--green)':'var(--red)'}">$${mProfit.toFixed(2)}</td>
       <td></td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">$${mComm.toFixed(2)}</td>
@@ -3148,7 +3160,7 @@ function renderShipments(){
       <td colspan="3"></td>
     </tr>`;
   });
-  if(!jobs.length)html='<tr><td colspan="18" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
+  if(!jobs.length)html='<tr><td colspan="19" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
   // Total all — use filtered jobs
   const totP=jobs.reduce((s,j)=>s+(j.profit||0),0);
@@ -4177,7 +4189,7 @@ function showEmailPreview(emailType){
 Please find competitive rate as below, thank you for your support.
 
 ${selCarrier}:
-${selPol} - ${selPod}
+${selPol} - ${selPod}${window._selDel?' / DEL:'+window._selDel:''}
 ${rateLines.length ? rateLines.join('\n') : '  Rate   : (please fill sell rate)'}${localSection}
 ${transitLine ? transitLine+'\n' : ''}  Valid   : ${validStr || 'Please confirm'}
 ${inco ? '  Incoterm: '+inco : ''}${comm ? '\nCommodity: '+comm : ''}${remarks ? '\nNote     : '+remarks : ''}
@@ -4214,7 +4226,7 @@ Vol         : ${volStr}
 ${etd ? 'ETD         : '+etd : ''}${eta ? '\nETA         : '+eta : ''}
 ${vessel ? 'Vessel      : '+vessel+(voyage?' / '+voyage:'') : ''}
 ${cyrtn ? 'CY/RTN      : '+cyrtn : ''}
-${sc ? 'SC          : '+sc : ''}${ams ? '\nAMS Submit  : '+ams : ''}
+${sc ? 'SC          : '+sc : ''}${ams ? '\nAMS Submit  : '+ams : ''}${document.getElementById('s_del')?.value ? '\nDEL         : '+document.getElementById('s_del').value : ''}
 ${comm ? '\nCommodity   : '+comm : ''}
 ${hs ? 'HS Code     : '+hs : ''}
 
@@ -7939,6 +7951,7 @@ function buildSopPdfFromJob(j){
   infoRow('Carrier :',j.carrier||j.selCarrier||'—','BL Type :',j.bltype||'—');
   infoRow('Vol :',volStr,'SC :',j.sc||'—');
   infoRow('Origin :',j.pol||'—','Destination :',j.pod||'—');
+  if(j.del) infoRow('Del :',j.del,'','');
   infoRow('ETD :',fmtDate(j.etd),'ETA :',fmtDate(j.eta),DBLUE,DBLUE);
   if(j.vessel) infoRow('Vessel :',vesselStr,'Mother VSL :',j.motherVessel||'—');
   if(cyrtn)    infoRow('CY / RTN :',cyrtn,'','');
@@ -8093,6 +8106,7 @@ window.saveDefaultSpecialRemark = function(){
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">SRC</label><input id="er_src" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="FAK/FIX/OTHER..."></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">POL</label><input id="er_pol" class="inp" style="width:100%;font-size:12px;margin-top:3px"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">POD</label><input id="er_pod" class="inp" style="width:100%;font-size:12px;margin-top:3px"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">DEL (Place of Delivery)</label><input id="er_del" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="e.g. Chicago, IL"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">20'GP (USD)</label><input id="er_gp20" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--green)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'GP (USD)</label><input id="er_gp40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'HC (USD)</label><input id="er_hc40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>

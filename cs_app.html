@@ -168,6 +168,7 @@ select.inp{cursor:pointer}
             <th>BOOKING NO.</th>
             <th>CUSTOMER</th>
             <th>POL → POD</th>
+            <th>DEL</th>
             <th>CARRIER</th>
             <th style="text-align:center">VOL</th>
             <th>ETD</th>
@@ -791,6 +792,7 @@ function renderTable(){
       <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span class="new-star" title="New Shipment">★</span>':''} ${j.no||'—'}</span></td>
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap">${j.del||'—'}</td>
       <td style="font-size:11px;font-weight:600;color:var(--accent2);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
       <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
       <td style="padding:6px 8px">
@@ -1204,6 +1206,7 @@ function buildSopPdfFromJob(j){
   infoRow('Carrier :',j.carrier||j.selCarrier||'—','BL Type :',j.bltype||'—');
   infoRow('Vol :',volStr,'SC :',j.sc||'—');
   infoRow('Origin :',j.pol||'—','Destination :',j.pod||'—');
+  if(j.del) infoRow('Del :',j.del,'','');
   infoRow('ETD :',fmtDate(j.etd),'ETA :',fmtDate(j.eta),DBLUE,DBLUE);
   if(j.vessel) infoRow('Vessel :',vesselStr,'Mother VSL :',j.motherVessel||'—');
   if(cyrtn)    infoRow('CY / RTN :',cyrtn,'','');
