@@ -1194,6 +1194,7 @@ body{font-size:14px;font-weight:450}
 <!-- OFFLINE MODE: No login required -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // SEA FREIGHT PRO — Complete JavaScript
@@ -5641,188 +5642,267 @@ function deleteReport(id){
 }
 
 // ── Export Sale Report to Excel ──────────────────────────────
+
+// ── Minimal styled XLSX builder ─────────────────────────────
+// Builds xlsx from scratch with full style support (no SheetJS Pro needed)
+(function(){
+
+window.buildStyledXLSX = function(sheetName, rows, colWidths, rowHeights){
+  // rows = array of arrays of {v, bold, color, bg, halign, wrap, numfmt}
+  // Returns Uint8Array of xlsx bytes
+
+  const styles = [];
+  const styleMap = {};
+  const fonts = [
+    '<font><sz val="11"/><name val="Calibri"/></font>',                              // 0 normal
+    '<font><b/><sz val="11"/><name val="Calibri"/></font>',                          // 1 bold
+    '<font><b/><sz val="11"/><color rgb="FFFF0000"/><name val="Calibri"/></font>',   // 2 bold red
+    '<font><sz val="11"/><color rgb="FFFF0000"/><name val="Calibri"/></font>',       // 3 normal red
+    '<font><b/><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/></font>',   // 4 bold black
+  ];
+  const fills = [
+    '<fill><patternFill patternType="none"/></fill>',        // 0 none
+    '<fill><patternFill patternType="gray125"/></fill>',     // 1 gray125 (required)
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill>', // 2 yellow
+  ];
+  const numfmts = [];
+  const numfmtMap = {'#,##0': 164};
+
+  function getXfIdx(bold, red, bg, halign, wrap, numfmt){
+    const fontIdx = red ? (bold?2:3) : (bold?1:0);
+    const fillIdx = bg==='FFFF00' ? 2 : 0;
+    const alignEl = (halign||wrap) ? `<alignment horizontal="${halign||'general'}" wrapText="${wrap?1:0}" vertical="top"/>` : '';
+    const numfmtId = numfmt ? (numfmtMap[numfmt]||0) : 0;
+    const key = `${fontIdx}_${fillIdx}_${halign||''}_${wrap?1:0}_${numfmtId}`;
+    if(styleMap[key] !== undefined) return styleMap[key];
+    const idx = styles.length;
+    styles.push({fontIdx, fillIdx, alignEl, numfmtId});
+    styleMap[key] = idx;
+    return idx;
+  }
+
+  // Pre-register styles we need
+  getXfIdx(false,false,'','','',null);  // 0 default
+
+  // Build shared strings
+  const sst = [];
+  const sstMap = {};
+  function getStrIdx(s){
+    if(sstMap[s]!==undefined) return sstMap[s];
+    const idx=sst.length;
+    sst.push(s);
+    sstMap[s]=idx;
+    return idx;
+  }
+
+  // Build cells
+  const sheetRows = [];
+  rows.forEach((cols, ri)=>{
+    const rowNum = ri+1;
+    const height = rowHeights && rowHeights[ri] ? ` ht="${rowHeights[ri]}" customHeight="1"` : '';
+    const cells = [];
+    cols.forEach((cell, ci)=>{
+      if(!cell || cell.v===null || cell.v===undefined) return;
+      const colLetter = String.fromCharCode(64 + ci + 1);
+      if(ci >= 26) return; // simple, support A-Z only
+      const addr = colLetter + rowNum;
+      const xfIdx = getXfIdx(cell.bold, cell.red, cell.bg, cell.halign, cell.wrap, cell.numfmt);
+      if(typeof cell.v === 'number'){
+        cells.push(`<c r="${addr}" s="${xfIdx}" t="n"><v>${Math.round(cell.v)}</v></c>`);
+      } else {
+        const si = getStrIdx(String(cell.v||''));
+        cells.push(`<c r="${addr}" s="${xfIdx}" t="s"><v>${si}</v></c>`);
+      }
+    });
+    if(cells.length){
+      sheetRows.push(`<row r="${rowNum}"${height}>${cells.join('')}</row>`);
+    }
+  });
+
+  // Build col widths XML
+  const colsXml = colWidths ? '<cols>' + colWidths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('') + '</cols>' : '';
+
+  // Build styles XML
+  const fontsXml = '<fonts count="'+fonts.length+'">'+fonts.join('')+'</fonts>';
+  const fillsXml = '<fills count="'+fills.length+'">'+fills.join('')+'</fills>';
+  const bordersXml = '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>';
+  const xfDefault = '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>';
+  const cellXfs = '<cellXfs>' + xfDefault + styles.map(s=>`<xf numFmtId="${s.numfmtId}" fontId="${s.fontIdx}" fillId="${s.fillIdx}" borderId="0" applyFont="1" applyFill="1" applyAlignment="1">${s.alignEl}</xf>`).join('') + '</cellXfs>';
+  const numFmtsXml = '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts>';
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${numFmtsXml}${fontsXml}${fillsXml}${bordersXml}${cellXfs}</styleSheet>`;
+
+  // Shared strings XML
+  const sstXml = `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sst.length}" uniqueCount="${sst.length}">${sst.map(s=>`<si><t xml:space="preserve">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</t></si>`).join('')}</sst>`;
+
+  // Sheet XML
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetView workbookViewId="0"><selection activeCell="A1"/></sheetView>${colsXml}<sheetData>${sheetRows.join('')}</sheetData></worksheet>`;
+
+  // Workbook XML
+  const wbXml = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${sheetName}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+
+  // Relationships
+  const wbRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
+
+  const appRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`;
+
+  // Build zip using fflate if available, else fallback
+  if(typeof fflate !== 'undefined'){
+    const files = {
+      '[Content_Types].xml': fflate.strToU8(contentTypes),
+      '_rels/.rels': fflate.strToU8(appRels),
+      'xl/workbook.xml': fflate.strToU8(wbXml),
+      'xl/_rels/workbook.xml.rels': fflate.strToU8(wbRels),
+      'xl/worksheets/sheet1.xml': fflate.strToU8(sheetXml),
+      'xl/styles.xml': fflate.strToU8(stylesXml),
+      'xl/sharedStrings.xml': fflate.strToU8(sstXml),
+    };
+    return fflate.zipSync(files);
+  }
+  return null;
+};
+
+})();
+
 function exportSaleReportXLSX(){
-  if(typeof XLSX === 'undefined'){ toast('❌ XLSX library not loaded'); return; }
+  if(typeof fflate==='undefined'){ toast('⏳ Loading… retry in 1s'); return; }
   const wk   = g('sr_week')?.value  || getWeekNumber(new Date());
   const year = g('sr_year')?.value  || new Date().getFullYear();
   const srData = srLoad();
-  const wb = XLSX.utils.book_new();
 
-  // Helpers
-  const RED  = {font:{bold:true, color:{rgb:'FF0000'}}};
-  const REDC = {font:{bold:true, color:{rgb:'FF0000'}}, alignment:{horizontal:'right'}};
-  const BOLD = {font:{bold:true}};
-  const BOLDR= {font:{bold:true}, alignment:{horizontal:'right'}};
-  const YELLOW_BG = {font:{bold:true}, fill:{fgColor:{rgb:'FFFF00'}}, alignment:{horizontal:'left'}};
-  const WRAP = {alignment:{wrapText:true, vertical:'top'}};
-  const RIGHT= {alignment:{horizontal:'right'}};
-
-  const S=(v,s)=>({v:v||'',t:'s',s});
-  const N=(n,s)=>({v:Math.round(n||0),t:'n',s:s||{}});
-
-  // ── Build rows ──
   const rows = [];
+  const rh = {}; // row heights index
 
-  // Row 1: Week header
-  rows.push([null,null,null,null,null, S(`Wk-${wk}`, {font:{bold:false}})]);
-  rows.push([]);
+  // Helper: cell object
+  const N=(v,bold,red,bg,halign,wrap,numfmt)=>({v,bold:!!bold,red:!!red,bg:bg||null,halign:halign||null,wrap:!!wrap,numfmt:numfmt||null});
+  const T=(v,bold,red,bg,halign,wrap)=>N(v,bold,red,bg,halign,wrap,null);
+  const EMPTY = ()=>null;
+
+  function addRow(cells, height){
+    const ri = rows.length;
+    rows.push(cells);
+    if(height) rh[ri]=height;
+  }
+
+  // Col layout: A-E empty, F=content, G=number
+  const F=(v,bold,red,bg,halign,wrap)=>[null,null,null,null,null,T(v,bold,red,bg,halign,wrap),null];
+  const FG=(vf,vg,bold,red,bg,halign)=>[null,null,null,null,null,T(vf,bold,red,bg,halign||'left',false),N(vg,bold,red,bg,'right',false,'#,##0')];
+
+  // Row 1: Week
+  addRow(F(`Wk-${wk}`,false,false,null,'left',false));
+  addRow([]);
 
   // New Secured Business
-  rows.push([null,null,null,null,null, S('New Secured Business', RED)]);
-  rows.push([null,null,null,null,null, S('- Please list your new fresh booking detail in this week, if don\'t have then fill as N/A', {})]);
-  rows.push([]);
+  addRow(F('New Secured Business',true,true,null,null,false),15.75);
+  addRow(F("- Please list your new fresh booking detail in this week, if don't have then fill as N/A",false,false));
+  addRow([]);
 
-  const pinnedIds = getNewBizList();
-  const pinnedJobs = pinnedIds.map(no=>savedJobs.find(j=>j.no===no)).filter(Boolean);
+  const pinnedIds=getNewBizList();
+  const pinnedJobs=pinnedIds.map(no=>savedJobs.find(j=>j.no===no)).filter(Boolean);
   if(!pinnedJobs.length){
-    rows.push([null,null,null,null,null, S('N/A', {})]);
+    addRow(F('N/A'));
   } else {
     pinnedJobs.forEach((j,i)=>{
-      const cust=(j.customer||j.shipper||'').toUpperCase();
-      const carr=(j.carrier||j.selCarrier||'').toUpperCase();
-      const qty=fmtQty(j);
-      const route=(j.pol||'')+'–'+(j.pod||'');
-      const etd=fmtETD(j.etd);
-      rows.push([null,null,null,null,null, S(`${i+1}.${cust} ${carr} ${qty} ${route} ETD ${etd}`, {})]);
+      const txt=`${i+1}.${(j.customer||j.shipper||'').toUpperCase()} ${(j.carrier||j.selCarrier||'').toUpperCase()} ${fmtQty(j)} ${(j.pol||'')}–${(j.pod||'')} ETD ${fmtETD(j.etd)||''}`;
+      addRow(F(txt,false,false,null,'left',false));
     });
   }
-  rows.push([]);
-  rows.push([]);
+  addRow([]); addRow([]);
 
-  // Key Accounts Visiting Record
-  rows.push([null,null,null,null,null, S('Key Accounts Visiting Record', RED)]);
-  rows.push([null,null,null,null,null, S('- list and feedback situation for your visit or phone call with BCO or Co-loader', {})]);
-  rows.push([]);
+  // Key Accounts
+  addRow(F('Key Accounts Visiting Record',true,true,null,'left',false),15.75);
+  addRow(F('- list and feedback situation for your visit or phone call with BCO or Co-loader'));
+  addRow([]);
 
-  // Regular BCO
-  rows.push([null,null,null,null,null, S('Regular BCO - better everyone report your top 5 BCO accounts. If not have 5 then just share what you have.', BOLD)]);
-  for(let i=1;i<=5;i++){
-    const nm=srData[`bco_${i}_name`]||'';
-    const tp=srData[`bco_${i}_type`]||'';
-    const bz=srData[`bco_${i}_biz`]||'';
-    const fb=srData[`bco_${i}_feedback`]||'';
-    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:' -'}`;
-    rows.push([null,null,null,null,null, {v:txt,t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
+  function bcoSection(title, key, count){
+    addRow(F(title,true,false,null,null,false),15.75);
+    for(let i=1;i<=count;i++){
+      const nm=srData[`${key}_${i}_name`]||'';
+      const tp=srData[`${key}_${i}_type`]||'';
+      const bz=srData[`${key}_${i}_biz`]||'';
+      const fb=srData[`${key}_${i}_feedback`]||'';
+      let txt;
+      if(nm||tp||bz||fb){
+        const parts=[`${i}.`];
+        if(nm) parts.push(`  Customer name : ${nm}`);
+        if(tp) parts.push(`  Business type : ${tp}`);
+        if(bz) parts.push(`  Biz port-pairs with volume : ${bz}`);
+        parts.push(`  Feedback situation :\n  ${fb||'-'}`);
+        txt=parts.join('\n');
+      } else { txt=String(i); }
+      const lines=(txt.match(/\n/g)||[]).length+1;
+      addRow(F(txt,false,false,null,'left',true), Math.max(15.75, lines*15.75+4));
+    }
+    addRow([]);
   }
-  rows.push([]);
 
-  // Regular Co-loader
-  rows.push([null,null,null,null,null, S('Regular Co-loader - better everyone report your top 5 co-loader accounts. If not have 5 then just share what you have.', BOLD)]);
-  for(let i=1;i<=5;i++){
-    const nm=srData[`coloader_${i}_name`]||'';
-    const tp=srData[`coloader_${i}_type`]||'';
-    const bz=srData[`coloader_${i}_biz`]||'';
-    const fb=srData[`coloader_${i}_feedback`]||'';
-    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:' -'}`;
-    rows.push([null,null,null,null,null, {v:txt,t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
-  }
-  rows.push([]);
-
-  // Potential BCO
-  rows.push([null,null,null,null,null, S('Potential BCO - better everyone report your top 3 BCO accounts. If not have 5 then just share what you have.', BOLD)]);
-  for(let i=1;i<=3;i++){
-    const nm=srData[`pot_bco_${i}_name`]||'';
-    const tp=srData[`pot_bco_${i}_type`]||'';
-    const bz=srData[`pot_bco_${i}_biz`]||'';
-    const fb=srData[`pot_bco_${i}_feedback`]||'';
-    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:''}`;
-    rows.push([null,null,null,null,null, {v:txt||String(i),t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
-  }
-  rows.push([]);
-
-  // Potential Co-loader
-  rows.push([null,null,null,null,null, S('Potential Co-loader - better everyone report your top 3 co-loader accounts. If not have 5 then just share what you have.', BOLD)]);
-  for(let i=1;i<=3;i++){
-    const nm=srData[`pot_coloader_${i}_name`]||'';
-    const tp=srData[`pot_coloader_${i}_type`]||'';
-    const bz=srData[`pot_coloader_${i}_biz`]||'';
-    const fb=srData[`pot_coloader_${i}_feedback`]||'';
-    const txt=`${i}.${nm?' Customer name : '+nm:''}${tp?'  Business type : '+tp:''}${bz?'  Biz port-pairs with volume : '+bz:''}${fb?'  Feedback situation : '+fb:''}`;
-    rows.push([null,null,null,null,null, {v:txt||String(i),t:'s',s:{alignment:{wrapText:true,vertical:'top'}}}]);
-  }
-  rows.push([]);
+  bcoSection('Regular BCO - better everyone report your top 5 BCO accounts. If not have 5 then just share what you have.','bco',5);
+  bcoSection('Regular Co-loader - better everyone report your top 5 co-loader accounts. If not have 5 then just share what you have.','coloader',5);
+  bcoSection('Potential BCO - better everyone report your top 3 BCO accounts. If not have 5 then just share what you have.','pot_bco',3);
+  bcoSection('Potential Co-loader - better everyone report your top 3 co-loader accounts. If not have 5 then just share what you have.','pot_coloader',3);
 
   // Profit Forecast
-  rows.push([null,null,null,null,null, S('Profit forecast', RED)]);
+  addRow(F('Profit forecast',true,true,null,'left',false),16.5);
 
-  // Estimate Profit section (current month)
-  const curYM = new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
-  const estYM  = g('sr_est_month')?.value || curYM;
-  const [ey,em] = estYM.split('-');
-  const estLabel = new Date(+ey,+em-1).toLocaleString('en',{month:'short',year:'2-digit'}).toUpperCase()+"'"+ey.slice(2);
-  const estTarget= srData['target_'+estYM]||12000;
-  const estFcast = srData['forecast_'+estYM]||0;
-  const estProc  = getProcessForMonth(estYM)+(srData['manual_profit_'+estYM]||0);
+  const curYM=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+  const estYM=g('sr_est_month')?.value||curYM;
+  const[ey,em]=estYM.split('-');
+  const estLabel=new Date(+ey,+em-1).toLocaleString('en',{month:'short'}).toUpperCase()+"'"+String(ey).slice(2);
+  const estTarget=srData['target_'+estYM]||12000;
+  const estFcast=srData['forecast_'+estYM]||0;
+  const estProg=Math.round(getProcessForMonth(estYM)+(srData['manual_profit_'+estYM]||0));
 
-  rows.push([null,null,null,null,null, S(estLabel+' Estimate Profit', YELLOW_BG), S('',{})]);
-  rows.push([null,null,null,null,null, S('Target(USD)', BOLD), N(estTarget, BOLDR)]);
-  rows.push([null,null,null,null,null, S('Forecast', BOLD), N(estFcast, BOLDR)]);
-  rows.push([null,null,null,null,null, S('Progress', BOLD), N(estProc, REDC)]);
-  rows.push([]);
+  addRow(FG(`${estLabel} Estimate Profit`,'',true,false,'FFFFFF00','left'),15.75);
+  addRow(FG('Target(USD)',estTarget,true,false,null,'left'));
+  addRow(FG('Forecast',estFcast,true,false,null,'left'));
+  addRow(FG('Progress',estProg,true,true,null,'left'),15.75);
+  addRow([]);
 
-  // Monthly table grouped by Q
+  // Monthly table by quarter
   const fAllMonths=[...new Set(savedJobs.map(j=>j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'')).filter(Boolean))];
   const now2=new Date();
   for(let i=0;i<3;i++){const d=new Date(now2.getFullYear(),now2.getMonth()+i,1);const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(!fAllMonths.includes(ym))fAllMonths.push(ym);}
   Object.keys(srData).filter(k=>k.startsWith('custom_month_')).forEach(k=>{const ym=k.replace('custom_month_','');if(!fAllMonths.includes(ym))fAllMonths.push(ym);});
   fAllMonths.sort();
 
-  // Group by quarter
-  const quarters = {};
+  const quarters={};
   fAllMonths.forEach(ym=>{
-    const [y,m]=ym.split('-');
-    const q='Q'+Math.ceil(+m/3)+' '+y;
-    if(!quarters[q]) quarters[q]=[];
-    quarters[q].push(ym);
+    const[y,m]=ym.split('-');
+    const qk=`Q${Math.ceil(+m/3)} ${y}`;
+    if(!quarters[qk]) quarters[qk]=[];
+    quarters[qk].push(ym);
   });
 
-  const qKeys = Object.keys(quarters).sort();
-  qKeys.forEach(qk=>{
-    let qTotal=0;
-    const startRow = rows.length;
+  Object.keys(quarters).sort().forEach(qk=>{
+    let qTot=0;
     quarters[qk].forEach(ym=>{
-      const [y,m]=ym.split('-');
-      const mon=new Date(+y,+m-1).toLocaleString('en',{month:'short'}).toUpperCase();
-      const label=mon+" '"+String(y).slice(2);
+      const[y,m]=ym.split('-');
+      const mo=new Date(+y,+m-1).toLocaleString('en',{month:'short'}).toUpperCase();
       const target=srData['target_'+ym]||12000;
-      const proc=getProcessForMonth(ym)+(srData['manual_profit_'+ym]||0);
-      qTotal+=proc;
-      rows.push([null,null,null,null,null, S('Target '+mon+' '+y, BOLDR), N(target, BOLDR)]);
-      rows.push([null,null,null,null,null, S('Actual '+mon, REDC), N(proc, REDC)]);
+      const actual=Math.round(getProcessForMonth(ym)+(srData['manual_profit_'+ym]||0));
+      qTot+=actual;
+      addRow(FG(`Target ${mo} ${y}`,target,true,false,null,'right'),15.75);
+      addRow(FG(`Actual ${mo}`,actual,true,true,null,'right'),15.75);
     });
-    // Quarter total
-    rows.push([null,null,null,null,null, S('Total '+qk, BOLDR), N(qTotal, BOLDR)]);
-    rows.push([]);
+    addRow(FG(`Total ${qk}`,qTot,true,false,null,'right'),17.25);
+    addRow([]);
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  // Column widths: A-E narrow, F wide, G medium
-  ws['!cols']=[{wch:2},{wch:2},{wch:2},{wch:2},{wch:2},{wch:80},{wch:14}];
-  XLSX.utils.book_append_sheet(wb, ws, `Wk-${wk}`);
+  // Column widths: A=10.875, B-E=8, F=77.375, G=10.875
+  const colWidths=[10.875,8,8,8,8,77.375,10.875];
+  const rowHeightsArr = rows.map((_,i)=>rh[i]||undefined);
 
-  XLSX.writeFile(wb, `SaleReport_Wk${wk}_${year}.xlsx`);
-  toast('📥 Exported SaleReport_Wk'+wk+'_'+year+'.xlsx');
+  const bytes = buildStyledXLSX(`Wk-${wk}`, rows, colWidths, rowHeightsArr);
+  if(!bytes){ toast('❌ XLSX build failed'); return; }
+
+  const blob = new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`SaleReport_Wk${wk}_${year}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+  toast('📥 Downloaded SaleReport_Wk'+wk+'_'+year+'.xlsx');
 }
-
-
-const _origSaveShipment = typeof saveShipment !== 'undefined' ? saveShipment : null;
-document.addEventListener('DOMContentLoaded', ()=>{
-  const origSave = window.saveShipment;
-  if(origSave){
-    window.saveShipment = function(){
-      window._srSavedAt = new Date().toISOString();
-      origSave();
-      if(savedJobs.length && !window._editIdx){
-        savedJobs[savedJobs.length-1].savedAt = window._srSavedAt;
-        storageSave();
-      }
-    };
-  }
-});
-
-// ── Image Rate Extraction (AI) ─────────────────────────────
-let _extractedRates = [];
-let _imgFiles = [];
 
 function handleRateImages(files){
   _imgFiles = [...files];
