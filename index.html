@@ -809,14 +809,20 @@ body{font-size:14px;font-weight:450}
         <button onclick="qAddLocal()" class="btn btn-ghost" style="font-size:11px;margin-top:8px;width:100%">+ Add Local Charge</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-top:12px">
         <button id="quot_save_btn" onclick="qSave()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save</button>
         <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Email</button>
         <button onclick="qCopyLine()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.3);color:#00b4d8">💬 Copy LINE</button>
+        <button onclick="exportRateSheetXLSX()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60">📊 Rate Sheet</button>
         <button onclick="qClear()" class="btn btn-ghost" style="font-size:12px;padding:9px">✕ Clear</button>
       </div>
 
       <div id="quot_saved_wrap" style="display:none;margin-top:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input id="quot_search" class="fi" placeholder="🔍 ค้นหา Customer…" oninput="qRenderList()"
+            style="flex:1;font-size:11px;padding:4px 10px">
+          <span id="quot_count" style="font-size:10px;color:var(--muted);font-family:var(--mono)"></span>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="card-title" style="margin-bottom:0">📋 Saved Quotations</div>
           <span id="quot_autosave" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
@@ -4555,6 +4561,169 @@ function qBuildEmail(){
   ].filter(s=>s!==undefined).join('\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 
+
+// ── Export Rate Sheet PDF ────────────────────────────────────
+window.exportRateSheetXLSX = function(){
+  if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
+  const { jsPDF } = window.jspdf;
+
+  const get = id => (document.getElementById(id)||{}).value||'';
+  const cust    = get('q_customer') || 'Customer';
+  const carrier = get('q_carrier')  || '';
+  const pol     = get('q_pol')      || 'LCH';
+  const inco    = get('q_incoterm') || '';
+  const comm    = get('q_commodity')|| '';
+  const remarks = get('q_remarks')  || '';
+  const valid   = get('q_valid')    || '';
+  const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+  const rateRows  = qRateRows  || [];
+  const localRows = qLocalRows || [];
+
+  const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'landscape' });
+  const W=297, H=210, LM=12, RM=285, TW=RM-LM;
+
+  // Colors
+  const BLK=[30,30,30], WHITE=[255,255,255], RED=[192,57,43];
+  const DKGRAY=[55,71,79], LGRAY=[238,238,238], LGREEN=[232,245,233];
+  const CYAN=[0,150,136], GREEN=[39,174,96], GOLD=[183,128,10];
+  const MUTED=[120,120,120];
+
+  let y = 12;
+
+  // Helper
+  function T(text,x,yy,sz,bold,col,align){
+    doc.setFontSize(sz||9); doc.setFont('helvetica',bold?'bold':'normal');
+    doc.setTextColor(...(col||BLK));
+    doc.text(String(text||''),x,yy,{align:align||'left'});
+  }
+  function fillR(x,yy,w,h,col){ doc.setFillColor(...col); doc.rect(x,yy,w,h,'F'); }
+  function strokeR(x,yy,w,h,col,lw){ doc.setDrawColor(...(col||[200,200,200])); doc.setLineWidth(lw||0.25); doc.rect(x,yy,w,h,'S'); }
+  function hln(yy,x1,x2,col,lw){ doc.setDrawColor(...(col||[200,200,200])); doc.setLineWidth(lw||0.25); doc.line(x1||LM,yy,x2||RM,yy); }
+
+  /* ── HEADER ── */
+  fillR(LM, y, TW, 14, RED);
+  T('RATE SHEET', LM+4, y+5.5, 13, true, WHITE);
+  T(cust.toUpperCase(), LM+4, y+11, 9, false, [255,200,200]);
+  T('Sea Freight Pro', RM, y+5.5, 9, false, WHITE, 'right');
+  T(today, RM, y+11, 8, false, [255,200,200], 'right');
+  y += 18;
+
+  /* ── SUB-HEADER ── */
+  const subParts = [];
+  if(pol)  subParts.push('Origin: '+pol);
+  if(inco) subParts.push('Incoterm: '+inco);
+  if(comm) subParts.push('Commodity: '+comm);
+  if(valid)subParts.push('Valid: '+valid);
+  T(subParts.join('   |   '), LM, y, 8.5, false, MUTED);
+  if(remarks){ T('Note: '+remarks, LM, y+5, 8, false, MUTED); y+=5; }
+  y += 7;
+
+  /* ── RATE TABLE ── */
+  // Column definitions
+  const cols = [
+    {label:'PORT DESTINATION', w:70, align:'left'},
+    {label:'POL',       w:22, align:'center'},
+    {label:"20' (USD)", w:24, align:'right'},
+    {label:"40' (USD)", w:24, align:'right'},
+    {label:"40'HC (USD)",w:26, align:'right'},
+    {label:'CARRIER',   w:24, align:'center'},
+    {label:'VALID',     w:30, align:'center'},
+    {label:'INCL.',     w:22, align:'center'},
+    {label:'INCOTERM',  w:20, align:'center'},
+  ];
+  const ROW_H = 7;
+
+  // Table header
+  fillR(LM, y, TW, ROW_H+1, DKGRAY);
+  let cx = LM;
+  cols.forEach(c=>{
+    T(c.label, c.align==='right'?cx+c.w-2 : c.align==='center'?cx+c.w/2 : cx+2,
+      y+5.5, 7.5, true, WHITE, c.align==='center'?'center':c.align);
+    cx += c.w;
+  });
+  y += ROW_H+1;
+
+  // Rate rows
+  if(!rateRows.length){
+    fillR(LM,y,TW,ROW_H,LGRAY);
+    T('(No rates added)',LM+4,y+5,8.5,false,MUTED);
+    y+=ROW_H;
+  } else {
+    rateRows.forEach((row,ri)=>{
+      if(y > H-25){ doc.addPage(); y=15; }
+      const bg = ri%2===0 ? WHITE : LGRAY;
+      fillR(LM,y,TW,ROW_H,bg);
+      strokeR(LM,y,TW,ROW_H,[220,220,220],0.15);
+
+      const car = row.carrier||carrier;
+      const v   = row.valid||valid||'';
+      const r20 = parseFloat(row.r20)||0;
+      const r40 = parseFloat(row.r40)||0;
+      const r4h = parseFloat(row.r4h)||0;
+
+      const vals = [
+        {v:row.pod||'—',      col:BLK,  align:'left'},
+        {v:pol,               col:MUTED,align:'center'},
+        {v:r20?r20.toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
+        {v:r40?r40.toLocaleString():'—', col:r40?GREEN:MUTED, align:'right'},
+        {v:r4h?r4h.toLocaleString():'—', col:r4h?GREEN:MUTED, align:'right'},
+        {v:car,               col:CYAN, align:'center'},
+        {v:v,                 col:GOLD, align:'center'},
+        {v:row.incl||'',      col:MUTED,align:'center'},
+        {v:inco,              col:MUTED,align:'center'},
+      ];
+
+      cx = LM;
+      vals.forEach((cell,ci)=>{
+        const c = cols[ci];
+        T(cell.v, cell.align==='right'?cx+c.w-2 : cell.align==='center'?cx+c.w/2 : cx+2,
+          y+5, 8.5, false, cell.col, cell.align);
+        cx += c.w;
+      });
+      y += ROW_H;
+    });
+  }
+  y += 5;
+
+  /* ── LOCAL CHARGES ── */
+  if(localRows.length){
+    if(y > H-40){ doc.addPage(); y=15; }
+    fillR(LM,y,TW,7,LGREEN);
+    strokeR(LM,y,TW,7,[180,220,180],0.3);
+    T('LOCAL CHARGES', LM+3, y+5, 8.5, true, [30,130,60]);
+    y += 9;
+
+    // Header
+    fillR(LM,y,180,ROW_H,LGRAY); strokeR(LM,y,180,ROW_H,[200,200,200],0.15);
+    T('Charge',   LM+3, y+5, 7.5, true, MUTED);
+    T('Rate',     LM+80, y+5, 7.5, true, MUTED, 'right');
+    T('Unit',     LM+120, y+5, 7.5, true, MUTED, 'center');
+    y += ROW_H;
+
+    localRows.forEach((r,ri)=>{
+      const bg = ri%2===0 ? WHITE : LGRAY;
+      fillR(LM,y,180,ROW_H,bg); strokeR(LM,y,180,ROW_H,[220,220,220],0.15);
+      T(r.name||'—', LM+3, y+5, 8.5, false, BLK);
+      T(String(r.rate||'—'), LM+80, y+5, 8.5, false, CYAN, 'right');
+      T(r.unit||'SET', LM+120, y+5, 8.5, false, MUTED, 'center');
+      y += ROW_H;
+    });
+    y += 5;
+  }
+
+  /* ── FOOTER ── */
+  const footY = H-8;
+  hln(footY, LM, RM, [200,200,200], 0.3);
+  T('Sea Freight Pro — Confidential', LM, footY+5, 7, false, MUTED);
+  T(cust+' · '+today, RM, footY+5, 7, false, MUTED, 'right');
+
+  /* ── SAVE ── */
+  const fname = cust.replace(/[^A-Za-z0-9]/g,'_')+'_Rate_Sheet_'+today.replace(/ /g,'_')+'.pdf';
+  doc.save(fname);
+  toast('📥 Downloaded: '+fname);
+};
+
 function qGenerateEmail(){
   const body    = qBuildEmail();
   const pol     = (document.getElementById('q_pol')||{}).value||'';
@@ -4680,13 +4849,34 @@ function qSave(){
 function qSaveToStorage(){
   try{ localStorage.setItem(QUOT_KEY, JSON.stringify(savedQuotations)); }
   catch(e){ console.warn('Quot save failed:', e); }
+  // Sync to Firestore
+  if(window.fbSet){
+    clearTimeout(window._qSaveTimer);
+    window._qSaveTimer = setTimeout(async ()=>{
+      try{ await window.fbSet('data/quotations',{quotations:savedQuotations,updatedAt:new Date().toISOString()}); }
+      catch(e){ console.warn('Quot Firestore sync error',e); }
+    }, 800);
+  }
   // Flash badge
   const b = document.getElementById('quot_autosave');
   if(b){ b.textContent='● Saved ✓'; b.style.color='var(--cyan)';
     setTimeout(()=>{ b.textContent='● Auto-saved'; b.style.color='var(--green)'; }, 1500); }
 }
 
-function qLoadFromStorage(){
+async function qLoadFromStorage(){
+  // Try Firestore first (cross-device), fallback to localStorage
+  try{
+    if(window.fbGet){
+      const snap = await window.fbGet('data/quotations');
+      if(snap?.quotations?.length){
+        savedQuotations = snap.quotations;
+        try{ localStorage.setItem(QUOT_KEY, JSON.stringify(savedQuotations)); }catch(e){}
+        qRenderList();
+        return;
+      }
+    }
+  }catch(e){ console.warn('Quot Firestore load error',e); }
+  // Fallback to localStorage
   try{
     const raw = localStorage.getItem(QUOT_KEY);
     if(raw) savedQuotations = JSON.parse(raw);
@@ -4700,23 +4890,64 @@ function qRenderList(){
   if(!wrap || !body) return;
   if(!savedQuotations.length){ wrap.style.display='none'; return; }
   wrap.style.display = '';
-  body.innerHTML = savedQuotations.map((q, i) => {
+  const search = (document.getElementById('quot_search')?.value||'').toLowerCase();
+  const filtered = savedQuotations.map((q,i)=>({q,i})).filter(({q})=>
+    !search || (q.customer||'').toLowerCase().includes(search) ||
+    (q.carrier||'').toLowerCase().includes(search) ||
+    (q.pol||'').toLowerCase().includes(search)
+  );
+  const countEl = document.getElementById('quot_count');
+  if(countEl) countEl.textContent = filtered.length+' รายการ';
+  body.innerHTML = filtered.map(({q, i}) => {
     const pods = (q.rateRows||[]).map(r=>r.pod).filter(Boolean).join(', ') || '—';
     const date = q.savedAt ? new Date(q.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}) : '';
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
       <td style="font-size:11px;padding:7px 8px;font-family:var(--mono);color:var(--cyan)">#${String(i+1).padStart(3,'0')}</td>
-      <td style="font-size:11px;padding:7px 8px">${q.customer||'—'}</td>
+      <td style="font-size:11px;padding:7px 8px;font-weight:600">${q.customer||'—'}</td>
       <td style="font-size:11px;padding:7px 8px">${q.carrier||'—'}</td>
       <td style="font-size:11px;padding:7px 8px;font-family:var(--mono)">${q.pol||'—'}</td>
       <td style="font-size:11px;padding:7px 8px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pods}</td>
       <td style="font-size:10px;padding:7px 8px;font-family:var(--mono);color:var(--muted)">${date}</td>
       <td style="padding:5px 8px;text-align:center;white-space:nowrap">
-        <button onclick="qLoadQuot(${i})" title="Load" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px;margin-right:3px">✏️</button>
+        <button onclick="qLoadQuot(${i})" title="แก้ไข" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px;margin-right:3px">✏️</button>
+        <button onclick="qPDFQuot(${i})" title="Export PDF" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:13px;margin-right:3px">📄</button>
         <button onclick="qEmailQuot(${i})" title="Email" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:13px;margin-right:3px">✉️</button>
         <button onclick="savedQuotations.splice(${i},1);qSaveToStorage();qRenderList()" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+function qPDFQuot(i){
+  const q = savedQuotations[i]; if(!q) return;
+  // Temporarily load into form fields and call export
+  const prev = {
+    customer: document.getElementById('q_customer')?.value,
+    carrier:  document.getElementById('q_carrier')?.value,
+    pol:      document.getElementById('q_pol')?.value,
+    incoterm: document.getElementById('q_incoterm')?.value,
+    valid:    document.getElementById('q_valid')?.value,
+    commodity:document.getElementById('q_commodity')?.value,
+    remarks:  document.getElementById('q_remarks')?.value,
+  };
+  const prevRate  = JSON.parse(JSON.stringify(qRateRows));
+  const prevLocal = JSON.parse(JSON.stringify(qLocalRows));
+
+  const set = (id,val)=>{ const e=document.getElementById(id); if(e) e.value=val||''; };
+  set('q_customer',q.customer); set('q_carrier',q.carrier); set('q_pol',q.pol);
+  set('q_incoterm',q.incoterm); set('q_valid',q.valid);
+  set('q_commodity',q.commodity); set('q_remarks',q.remarks);
+  qRateRows  = JSON.parse(JSON.stringify(q.rateRows||[]));
+  qLocalRows = JSON.parse(JSON.stringify(q.localRows||[]));
+
+  exportRateSheetXLSX();
+
+  // Restore previous state
+  setTimeout(()=>{
+    Object.entries(prev).forEach(([id,val])=>{ const e=document.getElementById('q_'+id); if(e) e.value=val||''; });
+    qRateRows  = prevRate;
+    qLocalRows = prevLocal;
+  }, 500);
 }
 
 function qLoadQuot(i){
@@ -5974,13 +6205,16 @@ window.buildStyledXLSX = function(sheetName, rows, colWidths, rowHeights){
     '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill>', // 2 yellow
     '<fill><patternFill patternType="solid"><fgColor rgb="FFA8D5A2"/></patternFill></fill>', // 3 green light
     '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFE0"/></patternFill></fill>', // 4 cream (light yellow)
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF37474F"/></patternFill></fill>', // 5 dark header
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFEEEEEE"/></patternFill></fill>', // 6 light gray
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></patternFill></fill>', // 7 light green
   ];
   const numfmts = [];
   const numfmtMap = {'#,##0': 164};
 
   function getXfIdx(bold, red, bg, halign, wrap, numfmt, border, italic, underline){
     const fontIdx = getFontIdx(bold,red,italic,underline);
-    const fillIdx = bg==='FFFFFF00' ? 2 : (bg==='FFA8D5A2' ? 3 : (bg==='FFFFFFE0' ? 4 : 0));
+    const fillIdx = bg==='FFFFFF00' ? 2 : (bg==='FFA8D5A2' ? 3 : (bg==='FFFFFFE0' ? 4 : (bg==='FF37474F' ? 5 : (bg==='FFEEEEEE' ? 6 : (bg==='FFE8F5E9' ? 7 : 0))))  );
     const alignEl = (halign||wrap) ? `<alignment horizontal="${halign||'general'}" wrapText="${wrap?1:0}" vertical="top"/>` : '';
     const numfmtId = numfmt ? (numfmtMap[numfmt]||0) : 0;
     // border: {l,r,t,b} each 'medium','thin',null
