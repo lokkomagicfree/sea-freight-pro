@@ -4355,8 +4355,10 @@ function showEmailPreview(emailType){
   // Get APR flags from DOM directly (most current state)
   const aprFlags = chargeRows.map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
 
-  // Build sell charges list (non-zero, no APR on sell side)
+  // Build sell charges list — show APR rows too
   const sellLines = chargeNames.map((name,i)=>{
+    const isAPR = aprFlags[i];
+    if(isAPR && i > 0) return `  ${name.padEnd(18)} : As per receipt`;
     if(!sellVals[i]) return null;
     const isThb = thbFlags[i];
     const unit = i===0 ? '/'+volStr.split(',')[0]?.trim().replace(/^\d+x/,'') : '';
