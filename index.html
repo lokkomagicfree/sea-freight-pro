@@ -2462,7 +2462,9 @@ function recalc(){
     }
   });
   ts*=totalQty; tc*=totalQty;
-  const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
+  const _rStatus=v('s_status')||'pending';
+  const profit=ts-tc,margin=ts>0?profit/ts*100:0;
+  const comm=(_rStatus==='confirmed'||_rStatus==='loaded'||_rStatus==='completed')?profit*commRate:0;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
   const set=(id,val)=>{const e=g(id);if(e)e.textContent=val;};
@@ -3143,7 +3145,10 @@ function renderShipments(){
     const typeLabel=keyJobs[0]?.jobType==='import'?'📥 Import':'📤 Export';
     // Monthly subtotals
     const mProfit=keyJobs.reduce((s,j)=>s+(j.profit||0),0);
-    const mComm=keyJobs.reduce((s,j)=>s+(j.comm||0),0);
+    const mComm=keyJobs.reduce((s,j)=>{
+      const isActive=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed');
+      return s+(isActive?(j.comm||0):0);
+    },0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
     html+=`<tr><td colspan="19" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
@@ -3195,8 +3200,14 @@ function renderShipments(){
   const totP=jobs.reduce((s,j)=>s+(j.profit||0),0);
   const totS=jobs.reduce((s,j)=>s+(j.sell||0),0);
   const totCo=jobs.reduce((s,j)=>s+(j.cost||0),0);
-  const totComm=jobs.reduce((s,j)=>s+(j.comm||0),0);
-  const totCommThb=jobs.reduce((s,j)=>s+(j.commThb||0),0);
+  const totComm=jobs.reduce((s,j)=>{
+    const active=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed');
+    return s+(active?(j.comm||0):0);
+  },0);
+  const totCommThb=jobs.reduce((s,j)=>{
+    const active=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed');
+    return s+(active?(j.commThb||0):0);
+  },0);
   const tot20=jobs.reduce((s,j)=>s+(j.q20||0),0);
   const tot40=jobs.reduce((s,j)=>s+(j.q40||0),0);
   const tot40hc=jobs.reduce((s,j)=>s+(j.q40hc||0),0);
