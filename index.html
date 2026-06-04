@@ -4352,7 +4352,10 @@ function showEmailPreview(emailType){
   const sellVals    = [...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
   const costVals    = [...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
 
-  // Build sell charges list (non-zero)
+  // Get APR flags from DOM directly (most current state)
+  const aprFlags = chargeRows.map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
+
+  // Build sell charges list (non-zero, no APR on sell side)
   const sellLines = chargeNames.map((name,i)=>{
     if(!sellVals[i]) return null;
     const isThb = thbFlags[i];
@@ -4361,14 +4364,11 @@ function showEmailPreview(emailType){
   }).filter(Boolean).join('\n');
 
   const costLines = chargeNames.map((name,i)=>{
+    const isAPR = aprFlags[i];
+    // APR rows: show even if costVal=0
+    if(isAPR && i > 0) return `  ${name.padEnd(18)} : As per receipt`;
     if(!costVals[i]) return null;
     const isThb = thbFlags[i];
-    // Use saved aprFlags from jobData if available, else fall back to DOM
-    const aprRows = (typeof j !== 'undefined' && j?.aprFlags?.length)
-      ? j.aprFlags
-      : [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
-    const isAPR = aprRows[i];
-    if(isAPR) return `  ${name.padEnd(18)} : As per receipt`;
     return `  ${name.padEnd(18)} : ${isThb ? costVals[i].toFixed(0)+' THB' : 'USD '+costVals[i].toFixed(0)}`;
   }).filter(Boolean).join('\n');
 
