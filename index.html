@@ -2976,7 +2976,9 @@ function saveShipment(){
     ts+=s/rate; tc+=c/rate;
   });
   ts*=totalQty; tc*=totalQty;
-  const profit=ts-tc,margin=ts>0?profit/ts*100:0,comm=profit*commRate;
+  const status=v('s_status')||'pending';
+  const profit=ts-tc,margin=ts>0?profit/ts*100:0;
+  const comm = (status==='confirmed'||status==='loaded'||status==='completed') ? profit*commRate : 0;
   const jobData={
     no:v('s_bkgno')||('BKG-'+String(savedJobs.length+1).padStart(3,'0')),
     refno:v('s_refno'),customer:v('s_customer'),shipper:v('s_shipper'),
