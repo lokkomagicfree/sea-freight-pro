@@ -1174,7 +1174,10 @@ function buildSopPdfFromJob(j){
   const names=j.chargeNames||[];
   const sells=j.sells||[], costs=j.costs||[];
   const oceanSell=sells[0]||0, oceanCost=costs[0]||0;
-  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1),apr:false})).filter(x=>x.val);
+  const localSell=names.slice(1).map((n,i)=>{
+    const apr = !!(j.aprFlags && j.aprFlags[i+1]);
+    return {name:n, val:sells[i+1]||0, thb:isThb(n,i+1), apr};
+  }).filter(x=>x.val||x.apr);
   const localCost=names.slice(1).map((n,i)=>{
     const apr = !!(j.aprFlags && j.aprFlags[i+1]);
     return {name:n, val:costs[i+1]||0, thb:isThb(n,i+1), apr};
