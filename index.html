@@ -1072,6 +1072,98 @@ body{font-size:14px;font-weight:450}
       </div>
     </div>
 
+    <!-- ราคาน้ำมัน Real-time Widget -->
+    <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
+      <div style="padding:14px 18px;background:var(--s2);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--gold)">⛽ ราคาน้ำมัน Diesel B7 — Real Time</div>
+        <button onclick="fetchFuelPrice()" class="btn btn-ghost" style="font-size:11px;padding:4px 12px;color:var(--gold);border-color:var(--gold)">🔄 อัปเดต</button>
+      </div>
+
+      <div id="fuel_price_widget" style="padding:16px 18px">
+        <div style="text-align:center;color:var(--muted);font-size:12px;font-family:var(--mono)">กด 🔄 อัปเดต เพื่อดูราคาล่าสุด</div>
+      </div>
+    </div>
+
+    <!-- ราคาขาย Trucking Rate Table -->
+    <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
+      <div style="padding:14px 18px;background:var(--s2);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red)">💰 ราคาขาย</div>
+        <div style="font-size:11px;color:var(--muted)">Trucking Charge — Thailand Side (THB)</div>
+      </div>
+
+      <!-- Section: LCH > Kammouane -->
+      <div style="padding:12px 18px 4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text);background:rgba(168,213,162,.2);padding:6px 12px;border-radius:6px;margin-bottom:8px">
+          🇹🇭 THAILAND SIDE (THB) — Trucking charge LCH &gt; Kammouane &gt; LCH Including Bridge + Border Fee
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl" style="min-width:600px">
+          <thead><tr>
+            <th style="text-align:left">ราคา (THB)</th>
+            <th style="text-align:left">หน่วย</th>
+            <th style="text-align:left">ราคาน้ำมัน Diesel B7 (THB/Liter)</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>THB 33,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 34.01 – 36.00 /Liter</td></tr>
+            <tr><td>THB 34,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 36.01 – 38.00 /Liter</td></tr>
+            <tr><td>THB 35,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 38.01 – 40.00 /Liter</td></tr>
+            <tr><td>THB 36,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 40.01 – 42.00 /Liter</td></tr>
+            <tr><td>THB 37,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 42.01 – 44.00 /Liter</td></tr>
+            <tr><td>THB 38,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 44.01 – 46.00 /Liter</td></tr>
+            <tr><td>THB 39,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 46.01 – 48.00 /Liter</td></tr>
+            <tr><td>THB 40,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 48.01 – 50.00 /Liter</td></tr>
+            <tr><td>THB 48,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 50.01 – 53.00 /Liter</td></tr>
+            <tr><td>THB 49,500</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 53.01 – 56.00 /Liter</td></tr>
+            <tr><td>THB 50,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 56.01 – 59.00 /Liter</td></tr>
+            <tr><td>THB 52,500</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 59.01 – 62.00 /Liter</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 18px;font-size:10px;color:var(--muted);font-family:var(--mono)">
+        * ราคาขายกับ DB น้ำมัน ต่อ ลิตร
+      </div>
+    </div>
+
+    <!-- ราคาซื้อ Trucking Rate Table -->
+    <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
+      <div style="padding:14px 18px;background:var(--s2);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--cyan)">🛒 ราคาซื้อ</div>
+        <div style="font-size:11px;color:var(--muted)">Trucking Charge — Thailand Side (THB)</div>
+      </div>
+      <div style="padding:12px 18px 4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text);background:rgba(168,213,162,.2);padding:6px 12px;border-radius:6px;margin-bottom:8px">
+          🇹🇭 THAILAND SIDE (THB) — Trucking charge LCH &gt; Kammouane &gt; LCH Including Bridge + Border Fee
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl" style="min-width:600px">
+          <thead><tr>
+            <th style="text-align:left">ราคา (THB)</th>
+            <th style="text-align:left">หน่วย</th>
+            <th style="text-align:left">ราคาน้ำมัน Diesel B7 (THB/Liter)</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>THB 31,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 34.01 – 36.00 /Liter</td></tr>
+            <tr><td>THB 32,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 36.01 – 38.00 /Liter</td></tr>
+            <tr><td>THB 33,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 38.01 – 40.00 /Liter</td></tr>
+            <tr><td>THB 34,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 40.01 – 42.00 /Liter</td></tr>
+            <tr><td>THB 35,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 42.01 – 44.00 /Liter</td></tr>
+            <tr><td>THB 36,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 44.01 – 46.00 /Liter</td></tr>
+            <tr><td>THB 37,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 46.01 – 48.00 /Liter</td></tr>
+            <tr><td>THB 38,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 48.01 – 50.00 /Liter</td></tr>
+            <tr><td>THB 45,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 50.01 – 53.00 /Liter</td></tr>
+            <tr><td>THB 46,500</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 53.01 – 56.00 /Liter</td></tr>
+            <tr><td>THB 48,000</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 56.01 – 59.00 /Liter</td></tr>
+            <tr><td>THB 49,500</td><td>/CNTR /Set</td><td>Fuel : Diesel B7 THB 59.01 – 62.00 /Liter</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 18px;font-size:10px;color:var(--muted);font-family:var(--mono)">
+        * ราคาซื้อกับ Kingcross น้ำมัน ต่อ ลิตร
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -3420,6 +3512,83 @@ function renderDbIntransit(){
     <td colspan="4"></td>
   </tr>`;
 }
+
+// ── Fuel Price Real-time ──────────────────────────────────
+window.fetchFuelPrice = async function(){
+  const el = document.getElementById('fuel_price_widget');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono);font-size:12px">⏳ กำลังโหลดข้อมูลราคาน้ำมัน…</div>';
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        tools:[{type:'web_search_20250305',name:'web_search'}],
+        messages:[{role:'user',content:'ราคาน้ำมันดีเซล B7 ในไทยวันนี้ล่าสุด บาทต่อลิตร จาก PTT หรือกรมธุรกิจพลังงาน ขอราคา ณ วันที่เท่าไหร่ และราคาเท่าไหร่ ตอบเป็น JSON format: {"price": number, "date": "DD MMM YYYY", "source": "string"} เท่านั้น ไม่ต้องมีข้อความอื่น'}]}
+      )
+    });
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    let price=null,date=null,source=null;
+    try{
+      const clean = text.replace(/```json|```/g,'').trim();
+      const j = JSON.parse(clean);
+      price=j.price; date=j.date; source=j.source;
+    }catch(e){
+      // fallback: try regex
+      const m = text.match(/(\d+\.?\d*)\s*บาท/);
+      if(m) price=parseFloat(m[1]);
+      const dm = text.match(/\d{1,2}\s*[A-Za-zกพมมถก]{3,}\s*\d{4}/);
+      if(dm) date=dm[0];
+    }
+
+    if(!price){ el.innerHTML='<div style="padding:16px;color:var(--red);font-family:var(--mono);font-size:12px">❌ ไม่สามารถดึงข้อมูลได้ กรุณาลองใหม่</div>'; return; }
+
+    // Determine trucking tier
+    let sellTier=null, buyTier=null;
+    const sellTiers=[
+      {min:34.01,max:36.00,sell:33000,buy:31000},{min:36.01,max:38.00,sell:34000,buy:32000},
+      {min:38.01,max:40.00,sell:35000,buy:33000},{min:40.01,max:42.00,sell:36000,buy:34000},
+      {min:42.01,max:44.00,sell:37000,buy:35000},{min:44.01,max:46.00,sell:38000,buy:36000},
+      {min:46.01,max:48.00,sell:39000,buy:37000},{min:48.01,max:50.00,sell:40000,buy:38000},
+      {min:50.01,max:53.00,sell:48000,buy:45000},{min:53.01,max:56.00,sell:49500,buy:46500},
+      {min:56.01,max:59.00,sell:50000,buy:48000},{min:59.01,max:62.00,sell:52500,buy:49500},
+    ];
+    const tier = sellTiers.find(t=>price>=t.min&&price<=t.max);
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+        <div style="background:var(--s2);border:1.5px solid var(--gold);border-radius:10px;padding:14px 16px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">⛽ DIESEL B7</div>
+          <div style="font-size:28px;font-weight:800;color:var(--gold);font-family:var(--mono)">${price.toFixed(2)}</div>
+          <div style="font-size:11px;color:var(--muted)">บาท/ลิตร</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px;font-family:var(--mono)">${date||'—'}</div>
+          ${source?`<div style="font-size:9px;color:var(--muted);margin-top:2px">${source}</div>`:''}
+        </div>
+        ${tier?`
+        <div style="background:var(--s2);border:1.5px solid var(--green);border-radius:10px;padding:14px 16px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">💰 ราคาขาย (DB)</div>
+          <div style="font-size:28px;font-weight:800;color:var(--green);font-family:var(--mono)">${tier.sell.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted)">บาท/CNTR</div>
+        </div>
+        <div style="background:var(--s2);border:1.5px solid var(--cyan);border-radius:10px;padding:14px 16px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px">🛒 ราคาซื้อ (Kingcross)</div>
+          <div style="font-size:28px;font-weight:800;color:var(--cyan);font-family:var(--mono)">${tier.buy.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted)">บาท/CNTR</div>
+        </div>`:''}
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);border-top:1px solid var(--border);padding-top:8px">
+        ช่วงราคา: THB ${price>=34.01?sellTiers.find(t=>price>=t.min&&price<=t.max)?.min+' – '+sellTiers.find(t=>price>=t.min&&price<=t.max)?.max+' /Liter':'ไม่อยู่ในช่วงที่กำหนด'}
+        &nbsp;·&nbsp; อัปเดตล่าสุด: ${new Date().toLocaleString('th-TH')}
+      </div>`;
+  }catch(e){
+    el.innerHTML=`<div style="padding:16px;color:var(--red);font-family:var(--mono);font-size:12px">❌ Error: ${e.message}</div>`;
+  }
+};
+
 window.renderDbIntransit = renderDbIntransit;
 
 function exportDbCsv(){
