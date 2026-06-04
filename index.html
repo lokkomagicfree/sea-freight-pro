@@ -3659,9 +3659,11 @@ function renderMonthlySummary(groups,sortedKeys){
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
     const mthKey=key.replace('-','_');
     const dbCol=mDb>0?'var(--cyan)':mDb<0?'var(--red)':'var(--muted)';
-    // Pre-fill comm input with mDb so commission is auto-calculated from CB profit
-    const commInputVal = mDb>0 ? mDb : '';
-    const commInputDisplay = mDb>0 ? (mDb*commRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿' : '—';
+    // Pre-fill with saved manual THB profit, or fallback to CB profit
+    const srDataNow = srLoad();
+    const savedThbProfit = srDataNow['manual_thb_profit_'+key];
+    const commInputVal = savedThbProfit !== undefined ? savedThbProfit : (mDb>0 ? mDb : '');
+    const commInputDisplay = commInputVal>0 ? Math.round(commInputVal*(window.commRate||0.25)).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿' : '—';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:9px 12px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">${label}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)" title="${jobs.length} Shipments + ${mDbCount} CB">
@@ -4035,6 +4037,7 @@ window.extractPdfBooking = extractPdfBooking;
 
 function recalcMonthlyComm(inp){
   const key=(inp.dataset.month||'').replace('-','_');
+  const monthKey=(inp.dataset.month||''); // e.g. "2026-06"
   const raw=parseFloat(inp.value)||0;
   const comm=Math.round(raw*(window.commRate||0.25));
   const el=g('mcomm_'+key);
@@ -4042,6 +4045,14 @@ function recalcMonthlyComm(inp){
     el.textContent=raw>0?comm.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';
     el.style.color=raw>0?'var(--gold)':'var(--muted)';
   }
+  // Save to srData
+  clearTimeout(window._monthlyCommTimer);
+  window._monthlyCommTimer = setTimeout(()=>{
+    const data = srLoad();
+    if(raw>0) data['manual_thb_profit_'+monthKey] = raw;
+    else delete data['manual_thb_profit_'+monthKey];
+    srSave(data);
+  }, 500);
 }
 
 function commDueDate(key){if(!key||key==='Unknown')return null;const[y,m]=key.split('-').map(Number);return new Date(y,m-1+4,1);}
