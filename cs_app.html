@@ -281,10 +281,24 @@ const auth = getAuth(app);
 
 // ── URL params ─────────────────────────────────────────────
 const params  = new URLSearchParams(location.search);
-const AGENT   = (params.get('agent')||'').trim();
 const OWNER   = (params.get('owner')||'').trim(); // owner UID
 
+// AGENT: prefer localStorage saved name, fallback to URL param
+let AGENT = (localStorage.getItem('cs_agent_name') || params.get('agent') || '').trim();
+
+// Show name badge + edit button
 document.getElementById('agent_badge').textContent = AGENT ? '👤 '+AGENT : '⚠ No agent set';
+document.getElementById('agent_badge').style.cursor = 'pointer';
+document.getElementById('agent_badge').title = 'คลิกเพื่อเปลี่ยนชื่อ';
+document.getElementById('agent_badge').onclick = function(){
+  const newName = prompt('กรอกชื่อของคุณ:', AGENT);
+  if(newName && newName.trim()){
+    AGENT = newName.trim();
+    localStorage.setItem('cs_agent_name', AGENT);
+    document.getElementById('agent_badge').textContent = '👤 '+AGENT;
+    toast('✅ บันทึกชื่อ: '+AGENT);
+  }
+};
 
 if(!AGENT){
   document.getElementById('loading').innerHTML = `
