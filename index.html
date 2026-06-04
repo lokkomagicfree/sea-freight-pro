@@ -4035,8 +4035,12 @@ window.extractPdfBooking = extractPdfBooking;
 
 function recalcMonthlyComm(inp){
   const key=(inp.dataset.month||'').replace('-','_');
+  const raw=parseFloat(inp.value)||0;
   const el=g('mcomm_'+key);
-  if(el){el.textContent=raw>0?fmt(comm)+' ฿':'—';el.style.color=raw>0?'var(--gold)':'var(--muted)';}
+  if(el){
+    el.textContent=raw>0?raw.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';
+    el.style.color=raw>0?'var(--gold)':'var(--muted)';
+  }
 }
 
 function commDueDate(key){if(!key||key==='Unknown')return null;const[y,m]=key.split('-').map(Number);return new Date(y,m-1+4,1);}
