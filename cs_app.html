@@ -1104,6 +1104,9 @@ window.renderCSSOPDocs = function(){
 // ── SOP PDF — shared generator (format matches SOP Email) ──
 
 
+// ── SOP PDF — shared generator (format matches SOP Email) ──
+
+
 function buildSopPdfFromJob(j){
   if(!window.jspdf) return null;
   const { jsPDF } = window.jspdf;
@@ -1171,8 +1174,11 @@ function buildSopPdfFromJob(j){
   const names=j.chargeNames||[];
   const sells=j.sells||[], costs=j.costs||[];
   const oceanSell=sells[0]||0, oceanCost=costs[0]||0;
-  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
-  const localCost=names.slice(1).map((n,i)=>({name:n,val:costs[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
+  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1),apr:false})).filter(x=>x.val);
+  const localCost=names.slice(1).map((n,i)=>{
+    const apr = !!(j.aprFlags && j.aprFlags[i+1]);
+    return {name:n, val:costs[i+1]||0, thb:isThb(n,i+1), apr};
+  }).filter(x=>x.val||x.apr);
 
   /* ── HEADER ── */
   fillR(LM,y,TW,13,RED);
@@ -1183,7 +1189,10 @@ function buildSopPdfFromJob(j){
 
   /* ── GREETING ── */
   needY(12);
-  Tsz("Dear P'Aut,",LM,y,9,false,BLK); y+=6;
+  // In CS App: use current logged-in agent name
+  const pdfCsName = j.csAssigned || (typeof AGENT !== 'undefined' ? AGENT : '');
+  const pdfDear = pdfCsName ? `Dear Khun ${pdfCsName},` : "Dear CS,";
+  Tsz(pdfDear,LM,y,9,false,BLK); y+=6;
   Tsz('Please find detail as below, thanks',LM,y,8.5,false,DGRAY); y+=9;
 
   /* ── SHIPMENT DETAILS ── */
@@ -1244,8 +1253,13 @@ function buildSopPdfFromJob(j){
       fillR(LM,y,TW,TBL_H,ri%2===0?WHITE:LGRAY);
       stkR(LM,y,TW,TBL_H,MGRAY,0.15);
       Tb(ch.name, LM+3,y,TBL_H,false,BLK);
-      Tb(ch.val.toLocaleString()+(ch.thb?' THB':' USD'), LM+95,y,TBL_H,false,BLK);
-      Tb(ch.thb?'Container':'SET', LM+138,y,TBL_H,false,DGRAY);
+      if(ch.apr){
+        Tb('As per receipt', LM+95,y,TBL_H,false,[150,100,100]);
+        Tb('—', LM+138,y,TBL_H,false,DGRAY);
+      } else {
+        Tb(ch.val.toLocaleString()+(ch.thb?' THB':' USD'), LM+95,y,TBL_H,false,BLK);
+        Tb(ch.thb?'Container':'SET', LM+138,y,TBL_H,false,DGRAY);
+      }
       y+=TBL_H;
     });
   }
