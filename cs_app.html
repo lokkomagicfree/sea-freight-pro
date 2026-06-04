@@ -175,6 +175,8 @@ select.inp{cursor:pointer}
             <th>ETA</th>
             <th>VESSEL / VOY</th>
             <th>STATUS</th>
+            <th style="text-align:right;min-width:80px">COST (฿)</th>
+            <th style="text-align:right;min-width:80px;color:var(--green)">SELL (฿)</th>
             <th style="min-width:180px">CS TASKS</th>
             <th style="min-width:200px">REMARKS</th>
             <th style="text-align:center;min-width:160px">PRE-ALERT &amp; INV</th>
@@ -753,7 +755,7 @@ function renderTable(){
 
   const tbody = document.getElementById('cs_tbody');
   if(!jobs.length){
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty">ไม่มี Shipment ที่ assign ให้ <b>${AGENT}</b></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12"><div class="empty">ไม่มี Shipment ที่ assign ให้ <b>${AGENT}</b></div></td></tr>`;
     return;
   }
 
@@ -838,6 +840,8 @@ function renderTable(){
           <option value="cancelled" ${j.status==='cancelled' ?'selected':''}>✘ Cancelled</option>
         </select>
       </td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:6px 10px;color:var(--red)">${j.cost?(j.cost*(j.rate||35)).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:6px 10px;color:var(--green)">${j.sell?(j.sell*(j.rate||35)).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
       <td>${tasksHtml}</td>
       <td>
         <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
