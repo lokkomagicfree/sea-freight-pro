@@ -3176,6 +3176,14 @@ loadLCTemplates();
   if(j.sells&&j.costs){
     const si=[...document.querySelectorAll('.sell-inp')],ci=[...document.querySelectorAll('.cost-inp')];
     j.sells.forEach((v,i)=>{if(si[i])si[i].value=v;});j.costs.forEach((v,i)=>{if(ci[i])ci[i].value=v;});
+    // Restore APR flags
+    if(j.aprFlags && j.aprFlags.length){
+      const rows=[...document.querySelectorAll('#charge_body tr')];
+      rows.forEach((r,i)=>{
+        const btn=r.querySelector('button[data-apr]');
+        if(btn && j.aprFlags[i]===true && btn.dataset.apr!=='1') window.toggleAPR(btn);
+      });
+    }
     recalc();
   }
   const btn=g('save_btn');if(btn){btn.textContent='💾 Update Shipment';btn.className='btn btn-gold';btn.style.background='';}
@@ -4355,7 +4363,10 @@ function showEmailPreview(emailType){
   const costLines = chargeNames.map((name,i)=>{
     if(!costVals[i]) return null;
     const isThb = thbFlags[i];
-    const aprRows = [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
+    // Use saved aprFlags from jobData if available, else fall back to DOM
+    const aprRows = (typeof j !== 'undefined' && j?.aprFlags?.length)
+      ? j.aprFlags
+      : [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1');
     const isAPR = aprRows[i];
     if(isAPR) return `  ${name.padEnd(18)} : As per receipt`;
     return `  ${name.padEnd(18)} : ${isThb ? costVals[i].toFixed(0)+' THB' : 'USD '+costVals[i].toFixed(0)}`;
@@ -5784,9 +5795,15 @@ function renderNewBizList(){
     return;
   }
   const ids = getNewBizList();
-  const jobs = ids.map(no => savedJobs.find(j=>j.no===no)).filter(Boolean);
+  // Match by no, trim whitespace, case-insensitive
+  const jobs = ids.map(no => savedJobs.find(j=>(j.no||'').toString().trim() === (no||'').toString().trim())).filter(Boolean);
   if(!jobs.length){
-    el.innerHTML='<div style="color:var(--muted);font-size:11px">N/A — กด "+ Add from Shipments" เพื่อเพิ่ม</div>';
+    if(ids.length > 0){
+      // IDs exist but jobs not found yet — savedJobs may still be loading
+      el.innerHTML=`<div style="color:var(--muted);font-size:11px">⏳ ${ids.length} รายการ (กำลังโหลด shipments…)</div>`;
+    } else {
+      el.innerHTML='<div style="color:var(--muted);font-size:11px">N/A — กด "+ Add from Shipments" เพื่อเพิ่ม</div>';
+    }
     return;
   }
   el.innerHTML = jobs.map((j,i)=>{
@@ -7320,6 +7337,7 @@ onAuthStateChanged(auth, async user=>{
         try{ localStorage.setItem('sfp_jobs', JSON.stringify(window.savedJobs)); }catch(e){}
         window.renderShipments?.();
         window.updateAlertCount?.();
+        window.renderNewBizList?.();
         console.log('🔄 Jobs updated by CS Portal');
       }
     }, ()=>{});
@@ -7344,7 +7362,7 @@ async function initFirestoreSync(){
     rateMeta: rateMetaSnap,
     hasJobs: !!jobsSnap?.jobs,
   });
-  if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; }
+  if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; renderNewBizList?.(); }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
   if(dbItSnap?.rows)         { window.dbRows = dbItSnap.rows; try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){} }
@@ -8183,8 +8201,11 @@ function buildSopPdfFromJob(j){
   const names=j.chargeNames||[];
   const sells=j.sells||[], costs=j.costs||[];
   const oceanSell=sells[0]||0, oceanCost=costs[0]||0;
-  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
-  const localCost=names.slice(1).map((n,i)=>({name:n,val:costs[i+1]||0,thb:isThb(n,i+1)})).filter(x=>x.val);
+  const localSell=names.slice(1).map((n,i)=>({name:n,val:sells[i+1]||0,thb:isThb(n,i+1),apr:false})).filter(x=>x.val);
+  const localCost=names.slice(1).map((n,i)=>{
+    const apr = !!(j.aprFlags && j.aprFlags[i+1]);
+    return {name:n, val:costs[i+1]||0, thb:isThb(n,i+1), apr};
+  }).filter(x=>x.val||x.apr);
 
   /* ── HEADER ── */
   fillR(LM,y,TW,13,RED);
@@ -8258,8 +8279,13 @@ function buildSopPdfFromJob(j){
       fillR(LM,y,TW,TBL_H,ri%2===0?WHITE:LGRAY);
       stkR(LM,y,TW,TBL_H,MGRAY,0.15);
       Tb(ch.name, LM+3,y,TBL_H,false,BLK);
-      Tb(ch.val.toLocaleString()+(ch.thb?' THB':' USD'), LM+95,y,TBL_H,false,BLK);
-      Tb(ch.thb?'Container':'SET', LM+138,y,TBL_H,false,DGRAY);
+      if(ch.apr){
+        Tb('As per receipt', LM+95,y,TBL_H,false,[150,100,100]);
+        Tb('—', LM+138,y,TBL_H,false,DGRAY);
+      } else {
+        Tb(ch.val.toLocaleString()+(ch.thb?' THB':' USD'), LM+95,y,TBL_H,false,BLK);
+        Tb(ch.thb?'Container':'SET', LM+138,y,TBL_H,false,DGRAY);
+      }
       y+=TBL_H;
     });
   }
