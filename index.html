@@ -237,6 +237,7 @@ body{font-size:14px;font-weight:450}
     <button class="nav-tab" onclick="showPage('salereport');renderSaleReport();setTimeout(loadForecastForMonth,100)">📊 Sale</button>
     <button class="nav-tab" onclick="showPage('dbintransit');renderDbIntransit()">🚛 Transit</button>
     <button class="nav-tab" onclick="showPage('sop');renderSOP()">📂 SOP</button>
+    <button class="nav-tab" onclick="showPage('sc');renderSCPage()">📄 SC</button>
   </div>
   <div class="topbar-right">
     <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 5px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">💾<span id="rate_cache_count">0</span></div>
@@ -3615,6 +3616,150 @@ window.fetchFuelPrice = async function(){
   }catch(e){
     el.innerHTML=`<div style="padding:16px;color:var(--red);font-family:var(--mono);font-size:12px">❌ ${e.message}<br><small style="color:var(--muted)">กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต</small></div>`;
   }
+};
+
+
+// ── SC Management ─────────────────────────────────────────
+let _scList = [];
+let _scEditIdx = null;
+
+async function loadSCList(){
+  try{
+    const snap = await window.fbGet('data/scList');
+    _scList = snap?.list || [];
+  }catch(e){ _scList = []; }
+}
+async function saveSCList(){
+  try{ await window.fbSet('data/scList',{list:_scList,updatedAt:new Date().toISOString()}); }
+  catch(e){ console.warn('saveSCList error',e); }
+}
+
+function getSCStatus(sc){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const to = sc.validTo ? new Date(sc.validTo) : null;
+  if(!to) return 'active';
+  const diff = (to-today)/(1000*60*60*24);
+  if(diff < 0) return 'expired';
+  if(diff <= 30) return 'expiring';
+  return 'active';
+}
+
+window.renderSCPage = async function(){
+  if(!_scList.length) await loadSCList();
+  const tbody = document.getElementById('sc_tbody');
+  const summary = document.getElementById('sc_summary');
+  if(!tbody) return;
+
+  const q = (document.getElementById('sc_search')?.value||'').toLowerCase();
+  const sf = document.getElementById('sc_status_filter')?.value||'';
+
+  const filtered = _scList.filter((sc,i)=>{
+    const txt = [sc.scno,sc.carrier,sc.customer,sc.pol,sc.pod].join(' ').toLowerCase();
+    if(q && !txt.includes(q)) return false;
+    if(sf && getSCStatus(sc)!==sf) return false;
+    return true;
+  });
+
+  const statusBadge = s=>{
+    const map={active:'<span style="color:var(--green);font-size:10px">✅ Active</span>',
+               expiring:'<span style="color:var(--gold);font-size:10px">⚠️ Expiring</span>',
+               expired:'<span style="color:var(--red);font-size:10px">❌ Expired</span>'};
+    return map[s]||'—';
+  };
+
+  const fmtDate = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+  const fmtNum  = n=>n?'$'+Number(n).toLocaleString():'—';
+
+  tbody.innerHTML = filtered.length ? filtered.map((sc,fi)=>{
+    const idx = _scList.indexOf(sc);
+    const status = getSCStatus(sc);
+    const used = sc.usedTeu||0, total = sc.totalTeu||0;
+    const pct = total>0 ? Math.round(used/total*100) : 0;
+    const barColor = pct>=90?'var(--red)':pct>=70?'var(--gold)':'var(--green)';
+    const usageHtml = total>0 ? `
+      <div style="font-family:var(--mono);font-size:11px">${used}/${total} TEU</div>
+      <div style="background:var(--border);border-radius:4px;height:5px;margin-top:3px;overflow:hidden;min-width:80px">
+        <div style="background:${barColor};height:100%;width:${Math.min(pct,100)}%;transition:width .3s"></div>
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-top:1px">${pct}% used</div>` : '—';
+
+    return `<tr style="border-bottom:1px solid var(--border)${status==='expired'?';opacity:.6':''}">
+      <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${sc.scno||'—'}</td>
+      <td style="font-size:11px;color:var(--orange)">${sc.carrier||'—'}</td>
+      <td style="font-size:11px">${sc.customer||'—'}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${sc.pol||''}${sc.pol&&sc.pod?' → ':''}${sc.pod||''}</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green)">${fmtNum(sc.gp20)}</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan)">${fmtNum(sc.gp40)}</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan)">${fmtNum(sc.hc40)}</td>
+      <td style="font-family:var(--mono);font-size:10px">${fmtDate(sc.validFrom)}</td>
+      <td style="font-family:var(--mono);font-size:10px">${fmtDate(sc.validTo)}</td>
+      <td style="padding:6px 10px">${usageHtml}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:150px;word-wrap:break-word">${sc.note||'—'}</td>
+      <td style="text-align:center">${statusBadge(status)}</td>
+      <td style="text-align:center;white-space:nowrap">
+        <button onclick="openEditSCModal(${idx})" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px" title="Edit">✏️</button>
+        <button onclick="deleteSC(${idx})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">✕</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--muted)">ไม่พบ SC — กด "+ Add SC" เพื่อเพิ่ม</td></tr>`;
+
+  const active = _scList.filter(s=>getSCStatus(s)==='active').length;
+  const expiring = _scList.filter(s=>getSCStatus(s)==='expiring').length;
+  if(summary) summary.textContent = `${_scList.length} SC ทั้งหมด · ${active} Active · ${expiring} Expiring soon`;
+};
+
+window.openAddSCModal = function(){
+  _scEditIdx = null;
+  document.getElementById('sc_modal_title').textContent = '+ Add SC';
+  ['scno','carrier','customer','pol','pod','from','to','note'].forEach(f=>{
+    const el=document.getElementById('sc_m_'+f); if(el) el.value='';
+  });
+  ['20gp','40gp','40hc','used','total'].forEach(f=>{
+    const el=document.getElementById('sc_m_'+f); if(el) el.value='';
+  });
+  document.getElementById('sc_modal').style.display='flex';
+};
+
+window.openEditSCModal = function(idx){
+  const sc = _scList[idx]; if(!sc) return;
+  _scEditIdx = idx;
+  document.getElementById('sc_modal_title').textContent = '✏️ Edit SC';
+  const set=(id,v)=>{const e=document.getElementById('sc_m_'+id);if(e)e.value=v||'';};
+  set('scno',sc.scno); set('carrier',sc.carrier); set('customer',sc.customer);
+  set('pol',sc.pol);   set('pod',sc.pod);
+  set('20gp',sc.gp20); set('40gp',sc.gp40); set('40hc',sc.hc40);
+  set('from',sc.validFrom); set('to',sc.validTo);
+  set('used',sc.usedTeu); set('total',sc.totalTeu);
+  set('note',sc.note);
+  document.getElementById('sc_modal').style.display='flex';
+};
+
+window.saveSC = async function(){
+  const g2=id=>document.getElementById('sc_m_'+id)?.value||'';
+  const sc = {
+    scno:g2('scno'),carrier:g2('carrier').toUpperCase(),customer:g2('customer').toUpperCase(),
+    pol:g2('pol'),pod:g2('pod'),
+    gp20:parseFloat(g2('20gp'))||0, gp40:parseFloat(g2('40gp'))||0, hc40:parseFloat(g2('40hc'))||0,
+    validFrom:g2('from'), validTo:g2('to'),
+    usedTeu:parseFloat(g2('used'))||0, totalTeu:parseFloat(g2('total'))||0,
+    note:g2('note'), updatedAt:new Date().toISOString()
+  };
+  if(!sc.scno){ toast('กรุณากรอก SC No.'); return; }
+  if(_scEditIdx !== null) _scList[_scEditIdx] = sc;
+  else _scList.unshift(sc);
+  await saveSCList();
+  document.getElementById('sc_modal').style.display='none';
+  renderSCPage();
+  toast('✅ Saved: '+sc.scno);
+};
+
+window.deleteSC = async function(idx){
+  const sc = _scList[idx];
+  if(!confirm('ลบ SC '+sc.scno+'?')) return;
+  _scList.splice(idx,1);
+  await saveSCList();
+  renderSCPage();
+  toast('🗑 ลบแล้ว');
 };
 
 window.renderDbIntransit = renderDbIntransit;
@@ -7157,6 +7302,78 @@ function clearImgExtract(){
       Sign in with Google
     </button>
     <div id="login_status" style="font-size:11px;color:var(--muted);margin-top:16px;min-height:20px"></div>
+  </div>
+</div>
+
+<!-- ═══ SC PAGE ═══ -->
+<div id="page-sc" class="page">
+  <div style="max-width:1100px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--red)">📄 SC Management</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Service Contract — แก้ไข / ติดตาม / หมายเหตุ</div>
+      </div>
+      <button onclick="openAddSCModal()" class="btn btn-cyan" style="font-size:12px;padding:8px 18px">+ Add SC</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <input id="sc_search" class="fi" placeholder="🔍 ค้นหา SC No. / Carrier / Customer…" oninput="renderSCPage()" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px">
+      <select id="sc_status_filter" class="fi" onchange="renderSCPage()" style="font-size:12px;padding:6px 10px">
+        <option value="">All Status</option>
+        <option value="active">✅ Active</option>
+        <option value="expiring">⚠️ Expiring Soon</option>
+        <option value="expired">❌ Expired</option>
+      </select>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl" style="min-width:900px">
+        <thead><tr>
+          <th>SC No.</th><th>Carrier</th><th>Customer</th><th>POL → POD</th>
+          <th style="text-align:right">20GP</th><th style="text-align:right">40GP</th><th style="text-align:right">40HC</th>
+          <th>Valid From</th><th>Valid To</th>
+          <th style="text-align:center">การใช้ (TEU)</th>
+          <th>หมายเหตุ</th>
+          <th style="text-align:center;width:70px">Status</th>
+          <th style="width:60px"></th>
+        </tr></thead>
+        <tbody id="sc_tbody"></tbody>
+      </table>
+    </div>
+    <div id="sc_summary" style="margin-top:10px;font-size:11px;color:var(--muted);font-family:var(--mono)"></div>
+  </div>
+</div>
+
+<!-- SC Modal -->
+<div id="sc_modal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;padding:22px">
+    <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--red);margin-bottom:16px" id="sc_modal_title">+ Add SC</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="inp-group"><label class="inp-lbl">SC No.</label><input id="sc_m_scno" class="inp" placeholder="e.g. SIN0113N26"></div>
+      <div class="inp-group"><label class="inp-lbl">Carrier</label><input id="sc_m_carrier" class="inp" placeholder="e.g. WHL"></div>
+      <div class="inp-group"><label class="inp-lbl">Customer</label><input id="sc_m_customer" class="inp" placeholder="e.g. DB GROUP"></div>
+      <div class="inp-group"><label class="inp-lbl">POL</label><input id="sc_m_pol" class="inp" placeholder="e.g. Laem Chabang"></div>
+      <div class="inp-group full-col"><label class="inp-lbl">POD</label><input id="sc_m_pod" class="inp" placeholder="e.g. New York, NY"></div>
+      <div class="inp-group"><label class="inp-lbl">20GP (USD)</label><input type="number" id="sc_m_20gp" class="inp" placeholder="0"></div>
+      <div class="inp-group"><label class="inp-lbl">40GP (USD)</label><input type="number" id="sc_m_40gp" class="inp" placeholder="0"></div>
+      <div class="inp-group"><label class="inp-lbl">40HC (USD)</label><input type="number" id="sc_m_40hc" class="inp" placeholder="0"></div>
+      <div class="inp-group"><label class="inp-lbl">Valid From</label><input type="date" id="sc_m_from" class="inp"></div>
+      <div class="inp-group"><label class="inp-lbl">Valid To</label><input type="date" id="sc_m_to" class="inp"></div>
+      <div class="inp-group full-col">
+        <label class="inp-lbl">การใช้ SC <span style="font-size:9px;color:var(--muted)">(TEU ที่ใช้ / ทั้งหมด)</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="sc_m_used" class="inp" placeholder="ใช้แล้ว" style="width:110px">
+          <span style="color:var(--muted);font-weight:700">/</span>
+          <input type="number" id="sc_m_total" class="inp" placeholder="ทั้งหมด" style="width:110px">
+          <span style="font-size:11px;color:var(--muted)">TEU</span>
+        </div>
+      </div>
+      <div class="inp-group full-col"><label class="inp-lbl">หมายเหตุ</label>
+        <textarea id="sc_m_note" class="inp" rows="3" placeholder="หมายเหตุ / เงื่อนไขพิเศษ…" style="resize:vertical"></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button onclick="saveSC()" class="btn btn-cyan" style="flex:1">💾 Save</button>
+      <button onclick="document.getElementById('sc_modal').style.display='none'" class="btn btn-ghost" style="flex:1">Cancel</button>
+    </div>
   </div>
 </div>
 
