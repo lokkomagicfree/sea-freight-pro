@@ -8898,15 +8898,11 @@ function parsePastedRatesText(raw){
   // ── helpers ──────────────────────────────────────────────
   const parsePrice = s => {
     if(!s) return 0;
-    const n = parseFloat(String(s).replace(/[$,\s,]/g,'').replace(/,/g,''));
+    const n = parseFloat(String(s).replace(/[$,\s]/g,''));
     return isNaN(n) ? 0 : n;
   };
 
-  const MONTHS = {
-    jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11,
-    ม:0,ก:1 /* fallback — Thai abbreviated months handled below */
-  };
-  // Thai month names → 0-based index
+  const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   const THAI_MONTHS = {
     'มกราคม':0,'กุมภาพันธ์':1,'มีนาคม':2,'เมษายน':3,'พฤษภาคม':4,'มิถุนายน':5,
     'กรกฎาคม':6,'สิงหาคม':7,'กันยายน':8,'ตุลาคม':9,'พฤศจิกายน':10,'ธันวาคม':11,
@@ -8914,67 +8910,114 @@ function parsePastedRatesText(raw){
     'ก.ค.':6,'ส.ค.':7,'ก.ย.':8,'ต.ค.':9,'พ.ย.':10,'ธ.ค.':11
   };
 
+  // FIX #3 — robust validity parser, handles Thai dates and strips markdown noise
   function parseValidityString(s){
     if(!s) return {date_from:'',date_to:'',validity:''};
-    s = s.trim();
+    // Strip markdown: **, *, [], bold markers, leading dashes/bullets
+    s = s.replace(/\*+/g,'').replace(/\[|\]/g,'').replace(/^[-–•]\s*/,'').trim();
 
-    // Thai: "15 มิถุนายน – 30 มิถุนายน 2026" or "15 มิ.ย. - 30 มิ.ย. 2026"
+    // ── Thai date range: "15 มิถุนายน – 30 มิถุนายน 2026"
     for(const [tname, tmo] of Object.entries(THAI_MONTHS)){
-      const re = new RegExp('(\\d{1,2})\\s*'+tname+'\\s*[\\-–]\\s*(\\d{1,2})\\s*[\\w.]*\\s*(\\d{4})');
-      const m = s.match(re);
-      if(m){
-        const yr = parseInt(m[3]);
-        const df = new Date(yr,tmo,parseInt(m[1])).toISOString().split('T')[0];
-        const dt = new Date(yr,tmo,parseInt(m[2])).toISOString().split('T')[0];
-        return {date_from:df, date_to:dt, validity:s};
+      // Escape special regex chars in Thai name (just in case)
+      const esc = tname.replace(/\./g,'\\.');
+      const re  = new RegExp('(\\d{1,2})\\s*'+esc+'\\s*(?:[–\\-]\\s*\\d{1,2}\\s*(?:'+esc+')?\\s*)?(\\d{4})');
+      // Full range: d1 monthName [–] d2 [monthName] year
+      const reFull = new RegExp('(\\d{1,2})\\s*'+esc+'\\s*[–\\-]\\s*(\\d{1,2})\\s*(?:'+esc+')?\\s*(\\d{4})');
+      const mf = s.match(reFull);
+      if(mf){
+        const yr=parseInt(mf[3]);
+        return {
+          date_from: new Date(yr,tmo,parseInt(mf[1])).toISOString().split('T')[0],
+          date_to:   new Date(yr,tmo,parseInt(mf[2])).toISOString().split('T')[0],
+          validity:  s
+        };
+      }
+      // Single day + month + year
+      const ms = s.match(new RegExp('(\\d{1,2})\\s*'+esc+'\\s*(\\d{4})'));
+      if(ms){
+        const yr=parseInt(ms[2]);
+        return {
+          date_from: new Date(yr,tmo,parseInt(ms[1])).toISOString().split('T')[0],
+          date_to:   new Date(yr,tmo+1,0).toISOString().split('T')[0],
+          validity:  s
+        };
       }
     }
-    // English range: "15 Jun - 30 Jun 2026" or "01-14 JUN 2026"
+    // ── English range: "01-14 JUN 2026" or "15 Jun – 30 Jun 2026"
     const m1 = s.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
     if(m1){
-      const mo = MONTHS[(m1[3]||'').substring(0,3).toLowerCase()];
-      const yr = parseInt(m1[4]);
-      if(mo !== undefined && !isNaN(yr)){
-        return {
-          date_from: new Date(yr,mo,parseInt(m1[1])).toISOString().split('T')[0],
-          date_to:   new Date(yr,mo,parseInt(m1[2])).toISOString().split('T')[0],
-          validity:  s
-        };
-      }
+      const mo=MONTHS[(m1[3]||'').substring(0,3).toLowerCase()];
+      const yr=parseInt(m1[4]);
+      if(mo!==undefined&&!isNaN(yr)) return {
+        date_from: new Date(yr,mo,parseInt(m1[1])).toISOString().split('T')[0],
+        date_to:   new Date(yr,mo,parseInt(m1[2])).toISOString().split('T')[0],
+        validity:  s
+      };
     }
-    // Single month: "Jun 2026"
+    // ── "Jun 2026"
     const m2 = s.match(/([A-Za-z]+)\s+(\d{4})/);
     if(m2){
-      const mo = MONTHS[(m2[1]||'').substring(0,3).toLowerCase()];
-      const yr = parseInt(m2[2]);
-      if(mo !== undefined && !isNaN(yr)){
-        return {
-          date_from: new Date(yr,mo,1).toISOString().split('T')[0],
-          date_to:   new Date(yr,mo+1,0).toISOString().split('T')[0],
-          validity:  s
-        };
-      }
+      const mo=MONTHS[(m2[1]||'').substring(0,3).toLowerCase()];
+      const yr=parseInt(m2[2]);
+      if(mo!==undefined&&!isNaN(yr)) return {
+        date_from: new Date(yr,mo,1).toISOString().split('T')[0],
+        date_to:   new Date(yr,mo+1,0).toISOString().split('T')[0],
+        validity:  s
+      };
     }
-    return {date_from:'', date_to:'', validity:s};
+    return {date_from:'',date_to:'',validity:s};
   }
 
-  function calcStatus(date_from, date_to){
-    if(!date_from||!date_to) return 'unknown';
-    const today = new Date(); today.setHours(0,0,0,0);
-    const df=new Date(date_from), dt=new Date(date_to);
-    if(today<df) return 'upcoming';
-    if(today>dt) return 'expired';
+  function calcStatus(df,dt){
+    if(!df||!dt) return 'unknown';
+    const today=new Date(); today.setHours(0,0,0,0);
+    const d0=new Date(df),d1=new Date(dt);
+    if(today<d0) return 'upcoming';
+    if(today>d1) return 'expired';
     return 'active';
   }
 
-  function makeRate(pod, gp20, gp40, hc40, ctx){
+  // FIX #2 — Via keyword → resolve to actual gateway port
+  // "via USWC / via LAX / via LGB"  → POD = Los Angeles
+  // "via USEC / via Norfolk / via NYK" → POD = New York
+  function resolveViaPort(text){
+    if(!/via/i.test(text)) return null;
+    const t = text.toLowerCase();
+    if(/uswc|wc|lax|lbg|los\s*angeles|long\s*beach|oakland|seattle|tacoma|us\s*west/i.test(t))
+      return 'Los Angeles';
+    if(/usec|ec|nyk|new\s*york|norfolk|savannah|charleston|us\s*east/i.test(t))
+      return 'New York';
+    if(/usgc|gulf|houston|new\s*orleans/i.test(t))
+      return 'Houston';
+    return null; // via something unrecognised — keep as-is
+  }
+
+  // FIX #1 — IPI detection: any inland city text → DEL (not POD)
+  // IPI = Inland Point Intermodal — city behind the port
+  // Heuristic: if the text (after gateway port) contains IPI city keywords
+  const IPI_KEYWORDS = /chicago|dallas|memphis|kansas\s*city|phoenix|columbus|cleveland|detroit|minneapolis|st\.?\s*louis|atlanta|charlotte|cincinnati|louisville|nashville|denver|salt\s*lake|el\s*paso|san\s*antonio|fort\s*worth|inland|ipi/i;
+
+  function splitPodDel(rawText){
+    // rawText might be: "Chicago / Dallas / Memphis" (all IPI)
+    // or "New York" (pure seaport)
+    // or "New York (via Norfolk)" (seaport + routing note)
+    const parts = rawText.split('/').map(p=>p.trim()).filter(Boolean);
+    const pods=[], dels=[];
+    for(const p of parts){
+      if(IPI_KEYWORDS.test(p)) dels.push(p);
+      else pods.push(p);
+    }
+    return {pods, dels};
+  }
+
+  function makeRate(pod, del, gp20, gp40, hc40, ctx){
     const {validity,date_from,date_to} = parseValidityString(ctx.validity||'');
     return {
-      source: (ctx.source||'FAK').toUpperCase(),
-      carrier: (ctx.carrier||'').toUpperCase(),
-      pol: ctx.pol||'',
-      pod: pod.trim(),
-      del: ctx.del||'',
+      source:      (ctx.source||'FAK').toUpperCase(),
+      carrier:     (ctx.carrier||'').toUpperCase(),
+      pol:         ctx.pol||'',
+      pod:         pod.trim(),
+      del:         del||ctx.del||'',
       gp20, gp40, hc40, rf20:0, rf40:0,
       validity, date_from, date_to,
       valid_status: calcStatus(date_from,date_to),
@@ -8982,103 +9025,114 @@ function parsePastedRatesText(raw){
     };
   }
 
-  // ── Try to detect Markdown / pipe-table format ───────────
+  // ── Scan for global context (validity, POL, carrier) ─────
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
-  const isMarkdown = lines.some(l=>l.startsWith('|'));
 
-  // ── Context extraction from header lines (Validity, POL) ─
-  let ctx = { source:'FAK', carrier:'', pol:'', validity:'' };
+  let ctx = {source:'FAK', carrier:'', pol:'', validity:''};
 
-  // Scan all lines for context clues regardless of mode
   for(const line of lines){
-    // Validity (Thai or English)
-    if(/validity|valid|วันที่|ถึง|มิถุนายน|กรกฎาคม|พฤษภาคม|Jun|Jul|Aug|May/i.test(line)){
-      // Try to extract a date range from this line
-      const test = parseValidityString(line.replace(/\*+|\[|\]/g,'').trim());
-      if(test.date_from) ctx.validity = line.replace(/\*+|\[|\]/g,'').trim();
+    // Validity: look for lines that mention validity keyword OR contain Thai/English month + year
+    const cleanLine = line.replace(/\*+/g,'').replace(/\[|\]/g,'').trim();
+    if(/validity|valid\s*date|วันที่|มิถุนายน|กรกฎาคม|พฤษภาคม|สิงหาคม|ตุลาคม|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i.test(cleanLine)){
+      const test = parseValidityString(cleanLine);
+      if(test.date_from && !ctx.validity) ctx.validity = cleanLine;
     }
-    // POL from "Port of Loading:" lines
-    const polMatch = line.match(/port\s+of\s+loading[:\s]+(.+)/i) ||
-                     line.match(/\bPOL[:\s]+(.+)/i);
-    if(polMatch) ctx.pol = polMatch[1].replace(/\*+/g,'').trim();
+    // POL
+    const polM = cleanLine.match(/port\s+of\s+loading[:\s]+(.+)/i) || cleanLine.match(/\bPOL[:\s]+(.+)/i);
+    if(polM) ctx.pol = polM[1].trim();
     // Carrier
-    const carrierMatch = line.match(/carrier[:\s]+([A-Z0-9\s]+)/i);
-    if(carrierMatch) ctx.carrier = carrierMatch[1].trim();
+    const carM = cleanLine.match(/carrier[:\s]+([A-Z0-9 ]+)/i);
+    if(carM) ctx.carrier = carM[1].trim();
   }
 
   const results = [];
+  const isMarkdown = lines.some(l=>l.startsWith('|'));
 
   if(isMarkdown){
-    // ── MARKDOWN TABLE MODE ──────────────────────────────
-    // Track section context (West Coast / East Coast / Lat Krabang)
-    let sectionPol = ctx.pol || '';
+    // ── MARKDOWN TABLE MODE ───────────────────────────────
+    let sectionPol  = ctx.pol || '';
+    let sectionCoast = ''; // 'WC' or 'EC'
 
-    for(let i=0;i<lines.length;i++){
-      const line = lines[i];
+    for(const line of lines){
+      // Track coast section for default gateway resolution
+      if(/west\s*coast|ท่าเรือฝั่งตะวันตก/i.test(line))  sectionCoast='WC';
+      if(/east\s*coast|ท่าเรือฝั่งตะวันออก/i.test(line)) sectionCoast='EC';
+      if(/lat\s*krabang.*icd|icd.*lat\s*krabang/i.test(line)) sectionCoast='ICD';
 
-      // Section header — update POL context
-      if(/west\s*coast|ท่าเรือฝั่งตะวันตก/i.test(line)) sectionPol = sectionPol||'Laem Chabang';
-      if(/east\s*coast|ท่าเรือฝั่งตะวันออก/i.test(line)) sectionPol = sectionPol||'Laem Chabang';
+      // Update POL from section headers
       if(/port\s+of\s+loading[:\s]+(.+)/i.test(line)){
         const m=line.match(/port\s+of\s+loading[:\s]+(.+)/i);
-        if(m) sectionPol = m[1].replace(/\*+/g,'').trim();
+        if(m) sectionPol=m[1].replace(/\*+/g,'').trim();
       }
 
-      // Skip non-table lines and separator rows (---|---|---)
       if(!line.startsWith('|')) continue;
-      if(/^\|[\s\-|]+\|$/.test(line)) continue;
+      if(/^\|[\s\-|:]+\|$/.test(line)) continue; // separator row
 
-      // Split pipe-delimited columns
-      const cols = line.split('|').map(s=>s.trim()).filter((_,idx,arr)=>idx>0&&idx<arr.length-1);
+      const cols = line.split('|').map(s=>s.trim()).filter((_,i,a)=>i>0&&i<a.length-1);
       if(cols.length < 3) continue;
 
-      // Skip header rows (contain column name words)
-      if(/ปลายทาง|destination|pod|fak rate|rate structure|หมายเหตุ|remark|20.*ฟุต|40.*ฟุต|port of loading/i.test(cols[0])) continue;
+      // Skip header rows
+      if(/ปลายทาง|destination|^pod$|fak rate|rate structure|หมายเหตุ|^remark|20.*ฟุต|40.*ฟุต|port of loading|add-on.*20|add.on.*40/i.test(cols[0])) continue;
+      // Skip Lat Krabang add-on rows (they're surcharges, not standalone rates)
+      if(/lat\s*krabang|ลาดกระบัง/i.test(cols[0])) continue;
 
-      // --- Layout detection ---
-      // Type A (main rate table): POD | FAK Structure | 20ft | 40ft | Remark
-      // Type B (add-on table):    POL | Remark | FAK | 20add | 40add | Remark
-      const hasPrice = cols.some(c=>/\$[\d,]+/.test(c)||/^\d{3,6}$/.test(c.replace(/[$,]/g,'')));
-      if(!hasPrice) continue;
-
-      // Find price columns (contain $ or are 3-5 digit numbers)
+      // Find price columns
       const priceIdxs = cols.reduce((acc,c,idx)=>{
-        if(/\$[\d,]+/.test(c)||/^\$?\d{3,6}$/.test(c.replace(/[$,\s]/g,''))) acc.push(idx);
+        if(/\$[\d,]+/.test(c) || /^\$?\d{3,6}$/.test(c.replace(/[$,\s]/g,''))) acc.push(idx);
         return acc;
       },[]);
-
       if(priceIdxs.length < 2) continue;
 
       const gp20 = parsePrice(cols[priceIdxs[0]]);
       const gp40 = parsePrice(cols[priceIdxs[1]]);
-      const hc40 = parsePrice(cols[priceIdxs[2]]||'') || gp40; // HC defaults to 40GP if not present
+      const hc40 = parsePrice(cols[priceIdxs[2]]||'') || gp40;
 
-      // POD: first col (or split on / for multiple ports)
+      // Remark col — check for "via USWC / via USEC" hint
+      const remarkCol = cols[cols.length-1] || '';
+      const viaGateway = resolveViaPort(remarkCol) || resolveViaPort(cols[0]);
+
       const podRaw = cols[0];
-
-      // Detect if this is an add-on row (Lat Krabang) — skip for now, not a standalone rate
-      if(/lat\s*krabang|ลาดกระบัง/i.test(podRaw) && priceIdxs[0] >= 2) continue;
-
-      // Split multiple ports "New York / Norfolk / Charleston / Savannah"
-      const ports = podRaw.split('/').map(p=>p.trim()).filter(Boolean);
+      const {pods, dels} = splitPodDel(podRaw);
 
       const rowCtx = {
         ...ctx,
         pol: sectionPol || ctx.pol || 'Laem Chabang',
       };
 
-      for(const port of ports){
-        if(!port || /^[-—]+$/.test(port)) continue;
-        results.push(makeRate(port, gp20, gp40, hc40||gp40, rowCtx));
+      if(pods.length === 0 && dels.length > 0){
+        // All IPI — gateway POD from coast or via remark
+        const gatewayPod = viaGateway ||
+          (sectionCoast==='WC' ? 'Los Angeles' :
+           sectionCoast==='EC' ? 'New York' : '');
+        for(const d of dels){
+          results.push(makeRate(gatewayPod, d, gp20, gp40, hc40, rowCtx));
+        }
+      } else {
+        // Has seaport PODs
+        for(const p of pods){
+          if(!p||/^[-—]+$/.test(p)) continue;
+          // Check if any del in the same row
+          const delStr = dels.join(' / ');
+          results.push(makeRate(p, delStr||viaGateway||'', gp20, gp40, hc40, rowCtx));
+        }
+        // Also add IPI rows separately if both ports and IPI appear together
+        if(dels.length > 0 && pods.length > 0){
+          const gatewayPod = viaGateway ||
+            (sectionCoast==='WC' ? 'Los Angeles' :
+             sectionCoast==='EC' ? 'New York' : pods[0]);
+          for(const d of dels){
+            results.push(makeRate(gatewayPod, d, gp20, gp40, hc40, rowCtx));
+          }
+        }
       }
     }
 
   } else {
-    // ── TAB / SPACE DELIMITED MODE (original logic) ───────
-    const skipPattern = /^(src|carrier|pol|destination|routing|20|40|valid|#)/i;
+    // ── TAB / SPACE DELIMITED MODE ────────────────────────
+    const skipPat = /^(src|carrier|pol|destination|routing|20|40|valid|#)/i;
 
     for(const line of lines){
-      if(skipPattern.test(line)) continue;
+      if(skipPat.test(line)) continue;
 
       let cols = line.split('\t').map(s=>s.trim());
       if(cols.length < 4) cols = line.split(/\s{2,}/).map(s=>s.trim());
@@ -9089,9 +9143,16 @@ function parsePastedRatesText(raw){
       if(cols.length >= 8){
         src=cols[0]; carrier=cols[1]; pol=cols[2]; pod=cols[3];
         const maybeRoute=cols[4];
-        const isDirect=/direct|—|-/i.test(maybeRoute);
-        const isVia=/via/i.test(maybeRoute);
-        del_=(!isDirect&&!isVia)?maybeRoute:'';
+        // FIX #2 tab mode: resolve via keyword → POD
+        const viaResolved = resolveViaPort(maybeRoute);
+        if(viaResolved){
+          // IPI row: original pod becomes DEL, via-port becomes POD
+          del_=pod; pod=viaResolved;
+        } else if(!/direct|—|-$/i.test(maybeRoute)){
+          // Not Direct and not via — could be IPI city
+          if(IPI_KEYWORDS.test(pod)){ del_=pod; pod=''; }
+          else del_=maybeRoute;
+        }
         gp20=parsePrice(cols[5]); gp40=parsePrice(cols[6]); hc40=parsePrice(cols[7]);
         validity=cols[8]||'';
       } else if(cols.length >= 7){
@@ -9104,7 +9165,10 @@ function parsePastedRatesText(raw){
         hc40=parsePrice(cols[5]||''); validity=cols[6]||'';
       }
 
-      if(!gp20 && !gp40) continue;
+      if(!gp20&&!gp40) continue;
+
+      // FIX #1 tab mode: if POD is IPI city, move to DEL
+      if(!del_ && IPI_KEYWORDS.test(pod)){ del_=pod; pod=''; }
 
       const vObj = parseValidityString(validity||ctx.validity);
       results.push({
