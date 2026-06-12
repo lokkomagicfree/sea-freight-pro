@@ -9545,17 +9545,39 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
 
       if(isInlineFlat){
         // ── Tokenize inline flat ──────────────────────────
-        // Known routing keywords that prefix a destination group
         const ROUTING_KW = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT|T\/S|TS|VIA\s+\w+)$/i;
         const PRICE_RE   = /^\$[\d,]+$/;
 
-        // Split by whitespace but preserve "City, ST" as single tokens
-        // Strategy: tokenize the whole line, then walk tokens to extract records
+        // Multi-word city/port name prefixes that must be merged with the next token
+        const MULTIWORD_PREFIX = /^(NEW|LOS|LONG|SAN|SAINT|ST\.?|FORT|FT\.?|KANSAS|SALT|EL|PORT|WEST|EAST|NORTH|SOUTH|HONG|BUSAN|LAEM|LEAM)$/i;
 
-        // Step 1: replace "$x,xxx" with placeholder to prevent comma-split confusion
-        let normalized = line;
-        // Step 2: split on whitespace; commas inside "City, ST" are fine
-        const raw_tokens = normalized.split(/\s+/).filter(Boolean);
+        // Split on whitespace first
+        const raw_tokens = line.split(/\s+/).filter(Boolean);
+
+        // Merge multi-word city names: if token matches prefix, join with next token
+        const tokens = [];
+        let ti = 0;
+        while(ti < raw_tokens.length){
+          const tok = raw_tokens[ti];
+          if(MULTIWORD_PREFIX.test(tok) && ti+1 < raw_tokens.length && !PRICE_RE.test(raw_tokens[ti+1])){
+            // Merge: keep merging as long as next token is also a word (not price, not routing kw)
+            let merged = tok;
+            ti++;
+            while(ti < raw_tokens.length && !PRICE_RE.test(raw_tokens[ti]) && !ROUTING_KW.test(raw_tokens[ti])){
+              // Stop merging if we hit a comma-state pattern like "YORK," or a standalone routing/price
+              merged += ' ' + raw_tokens[ti];
+              ti++;
+              // If the merged string now ends with a state abbreviation (,XX) or is a known full city, stop
+              if(/,\s*[A-Z]{2}$/.test(merged)) break;
+              // Also stop after 3 words to avoid over-merging
+              if(merged.split(' ').length >= 3) break;
+            }
+            tokens.push(merged.trim());
+          } else {
+            tokens.push(tok);
+            ti++;
+          }
+        }
 
         // Step 3: walk tokens, greedily collect [routing?] [dest tokens] [price price price]
         const pushResult = (routing, destStr, p20, p40, hc, polStr) => {
@@ -9597,24 +9619,17 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
         };
 
         // Detect POL at start (before any price token)
-        // POL candidates: words before first $ sign that don't look like routing keywords
-        // e.g. "LAEM CHABANG" or "BANGKOK"
         let polTokens = [];
         let i = 0;
-        while(i < raw_tokens.length && !PRICE_RE.test(raw_tokens[i])){
-          // If we hit a routing keyword and already have 1+ pol tokens, stop pol collection
-          if(ROUTING_KW.test(raw_tokens[i]) && polTokens.length > 0) break;
-          // If we see City,ST pattern, stop pol collection
-          if(/[A-Za-z]+,[A-Z]{2}/.test(raw_tokens[i])) break;
-          polTokens.push(raw_tokens[i]);
+        while(i < tokens.length && !PRICE_RE.test(tokens[i])){
+          if(ROUTING_KW.test(tokens[i]) && polTokens.length > 0) break;
+          if(/[A-Za-z]+,[A-Z]{2}/.test(tokens[i])) break;
+          polTokens.push(tokens[i]);
           i++;
         }
-        // If the first pol token group looks like only routing (no multi-word city),
-        // and ctx already has POL, prefer ctx
         const detectedPOL = polTokens.join(' ').trim() || ctx.pol || '';
 
-        // Now walk remaining tokens to extract records
-        // State: accumulate routing keyword, dest tokens, then 3 prices
+        // Walk remaining tokens to extract records
         let curRouting = '';
         let destTokens = [];
         let prices     = [];
@@ -9628,25 +9643,17 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           destTokens=[]; prices=[]; curRouting='';
         };
 
-        while(i < raw_tokens.length){
-          const tok = raw_tokens[i];
+        while(i < tokens.length){
+          const tok = tokens[i];
 
           if(PRICE_RE.test(tok)){
             prices.push(tok);
-            // After 3 prices we have a complete record
-            if(prices.length === 3){
-              flushRecord();
-            }
+            if(prices.length === 3){ flushRecord(); }
           } else if(prices.length > 0){
-            // We got some prices but then a non-price token — flush partial and start new record
             flushRecord();
-            if(ROUTING_KW.test(tok)){
-              curRouting = tok;
-            } else {
-              destTokens.push(tok);
-            }
+            if(ROUTING_KW.test(tok)) curRouting = tok;
+            else destTokens.push(tok);
           } else if(ROUTING_KW.test(tok)){
-            // Flush previous dest if any
             if(destTokens.length) flushRecord();
             curRouting = tok;
           } else {
@@ -9654,7 +9661,6 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           }
           i++;
         }
-        // Flush any remaining
         if(destTokens.length && prices.length >= 2) flushRecord();
 
         continue; // done with this line
