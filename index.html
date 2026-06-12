@@ -1439,11 +1439,11 @@ function storageSave(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedJobs));
     // Save settings
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({commRate, exRate}));
-    // Save rates (may be large - try/catch separately)
-    if(ALL_RATES.length){
-      try{ localStorage.setItem(RATE_KEY, JSON.stringify(ALL_RATES)); }
-      catch(re){ console.warn('Rates too large for localStorage:', re.message); }
-    }
+    // Save rates (always save — even empty — so clear() persists across refresh)
+    try{
+      if(ALL_RATES.length) localStorage.setItem(RATE_KEY, JSON.stringify(ALL_RATES));
+      else localStorage.removeItem(RATE_KEY);
+    }catch(re){ console.warn('Rates too large for localStorage:', re.message); }
     // Flash badge
     const badge=g('autosave_badge');
     if(badge){badge.style.color='var(--cyan)';badge.textContent='● Saved ✓';
