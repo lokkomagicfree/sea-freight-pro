@@ -1516,9 +1516,18 @@ function storageImport(){
 function clearRatesCache(){
   if(!confirm('ล้าง cached rates ออก?\n(ต้อง upload ไฟล์ใหม่)')) return;
   try{ localStorage.removeItem(RATE_KEY); }catch(e){}
+  try{ localStorage.setItem('sfp_rates_cleared','1'); }catch(e){}  // flag: user intentionally cleared
   ALL_RATES=[];buildFilters();applyFilter();showLoadRatesPrompt();
   updateRateCacheBadge();
   toast('🗑 Cleared rates cache');
+}
+
+function markRatesLoaded(){
+  // Call whenever fresh rates are loaded — clears the "user cleared" flag
+  try{ localStorage.removeItem('sfp_rates_cleared'); }catch(e){}
+}
+function userClearedRates(){
+  try{ return localStorage.getItem('sfp_rates_cleared')==='1'; }catch(e){ return false; }
 }
 
 function updateRateCacheBadge(){
@@ -1611,7 +1620,7 @@ function handleDrop(e){e.preventDefault();const f=e.dataTransfer?.files?.[0];if(
 function handleFile(file){
   if(!file) return;
   if(file.name.endsWith('.json')){
-    const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(Array.isArray(d)&&d.length&&d[0].pol!==undefined){const filtered=expandAndFilterThaiPOL(d);ALL_RATES=filtered;buildFilters();applyFilter();g('upload_panel').style.display='none';hideLoadRatesPrompt();storageSave();toast('✅ Loaded '+filtered.length.toLocaleString()+' Thai POL rates ('+d.length+' total in file)');}else toast('❌ Invalid JSON format');}catch(ex){toast('❌ JSON error: '+ex.message);}};r.readAsText(file);return;
+    const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(Array.isArray(d)&&d.length&&d[0].pol!==undefined){const filtered=expandAndFilterThaiPOL(d);ALL_RATES=filtered;buildFilters();applyFilter();g('upload_panel').style.display='none';hideLoadRatesPrompt();markRatesLoaded();storageSave();toast('✅ Loaded '+filtered.length.toLocaleString()+' Thai POL rates ('+d.length+' total in file)');}else toast('❌ Invalid JSON format');}catch(ex){toast('❌ JSON error: '+ex.message);}};r.readAsText(file);return;
   }
   const r=new FileReader();r.onload=e=>parseFile(e.target.result,file.name);r.readAsArrayBuffer(file);
 }
@@ -1755,7 +1764,7 @@ function parseFile(buffer,filename){
       g('upload_panel').style.display='none';hideLoadRatesPrompt();
       const removed=newRates.length-kept.length;
       toast('✅ Added '+kept.length.toLocaleString()+' Thai POL routes'+(removed?' ('+removed+' filtered/old removed)':''));
-      storageSave();
+      markRatesLoaded();storageSave();
       // Explicitly sync rates to cloud
       if(typeof syncRatesToCloud === 'function') syncRatesToCloud();
     } else toast('❌ No Thai POL rates found (LCB/BKK/LKB/Songkhla only)');
@@ -7870,8 +7879,8 @@ async function initFirestoreSync(){
   if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
   if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
 
-  // Load rates from Firestore chunks
-  if(rateMetaSnap?.chunks > 0){
+  // Load rates from Firestore chunks — skip if user intentionally cleared
+  if(rateMetaSnap?.chunks > 0 && !userClearedRates()){
     try{
       const chunkPromises = [];
       for(let i=0; i<rateMetaSnap.chunks; i++) chunkPromises.push(fbGet(`data/rates_${i}`));
@@ -9257,7 +9266,7 @@ window.importPastedRates = function(selOnly){
     added++;
   });
 
-  buildFilters(); applyFilter(); storageSave();
+  buildFilters(); applyFilter(); markRatesLoaded(); storageSave();
   toast(`✅ Import แล้ว ${added} rates!`);
   closePasteRatesModal();
 };
