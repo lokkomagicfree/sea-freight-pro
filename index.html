@@ -9310,52 +9310,89 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   window._pasteColMap = null; // reset column map
 
   // ── Auto-detect structure from data when no header row ───
-  // Scan first few tab-separated lines to guess column layout
-  const tabLines = lines.filter(l=>l.includes('\t')).slice(0,8);
-  if(tabLines.length >= 2 && !window._pasteColMap){
-    // Analyse each line: count text cols vs price cols, positions
-    const ROUTING_RE = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT|LALB\/OAK|LALB\/OAK\/SEA)$/i;
+  const tabLines = lines.filter(l=>l.includes('\t')).slice(0,12);
+  if(tabLines.length >= 2){
+    const ROUTING_RE = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT|LALB\/OAK(?:\/SEA)?)$/i;
     const PRICE_RE   = /^\$?[\d,]+$/;
-    const parsed = tabLines.map(l=>l.split('\t').map(s=>s.trim()));
-    // Find first price column index (consistent across rows)
-    const priceColIdxs = parsed.map(row=>row.findIndex(c=>PRICE_RE.test(c)&&parseFloat(c.replace(/[$,]/g,''))>500));
-    const firstPriceCol = priceColIdxs.filter(i=>i>0).sort((a,b)=>a-b)[0] ?? -1;
+    const isPrice    = s => PRICE_RE.test(s) && parseFloat(s.replace(/[$,]/g,'')) > 100;
+    const isRouting  = s => ROUTING_RE.test(s.trim());
+    const isPOL      = s => /laem\s*chabang|bangkok|lcb|bkk|songkhla/i.test(s.trim());
+    const isCityDel  = s => /[A-Za-z].+,[A-Z]{2}$/.test(s.trim()) || (/[A-Za-z]{4,}/.test(s) && !isRouting(s) && !isPOL(s));
+
+    const parsed = tabLines.map(l => l.split('\t').map(s => s.trim()));
+
+    // Find the most common first-price column index across data rows
+    const priceStarts = parsed.map(row => row.findIndex(isPrice)).filter(i => i >= 0);
+    const firstPriceCol = priceStarts.length ? Math.min(...priceStarts) : -1;
 
     if(firstPriceCol >= 2){
-      // Detect if col 0 contains POL/routing and col before prices is DEL
-      const col0vals = parsed.map(r=>r[0]||'');
-      const hasPolOrRouting = col0vals.some(v=>/laem|bangkok|lcb|bkk|[A-Z]{3,}/i.test(v));
-      const col1vals = parsed.map(r=>r[1]||'');
-      const col1hasCity = col1vals.some(v=>/[A-Za-z]+,[A-Z]{2}/.test(v)||/[A-Za-z]{4,}/.test(v));
+      const col0 = parsed.map(r => r[0] || '');
+      const col1 = parsed.map(r => r[1] || '');
 
-      // Structure A: col0=routing/POD, col1=DEL-city, col2+=prices (THIS Excel)
-      // Structure B: col0=POL, col1=routing/POD, col2=DEL, col3+=prices
-      const col0isRoutingOrPOL = col0vals.some(v=>ROUTING_RE.test(v)||/laem|chabang|bangkok/i.test(v));
-      const col1isRoutingOrPOD = col1vals.some(v=>ROUTING_RE.test(v)||/new york|los angeles|savannah|norfolk/i.test(v));
+      const col0hasRouting = col0.some(isRouting);
+      const col0hasPOL     = col0.some(isPOL);
+      const col1hasDEL     = col1.some(isCityDel);
+      const col1hasRouting = col1.some(isRouting);
 
-      if(col0isRoutingOrPOL && !col1isRoutingOrPOD && col1hasCity && firstPriceCol===2){
-        // Structure A: A=routing/POD, B=DEL, C=20GP, D=40GP, E=40HC
-        // First row may have POL in col0 — detect
+      // ── Structure A (THIS Excel): col0=POD/routing, col1=DEL city, prices start col2
+      //    First row may contain POL in col0 (e.g. "LAEM CHABANG") + col1 "USEC"
+      //    Subsequent rows: col0=USEC/USWC/PRR... col1=city
+      if(firstPriceCol === 2 && (col0hasRouting || col0hasPOL) && (col1hasDEL || col1hasRouting)){
+        // Peek first row: if col0=POL and col1=routing keyword → POL is in col0 row1 only
         const firstRow = parsed[0];
-        const firstCol0 = (firstRow[0]||'').trim();
-        const isFirstRowPOL = /laem|chabang|bangkok|lcb|bkk/i.test(firstCol0) && !ROUTING_RE.test(firstCol0);
-        if(isFirstRowPOL) ctx.pol = firstCol0;
+        const r0c0 = firstRow[0] || '', r0c1 = firstRow[1] || '';
+        const firstRowIsPOLHeader = isPOL(r0c0) && (isRouting(r0c1) || isCityDel(r0c1) || r0c1==='');
 
+        if(firstRowIsPOLHeader){
+          ctx.pol = r0c0;
+          // Check if col1 of first row is a routing keyword (meaning col1=routing on row1, then col1=DEL after)
+          // In this Excel, row1 col0=LAEM CHABANG col1=USEC col2=Atlanta,GA → col1 is actually DEL here shifted
+          // Real structure: col0=POD/routing, col1=DEL, prices=col2+
+          // BUT row 1 is: col0=LAEM CHABANG(POL), col1=USEC(routing=POD), col2=Atlanta,GA(DEL), col3=price
+          // So we need to check if first row has prices starting at col3 vs col2
+          const firstRowPriceStart = firstRow.findIndex(isPrice);
+          if(firstRowPriceStart === 3){
+            // Row 1 is: POL | routing | DEL | price — use as first data row too
+            // All subsequent rows: routing | DEL | price (col shift -1 since no POL col)
+            // Detect which column pattern applies to most rows (excluding first)
+            const dataRows = parsed.slice(1);
+            const mostHaveCol2Price = dataRows.filter(r=>isPrice(r[2]||'')).length > dataRows.length*0.5;
+            if(mostHaveCol2Price){
+              // Rows 2+: col0=routing, col1=DEL, col2=price
+              window._pasteColMap = {
+                pod:0, del:1, gp20:2, gp40:3, hc40:4,
+                pol:-1, src:-1, carrier:-1, valid:-1,
+                _polFromCtx:true,
+                _firstRowSpecial: {pod:1, del:2, gp20:3, gp40:4, hc40:5}
+              };
+            } else {
+              window._pasteColMap = {
+                pod:0, del:1, gp20:2, gp40:3, hc40:4,
+                pol:-1, src:-1, carrier:-1, valid:-1,
+                _polFromCtx:true,
+                _firstRowIsPOL:true
+              };
+            }
+          } else {
+            // All rows: col0=routing/POD, col1=DEL, col2=price
+            window._pasteColMap = {
+              pod:0, del:1, gp20:2, gp40:3, hc40:4,
+              pol:-1, src:-1, carrier:-1, valid:-1,
+              _polFromCtx:true, _firstRowIsPOL:true
+            };
+          }
+        } else {
+          window._pasteColMap = {
+            pod:0, del:1, gp20:2, gp40:3, hc40:4,
+            pol:-1, src:-1, carrier:-1, valid:-1,
+            _polFromCtx:true
+          };
+        }
+      }
+      // ── Structure B: col0=POL, col1=routing/POD, col2=DEL, col3+=prices
+      else if(firstPriceCol === 3 && col0hasPOL && col1hasRouting){
         window._pasteColMap = {
-          pol:-1,      // POL from ctx, not a column
-          pod:0,       // col A = routing keyword or port
-          del:1,       // col B = IPI city / DEL
-          gp20:2, gp40:3, hc40:4,
-          src:-1, carrier:-1, valid:-1,
-          _structA: true,
-          _polFromCtx: true,
-          _firstRowIsPOL: isFirstRowPOL
-        };
-      } else if(firstPriceCol===3 && col1isRoutingOrPOD){
-        // Structure B: A=POL, B=routing/POD, C=DEL, D=20GP, E=40GP, F=40HC
-        window._pasteColMap = {
-          pol:0, pod:1, del:2,
-          gp20:3, gp40:4, hc40:5,
+          pol:0, pod:1, del:2, gp20:3, gp40:4, hc40:5,
           src:-1, carrier:-1, valid:-1
         };
       }
@@ -9637,20 +9674,27 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
 
         // Skip the first row if it was identified as the POL row
         if(m._firstRowIsPOL){
-          m._firstRowIsPOL = false; // only skip once
-          ctx.pol = cols[0]||ctx.pol;
+          m._firstRowIsPOL = false;
+          ctx.pol = cols[0] || ctx.pol;
           continue;
         }
 
-        const polVal     = m._polFromCtx ? ctx.pol : (g(m.pol) || ctx.pol || '');
-        const rawPod     = g(m.pod);  // may be routing keyword USEC/USWC/PRR/VAN
-        const rawDel     = g(m.del);  // city name(s)
-        const gp20       = parsePrice(g(m.gp20));
-        const gp40       = parsePrice(g(m.gp40));
-        const hc40       = parsePrice(g(m.hc40)||g(m.gp40));
-        const validityVal= g(m.valid) || ctx.validity || '';
-        const srcVal     = g(m.src)  || ctx.source || 'FAK';
-        const carrierVal = g(m.carrier) || ctx.carrier || '';
+        // First row uses a different column layout (e.g. POL|routing|DEL|prices vs routing|DEL|prices)
+        let colMap = m;
+        if(m._firstRowSpecial){
+          colMap = m._firstRowSpecial;
+          m._firstRowSpecial = null; // only applies once
+        }
+
+        const polVal     = (colMap._polFromCtx||m._polFromCtx) ? ctx.pol : (g(colMap.pol) || ctx.pol || '');
+        const rawPod     = g(colMap.pod);
+        const rawDel     = g(colMap.del);
+        const gp20       = parsePrice(g(colMap.gp20));
+        const gp40       = parsePrice(g(colMap.gp40));
+        const hc40       = parsePrice(g(colMap.hc40)||g(colMap.gp40));
+        const validityVal= g(colMap.valid) || ctx.validity || '';
+        const srcVal     = g(colMap.src)  || ctx.source || 'FAK';
+        const carrierVal = g(colMap.carrier) || ctx.carrier || '';
 
         if(!gp20 && !gp40) continue;
 
