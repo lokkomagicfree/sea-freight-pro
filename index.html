@@ -9094,6 +9094,8 @@ window.clearSmartPaste = function(){
   window._smartPasteData = [];
   const ta = document.getElementById('paste_rates_ta');
   if(ta) ta.value = '';
+  const vi = document.getElementById('paste_valid_inp');
+  if(vi) vi.value = '';
   document.getElementById('paste_dropzone').style.display = '';
   document.getElementById('paste_excel_view').style.display = 'none';
   document.getElementById('paste_text_view').style.display = 'none';
@@ -9123,7 +9125,7 @@ window.closePasteRatesModal = function(){
   document.getElementById('paste_rates_modal').style.display = 'none';
 };
 
-function parsePastedRatesText(raw, carrierOverride, srcOverride){
+function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverride){
   if(!raw||!raw.trim()) return [];
 
   // ── helpers ──────────────────────────────────────────────
@@ -9286,7 +9288,9 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   }
 
   function makeRate(pod, del, gp20, gp40, hc40, ctx){
-    const {validity,date_from,date_to} = parseValidityString(ctx.validity||'');
+    // validityOverride always wins if set
+    const validStr = validityOverride || ctx.validity || '';
+    const {validity,date_from,date_to} = parseValidityString(validStr);
     // Carrier priority: row-level ctx.carrier > override > blank
     const finalCarrier = (ctx.carrier||carrierOverride||'').toUpperCase();
     const finalSource  = (ctx.source||srcOverride||'FAK').toUpperCase();
@@ -9306,7 +9310,7 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   // ── Scan for global context (validity, POL, carrier) ─────
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
 
-  let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity:'', _lastGateway:''};
+  let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity: validityOverride||'', _lastGateway:''};
   window._pasteColMap = null; // reset column map
 
   // ── Auto-detect structure from data when no header row ───
@@ -9814,8 +9818,9 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
 
 window.previewPastedRates = function(){
   const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
-  const carrierOverride = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
-  const srcOverride     = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
+  const carrierOverride  = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
+  const srcOverride      = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
+  const validityOverride = (document.getElementById('paste_valid_inp')||{}).value?.trim() || '';
   if(!raw.trim()){
     const wrap = document.getElementById('paste_preview_wrap');
     if(wrap) wrap.style.display = 'none';
@@ -9825,7 +9830,7 @@ window.previewPastedRates = function(){
     if(selBtn) selBtn.disabled = true;
     return;
   }
-  const rows = parsePastedRatesText(raw, carrierOverride, srcOverride);
+  const rows = parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverride);
   window._pastedRateRows = rows;
 
   const wrap = document.getElementById('paste_preview_wrap');
@@ -9953,14 +9958,14 @@ window.saveDefaultSpecialRemark = function(){
       <span style="color:var(--cyan)">รูปแบบ:</span> <code style="background:var(--s2);padding:1px 5px;border-radius:3px;font-size:10px">SRC  CARRIER  POL  POD  ROUTING  20GP  40GP  40HC  VALID</code>
     </div>
 
-    <!-- Carrier / Source override -->
+    <!-- Carrier / Source / Validity override -->
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
       <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px">
         <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">🚢 CARRIER:</span>
-        <input id="paste_carrier_inp" type="text" placeholder="e.g. ONE, CMA, ZIM…"
+        <input id="paste_carrier_inp" type="text"
           style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--yellow);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;outline:none"
           onfocus="this.style.borderColor='var(--yellow)'" onblur="this.style.borderColor='var(--border2)'"
-          oninput="previewPastedRates()" placeholder="กรอก Carrier ถ้าข้อความไม่มี">
+          oninput="previewPastedRates()" placeholder="e.g. ONE, CMA, ZIM…">
       </div>
       <div style="display:flex;align-items:center;gap:6px;min-width:120px">
         <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">SRC:</span>
@@ -9974,7 +9979,14 @@ window.saveDefaultSpecialRemark = function(){
           <option value="OTHER">OTHER</option>
         </select>
       </div>
-      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);opacity:.7">← กรอกถ้าข้อความที่วางไม่มีคอลัมน์ Carrier / SRC</div>
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:200px">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">📅 VALID:</span>
+        <input id="paste_valid_inp" type="text" placeholder="e.g. 15 Jun – 30 Jun 2026"
+          style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--cyan);font-family:'DM Mono',monospace;font-size:11px;outline:none"
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'"
+          oninput="previewPastedRates()">
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);opacity:.7">← กรอกถ้าข้อความไม่มี Carrier / Valid</div>
     </div>
     <textarea id="paste_rates_ta" rows="10"
       placeholder="วางข้อความที่นี่...&#10;&#10;ตัวอย่าง:&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Los Angeles	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Long Beach	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026"
