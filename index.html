@@ -390,6 +390,9 @@ body{font-size:14px;font-weight:450}
       <div style="position:relative">
         <input spellcheck="false" class="fi" id="f_pod" placeholder="POD…" oninput="applyFilter()" style="width:120px;font-size:11px">
       </div>
+      <div style="position:relative">
+        <input spellcheck="false" class="fi" id="f_del" placeholder="DEL…" oninput="applyFilter()" style="width:120px;font-size:11px">
+      </div>
       <select class="fi" id="f_validity" onchange="applyFilter()" style="width:110px;font-size:11px">
         <option value="" selected>All</option>
         <option value="active">✅ Active</option>
@@ -2192,7 +2195,7 @@ function buildFilters(){
 
 function applyFilter(resetPage=true){
   if(resetPage) curPage=1;
-  const src=v('f_source'),car=v('f_carrier'),pol=v('f_pol').toLowerCase(),pod=v('f_pod').toLowerCase();
+  const src=v('f_source'),car=v('f_carrier'),pol=v('f_pol').toLowerCase(),pod=v('f_pod').toLowerCase(),del_=v('f_del').toLowerCase();
   const val=v('f_validity')||'',sort=v('f_sort')||'gp20_asc';
   const KNOWN_SRCS = new Set(['FIX','FAK','BULLET','FOOD','ISC-ME','IA-EU']);
   let filtered=ALL_RATES.filter(r=>{
@@ -2203,6 +2206,7 @@ function applyFilter(resetPage=true){
     if(car&&normalizeCarrier(r.carrier)!==car)return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
+    if(del_&&!(r.del||'').toLowerCase().includes(del_))return false;
     if(val&&r.valid_status!==val)return false;
     return true;
   });
@@ -2219,7 +2223,7 @@ function applyFilter(resetPage=true){
 }
 
 function setSort(s){g('f_sort').value=s;applyFilter();}
-function clearFilters(){['f_source','f_carrier','f_validity','f_sort'].forEach(id=>{const e=g(id);if(e)e.value=(id==='f_validity'?'active':id==='f_sort'?'gp20_asc':'');});['f_pol','f_pod'].forEach(id=>{const e=g(id);if(e)e.value='';});applyFilter();}
+function clearFilters(){['f_source','f_carrier','f_validity','f_sort'].forEach(id=>{const e=g(id);if(e)e.value=(id==='f_validity'?'active':id==='f_sort'?'gp20_asc':'');});['f_pol','f_pod','f_del'].forEach(id=>{const e=g(id);if(e)e.value='';});applyFilter();}
 
 function renderTable(filtered){
   const total=filtered.length,pages=Math.ceil(total/PER_PAGE);
@@ -9305,6 +9309,59 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity:'', _lastGateway:''};
   window._pasteColMap = null; // reset column map
 
+  // ── Auto-detect structure from data when no header row ───
+  // Scan first few tab-separated lines to guess column layout
+  const tabLines = lines.filter(l=>l.includes('\t')).slice(0,8);
+  if(tabLines.length >= 2 && !window._pasteColMap){
+    // Analyse each line: count text cols vs price cols, positions
+    const ROUTING_RE = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT|LALB\/OAK|LALB\/OAK\/SEA)$/i;
+    const PRICE_RE   = /^\$?[\d,]+$/;
+    const parsed = tabLines.map(l=>l.split('\t').map(s=>s.trim()));
+    // Find first price column index (consistent across rows)
+    const priceColIdxs = parsed.map(row=>row.findIndex(c=>PRICE_RE.test(c)&&parseFloat(c.replace(/[$,]/g,''))>500));
+    const firstPriceCol = priceColIdxs.filter(i=>i>0).sort((a,b)=>a-b)[0] ?? -1;
+
+    if(firstPriceCol >= 2){
+      // Detect if col 0 contains POL/routing and col before prices is DEL
+      const col0vals = parsed.map(r=>r[0]||'');
+      const hasPolOrRouting = col0vals.some(v=>/laem|bangkok|lcb|bkk|[A-Z]{3,}/i.test(v));
+      const col1vals = parsed.map(r=>r[1]||'');
+      const col1hasCity = col1vals.some(v=>/[A-Za-z]+,[A-Z]{2}/.test(v)||/[A-Za-z]{4,}/.test(v));
+
+      // Structure A: col0=routing/POD, col1=DEL-city, col2+=prices (THIS Excel)
+      // Structure B: col0=POL, col1=routing/POD, col2=DEL, col3+=prices
+      const col0isRoutingOrPOL = col0vals.some(v=>ROUTING_RE.test(v)||/laem|chabang|bangkok/i.test(v));
+      const col1isRoutingOrPOD = col1vals.some(v=>ROUTING_RE.test(v)||/new york|los angeles|savannah|norfolk/i.test(v));
+
+      if(col0isRoutingOrPOL && !col1isRoutingOrPOD && col1hasCity && firstPriceCol===2){
+        // Structure A: A=routing/POD, B=DEL, C=20GP, D=40GP, E=40HC
+        // First row may have POL in col0 — detect
+        const firstRow = parsed[0];
+        const firstCol0 = (firstRow[0]||'').trim();
+        const isFirstRowPOL = /laem|chabang|bangkok|lcb|bkk/i.test(firstCol0) && !ROUTING_RE.test(firstCol0);
+        if(isFirstRowPOL) ctx.pol = firstCol0;
+
+        window._pasteColMap = {
+          pol:-1,      // POL from ctx, not a column
+          pod:0,       // col A = routing keyword or port
+          del:1,       // col B = IPI city / DEL
+          gp20:2, gp40:3, hc40:4,
+          src:-1, carrier:-1, valid:-1,
+          _structA: true,
+          _polFromCtx: true,
+          _firstRowIsPOL: isFirstRowPOL
+        };
+      } else if(firstPriceCol===3 && col1isRoutingOrPOD){
+        // Structure B: A=POL, B=routing/POD, C=DEL, D=20GP, E=40GP, F=40HC
+        window._pasteColMap = {
+          pol:0, pod:1, del:2,
+          gp20:3, gp40:4, hc40:5,
+          src:-1, carrier:-1, valid:-1
+        };
+      }
+    }
+  }
+
   for(const line of lines){
     const cleanLine = line.replace(/\*+/g,'').replace(/\[|\]/g,'').trim();
 
@@ -9576,10 +9633,18 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
       // If we have a detected header map from earlier, use it
       if(window._pasteColMap){
         const m = window._pasteColMap;
-        const g = idx => (idx>=0 && cols[idx]!==undefined) ? cols[idx] : '';
-        const polVal     = g(m.pol) || ctx.pol || '';
-        const rawPod     = g(m.pod).trim();  // may be routing keyword USEC/USWC/PRR/VAN
-        const rawDel     = g(m.del).trim();  // city name(s)
+        const g = idx => (idx>=0 && cols[idx]!==undefined) ? cols[idx].trim() : '';
+
+        // Skip the first row if it was identified as the POL row
+        if(m._firstRowIsPOL){
+          m._firstRowIsPOL = false; // only skip once
+          ctx.pol = cols[0]||ctx.pol;
+          continue;
+        }
+
+        const polVal     = m._polFromCtx ? ctx.pol : (g(m.pol) || ctx.pol || '');
+        const rawPod     = g(m.pod);  // may be routing keyword USEC/USWC/PRR/VAN
+        const rawDel     = g(m.del);  // city name(s)
         const gp20       = parsePrice(g(m.gp20));
         const gp40       = parsePrice(g(m.gp40));
         const hc40       = parsePrice(g(m.hc40)||g(m.gp40));
