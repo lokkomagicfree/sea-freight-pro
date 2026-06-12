@@ -8904,12 +8904,215 @@ window.applyFilterPrefs = function(){
 // PASTE RATES — Modal & Parser
 // ══════════════════════════════════════════════
 
-window._pastedRateRows = [];
+// ══════════════════════════════════════════════
+// SMART PASTE — Excel table renderer
+// ══════════════════════════════════════════════
 
+window._pasteActive = false;
+window._smartPasteData = []; // 2D array of cell strings
+
+function getRawTextFromPaste(){
+  // Build tab-separated text from the 2D data array
+  return window._smartPasteData.map(row=>row.join('\t')).join('\n');
+}
+
+window.handleSmartPaste = function(e){
+  e.preventDefault();
+  window._pasteActive = true;
+
+  const cd = e.clipboardData;
+  // Try HTML table first (Excel pastes as HTML)
+  const html = cd.getData('text/html');
+  const text = cd.getData('text/plain');
+
+  let data = [];
+
+  if(html && html.includes('<table')){
+    // Parse HTML table
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const rows = tmp.querySelectorAll('tr');
+    rows.forEach(tr=>{
+      const cells = [...tr.querySelectorAll('td,th')].map(td=>td.innerText.trim());
+      if(cells.some(c=>c)) data.push(cells);
+    });
+  }
+
+  if(!data.length && text){
+    // Fallback: parse tab-separated text
+    data = text.trim().split('\n')
+      .map(line=>line.split('\t').map(s=>s.trim()))
+      .filter(row=>row.some(c=>c));
+  }
+
+  if(!data.length){ window._pasteActive=false; return; }
+
+  window._smartPasteData = data;
+  renderExcelTable(data);
+  syncTextareaFromGrid();
+  previewPastedRates();
+  window._pasteActive = false;
+};
+
+window.handlePasteDrop = function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('paste_hidden_inp').focus();
+  // Trigger paste from drop — read as text
+  const text = e.dataTransfer.getData('text/plain');
+  if(!text) return;
+  const data = text.trim().split('\n')
+    .map(line=>line.split('\t').map(s=>s.trim()))
+    .filter(row=>row.some(c=>c));
+  if(!data.length) return;
+  window._smartPasteData = data;
+  renderExcelTable(data);
+  syncTextareaFromGrid();
+  previewPastedRates();
+};
+
+function renderExcelTable(data){
+  const dropzone = document.getElementById('paste_dropzone');
+  const excelView = document.getElementById('paste_excel_view');
+  const textView  = document.getElementById('paste_text_view');
+  const tbl       = document.getElementById('paste_excel_tbl');
+  const rowsEl    = document.getElementById('paste_excel_rows');
+  const colsEl    = document.getElementById('paste_excel_cols');
+
+  if(!data.length){ clearSmartPaste(); return; }
+
+  dropzone.style.display = 'none';
+  textView.style.display = 'none';
+  excelView.style.display = '';
+
+  const maxCols = Math.max(...data.map(r=>r.length));
+  rowsEl.textContent = data.length;
+  colsEl.textContent = maxCols;
+
+  // Detect if first row is header (no price values)
+  const firstRowHasPrices = data[0].some(c=>/\$[\d,]+|\d{3,6}/.test(c));
+  const headerRow = !firstRowHasPrices ? data[0] : null;
+  const dataRows  = headerRow ? data.slice(1) : data;
+
+  let html = '<thead><tr>';
+  // Row number column
+  html += '<th style="background:var(--s3);color:var(--muted);padding:4px 8px;border:1px solid var(--border2);font-size:10px;min-width:28px;text-align:center">#</th>';
+  if(headerRow){
+    headerRow.forEach((h,ci)=>{
+      html += `<th style="background:var(--s2);color:var(--muted);padding:4px 10px;border:1px solid var(--border2);font-size:10px;white-space:nowrap;min-width:80px">${h||String.fromCharCode(65+ci)}</th>`;
+    });
+  } else {
+    for(let ci=0;ci<maxCols;ci++)
+      html += `<th style="background:var(--s2);color:var(--muted);padding:4px 10px;border:1px solid var(--border2);font-size:10px;min-width:80px">${String.fromCharCode(65+ci)}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  const startIdx = headerRow ? 1 : 0;
+  dataRows.forEach((row,ri)=>{
+    const realIdx = startIdx + ri;
+    const isPrice = c => /^\$?[\d,]+$/.test(c.replace(/\s/g,''));
+    html += '<tr>';
+    html += `<td style="background:var(--s3);color:var(--muted);padding:3px 6px;border:1px solid var(--border2);font-size:10px;text-align:center;user-select:none">${realIdx+1}</td>`;
+    for(let ci=0;ci<maxCols;ci++){
+      const val = row[ci]||'';
+      const price = isPrice(val);
+      const color = price ? 'color:var(--green)' : '';
+      html += `<td contenteditable="true"
+        data-row="${realIdx}" data-col="${ci}"
+        style="padding:3px 10px;border:1px solid var(--border2);${color};min-width:80px;max-width:220px;overflow:hidden;white-space:nowrap"
+        oninput="onCellEdit(this)"
+        onfocus="this.style.background='rgba(41,128,185,.08)';this.style.outline='2px solid var(--cyan)'"
+        onblur="this.style.background='';this.style.outline=''"
+        >${val}</td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  tbl.innerHTML = html;
+}
+
+window.onCellEdit = function(td){
+  const ri = parseInt(td.dataset.row);
+  const ci = parseInt(td.dataset.col);
+  if(!window._smartPasteData[ri]) window._smartPasteData[ri]=[];
+  window._smartPasteData[ri][ci] = td.innerText.trim();
+  syncTextareaFromGrid();
+  previewPastedRates();
+};
+
+function syncTextareaFromGrid(){
+  // Keep hidden textarea in sync so parser can read it
+  const ta = document.getElementById('paste_rates_ta');
+  if(ta) ta.value = getRawTextFromPaste();
+  // Also sync text mode textarea if visible
+  const tta = document.getElementById('paste_text_ta');
+  if(tta && document.getElementById('paste_text_view').style.display !== 'none')
+    tta.value = getRawTextFromPaste();
+}
+
+window.toggleTextMode = function(){
+  const excelView = document.getElementById('paste_excel_view');
+  const textView  = document.getElementById('paste_text_view');
+  const dropzone  = document.getElementById('paste_dropzone');
+  const btn       = document.getElementById('toggle_text_btn');
+
+  if(textView.style.display === 'none'){
+    // Switch TO text mode
+    const tta = document.getElementById('paste_text_ta');
+    if(tta) tta.value = getRawTextFromPaste();
+    excelView.style.display = 'none';
+    textView.style.display = '';
+    dropzone.style.display = 'none';
+  } else {
+    // Switch back to table mode
+    textView.style.display = 'none';
+    if(window._smartPasteData.length){
+      excelView.style.display = '';
+    } else {
+      dropzone.style.display = '';
+    }
+  }
+};
+
+window.onTextModeChange = function(){
+  const tta = document.getElementById('paste_text_ta');
+  const text = tta?.value||'';
+  // Re-parse 2D data from text
+  window._smartPasteData = text.trim().split('\n')
+    .map(line=>line.split('\t').map(s=>s.trim()))
+    .filter(row=>row.some(c=>c));
+  const ta = document.getElementById('paste_rates_ta');
+  if(ta) ta.value = text;
+  previewPastedRates();
+};
+
+window.clearSmartPaste = function(){
+  window._smartPasteData = [];
+  const ta = document.getElementById('paste_rates_ta');
+  if(ta) ta.value = '';
+  document.getElementById('paste_dropzone').style.display = '';
+  document.getElementById('paste_excel_view').style.display = 'none';
+  document.getElementById('paste_text_view').style.display = 'none';
+  const tta = document.getElementById('paste_text_ta');
+  if(tta) tta.value = '';
+  // Reset preview
+  const wrap = document.getElementById('paste_preview_wrap');
+  if(wrap) wrap.style.display = 'none';
+  const btn = document.getElementById('paste_import_btn');
+  const selBtn = document.getElementById('paste_import_sel_btn');
+  if(btn) btn.disabled = true;
+  if(selBtn) selBtn.disabled = true;
+};
+
+// Focus hidden input when modal opens so Ctrl+V works immediately
 window.openPasteRatesModal = function(){
   const m = document.getElementById('paste_rates_modal');
   m.style.display = 'flex';
-  setTimeout(()=>{ const ta=document.getElementById('paste_rates_ta'); if(ta) ta.focus(); },80);
+  setTimeout(()=>{
+    document.getElementById('paste_hidden_inp')?.focus();
+    document.getElementById('paste_dropzone').style.borderColor = 'var(--cyan)';
+    setTimeout(()=>{ document.getElementById('paste_dropzone').style.borderColor='var(--border2)'; },800);
+  },80);
 };
 
 window.closePasteRatesModal = function(){
@@ -9332,6 +9535,15 @@ window.previewPastedRates = function(){
   const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
   const carrierOverride = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
   const srcOverride     = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
+  if(!raw.trim()){
+    const wrap = document.getElementById('paste_preview_wrap');
+    if(wrap) wrap.style.display = 'none';
+    const btn = document.getElementById('paste_import_btn');
+    const selBtn = document.getElementById('paste_import_sel_btn');
+    if(btn) btn.disabled = true;
+    if(selBtn) selBtn.disabled = true;
+    return;
+  }
   const rows = parsePastedRatesText(raw, carrierOverride, srcOverride);
   window._pastedRateRows = rows;
 
@@ -9483,11 +9695,56 @@ window.saveDefaultSpecialRemark = function(){
       </div>
       <div style="font-size:10px;color:var(--muted);font-family:var(--mono);opacity:.7">← กรอกถ้าข้อความที่วางไม่มีคอลัมน์ Carrier / SRC</div>
     </div>
-    <textarea id="paste_rates_ta" rows="12"
+    <textarea id="paste_rates_ta" rows="10"
       placeholder="วางข้อความที่นี่...&#10;&#10;ตัวอย่าง:&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Los Angeles	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Long Beach	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026"
-      style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;resize:vertical;outline:none;box-sizing:border-box"
-      onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'"
+      style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;resize:vertical;outline:none;box-sizing:border-box;display:none"
       oninput="previewPastedRates()"></textarea>
+
+    <!-- Smart paste area — shows as table when Excel data pasted -->
+    <div id="paste_smart_area" style="position:relative">
+      <!-- Drop zone / click to paste -->
+      <div id="paste_dropzone"
+        style="border:2px dashed var(--border2);border-radius:8px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--s2)"
+        onclick="document.getElementById('paste_hidden_inp').focus()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--cyan)'"
+        ondragleave="this.style.borderColor='var(--border2)'"
+        ondrop="handlePasteDrop(event)">
+        <div style="font-size:28px;margin-bottom:8px">📋</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">คลิกที่นี่ แล้ว Ctrl+V</div>
+        <div style="font-size:11px;color:var(--muted)">รองรับ Excel copy-paste, Tab-separated, Markdown table, และ plain text</div>
+      </div>
+
+      <!-- Hidden input to capture paste event -->
+      <input id="paste_hidden_inp" style="position:absolute;opacity:0;width:1px;height:1px;top:0;left:0"
+        onpaste="handleSmartPaste(event)" onblur="if(!window._pasteActive)document.getElementById('paste_dropzone').style.borderColor='var(--border2)'">
+
+      <!-- Excel table view (shown after paste) -->
+      <div id="paste_excel_view" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <div style="font-size:10px;font-weight:700;color:var(--green);font-family:var(--mono)">📊 EXCEL DATA — <span id="paste_excel_rows">0</span> ROWS × <span id="paste_excel_cols">0</span> COLS</div>
+          <button onclick="clearSmartPaste()" style="font-size:10px;padding:2px 8px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--muted);font-family:var(--mono)">✕ Clear</button>
+          <button onclick="toggleTextMode()" id="toggle_text_btn" style="font-size:10px;padding:2px 8px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--cyan);font-family:var(--mono)">📝 Text mode</button>
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-left:auto">คลิก cell เพื่อแก้ไข</div>
+        </div>
+        <div style="overflow:auto;max-height:240px;border:1px solid var(--border);border-radius:7px">
+          <table id="paste_excel_tbl" style="border-collapse:collapse;font-size:11px;font-family:'DM Mono',monospace;min-width:100%;white-space:nowrap">
+          </table>
+        </div>
+      </div>
+
+      <!-- Text mode fallback -->
+      <div id="paste_text_view" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-size:10px;font-weight:700;color:var(--cyan);font-family:var(--mono)">📝 TEXT MODE</div>
+          <button onclick="toggleTextMode()" style="font-size:10px;padding:2px 8px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--green);font-family:var(--mono)">📊 Table mode</button>
+          <button onclick="clearSmartPaste()" style="font-size:10px;padding:2px 8px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;color:var(--muted);font-family:var(--mono)">✕ Clear</button>
+        </div>
+        <textarea id="paste_text_ta" rows="8"
+          style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;resize:vertical;outline:none;box-sizing:border-box"
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'"
+          oninput="onTextModeChange()"></textarea>
+      </div>
+    </div>
 
     <!-- Preview table -->
     <div id="paste_preview_wrap" style="display:none;margin-top:14px">
