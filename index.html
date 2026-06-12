@@ -3730,35 +3730,24 @@ window.renderPreBooking = async function(){
 
 window.copyPreBkg = function(idx){
   const p = _preBkgList[idx]; if(!p) return;
-  const fmtDT = d=>{
-    if(!d) return '—';
-    const dt=new Date(d);
-    return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})+
-           ' '+dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-  };
-  const fmtD = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
-  const statusLabel = {pending:'Pending',released:'Released',cancelled:'Cancelled'};
-
-  const lines = [
-    p.bkgno    ? `Booking No. : ${p.bkgno}` : null,
-    p.customer ? `Customer    : ${p.customer}` : null,
-    p.carrier  ? `Carrier     : ${p.carrier}` : null,
-    (p.pol||p.pod) ? `Route       : ${[p.pol,p.pod].filter(Boolean).join(' → ')}` : null,
-    p.etd      ? `ETD         : ${fmtD(p.etd)}` : null,
-    p.freeTime ? `Free Time   : ${fmtDT(p.freeTime)}` : null,
-    `Status      : ${statusLabel[p.status||'pending']||p.status}`,
-    p.note     ? `หมายเหตุ    : ${p.note}` : null,
-  ].filter(Boolean).join('\n');
-
-  navigator.clipboard.writeText(lines).then(()=>{
-    toast('📋 Copied Pre-Booking แล้ว!');
-  }).catch(()=>{
-    const ta=document.createElement('textarea');
-    ta.value=lines; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-    toast('📋 Copied Pre-Booking แล้ว!');
-  });
+  // Open modal pre-filled with same data (as new entry, not edit)
+  _preBkgEditIdx = null;
+  document.getElementById('pbkg_modal_title').textContent = '📋 Duplicate Pre-Booking';
+  document.getElementById('pbkg_release_btn').style.display = 'none';
+  const set = (f,v) => { const e=document.getElementById('pbkg_m_'+f); if(e) e.value=v||''; };
+  set('bkgno',    '');           // clear booking no — user should fill new one
+  set('customer', p.customer);
+  set('carrier',  p.carrier);
+  set('pol',      p.pol);
+  set('pod',      p.pod);
+  set('note',     p.note);
+  set('etd',      p.etd);
+  set('freetime', p.freeTime);
+  document.getElementById('pbkg_m_status').value = 'pending';
+  document.getElementById('pbkg_modal').style.display = 'flex';
+  // Focus booking no field so user types new booking number
+  setTimeout(()=>document.getElementById('pbkg_m_bkgno')?.focus(), 100);
+  toast('📋 Duplicate — กรอก Booking No. ใหม่แล้วกด Save');
 };
 
 window.openAddPreBkgModal = function(){
