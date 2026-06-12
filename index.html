@@ -9235,6 +9235,19 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
     // Exact match first
     if(ROUTING_PORTS[t]) return ROUTING_PORTS[t].length ? ROUTING_PORTS[t] : null;
 
+    // ── Handle slash-separated port lists e.g. "LALB/OAKLAND" or "NEW YORK/NORFOLK/SAVANNAH/CHARLESTON"
+    if(t.includes('/')){
+      const parts = t.split('/').map(s=>s.trim()).filter(Boolean);
+      // Recursively resolve each part
+      const resolved = [];
+      for(const p of parts){
+        const r = expandRouting(p);
+        if(r) resolved.push(...r);
+        else if(p) resolved.push(p); // keep as-is if unrecognised
+      }
+      return resolved.length ? resolved : null;
+    }
+
     // Partial / fuzzy
     const tl = t.toLowerCase();
     if(/\busec\b|us\s*east\s*coast/.test(tl)) return ROUTING_PORTS['USEC'];
@@ -9243,8 +9256,8 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
     if(/\blalb\b/.test(tl))                     return ROUTING_PORTS['LALB'];
     if(/los\s*angeles|lax/i.test(tl))           return ['Los Angeles, CA'];
     if(/long\s*beach|lbg|lgb/i.test(tl))        return ['Long Beach, CA'];
-    if(/oakland|oak/i.test(tl))                 return ['Oakland, CA'];
-    if(/seattle|sea\b/i.test(tl))               return ['Seattle, WA'];
+    if(/\boak(?:land)?\b/i.test(tl))            return ['Oakland, CA'];
+    if(/\bsea(?:ttle)?\b/i.test(tl))            return ['Seattle, WA'];
     if(/tacoma/i.test(tl))                      return ['Tacoma, WA'];
     if(/new\s*york|nyk|nyc/i.test(tl))          return ['New York, NY'];
     if(/norfolk|nfk/i.test(tl))                 return ['Norfolk, VA'];
@@ -9393,10 +9406,18 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           };
         }
       }
-      // ── Structure B: col0=POL, col1=routing/POD, col2=DEL, col3+=prices
-      else if(firstPriceCol === 3 && col0hasPOL && col1hasRouting){
+      // ── Structure B: col0=POL, col1=POD (routing OR port list), col2=DEL, col3+=prices
+      else if(firstPriceCol === 3 && col0hasPOL){
         window._pasteColMap = {
           pol:0, pod:1, del:2, gp20:3, gp40:4, hc40:5,
+          src:-1, carrier:-1, valid:-1
+        };
+      }
+      // ── Structure C: col0=POL, col1=POD, col2=POD repeat (same), col3+=prices
+      // (table with POD and Place of Delivery being identical)
+      else if(firstPriceCol === 3 && col0hasPOL){
+        window._pasteColMap = {
+          pol:0, pod:1, del:-1, gp20:3, gp40:4, hc40:5,
           src:-1, carrier:-1, valid:-1
         };
       }
