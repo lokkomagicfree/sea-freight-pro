@@ -3711,6 +3711,7 @@ window.renderPreBooking = async function(){
       <td style="font-size:11px;color:var(--muted);max-width:140px;word-wrap:break-word">${p.note||'—'}</td>
       <td style="text-align:center">${statusBadge(p.status)}</td>
       <td style="text-align:center;white-space:nowrap">
+        <button onclick="copyPreBkg(${idx})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px" title="Copy">📋</button>
         <button onclick="openEditPreBkgModal(${idx})" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px" title="Edit">✏️</button>
         ${p.status==='pending'?`<button onclick="quickRelease(${idx})" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:13px" title="Release to Shipment">🚢</button>`:''}
         <button onclick="deletePreBkg(${idx})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">✕</button>
@@ -3725,6 +3726,39 @@ window.renderPreBooking = async function(){
   // Auto-refresh countdown every 60s
   clearTimeout(window._pbkgRefreshTimer);
   window._pbkgRefreshTimer = setTimeout(()=>{ if(document.getElementById('page-prebooking')?.classList.contains('active')) renderPreBooking(); }, 60000);
+};
+
+window.copyPreBkg = function(idx){
+  const p = _preBkgList[idx]; if(!p) return;
+  const fmtDT = d=>{
+    if(!d) return '—';
+    const dt=new Date(d);
+    return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})+
+           ' '+dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  };
+  const fmtD = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+  const statusLabel = {pending:'Pending',released:'Released',cancelled:'Cancelled'};
+
+  const lines = [
+    p.bkgno    ? `Booking No. : ${p.bkgno}` : null,
+    p.customer ? `Customer    : ${p.customer}` : null,
+    p.carrier  ? `Carrier     : ${p.carrier}` : null,
+    (p.pol||p.pod) ? `Route       : ${[p.pol,p.pod].filter(Boolean).join(' → ')}` : null,
+    p.etd      ? `ETD         : ${fmtD(p.etd)}` : null,
+    p.freeTime ? `Free Time   : ${fmtDT(p.freeTime)}` : null,
+    `Status      : ${statusLabel[p.status||'pending']||p.status}`,
+    p.note     ? `หมายเหตุ    : ${p.note}` : null,
+  ].filter(Boolean).join('\n');
+
+  navigator.clipboard.writeText(lines).then(()=>{
+    toast('📋 Copied Pre-Booking แล้ว!');
+  }).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=lines; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('📋 Copied Pre-Booking แล้ว!');
+  });
 };
 
 window.openAddPreBkgModal = function(){
