@@ -774,6 +774,8 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">Incoterm</label><input spellcheck="false" class="inp" id="q_incoterm" placeholder="e.g. CIF"></div>
           <div class="inp-group"><label class="inp-lbl">Valid Date</label><input spellcheck="false" class="inp" id="q_valid" placeholder="e.g. May 1-31 2026"></div>
           <div class="inp-group"><label class="inp-lbl">F/T (Transit)</label><input spellcheck="false" class="inp" id="q_transit" placeholder="e.g. 14 days combine"></div>
+          <div class="inp-group"><label class="inp-lbl">Vessel</label><input spellcheck="false" class="inp" id="q_vessel" placeholder="e.g. EVER GIVEN 123E"></div>
+          <div class="inp-group"><label class="inp-lbl">ETD</label><input spellcheck="false" class="inp" id="q_etd" placeholder="e.g. 25 Jun 2026"></div>
           <div class="inp-group"><label class="inp-lbl">Subj to <span style="font-size:9px;color:var(--muted)">(เพิ่มเติม)</span></label>
             <input spellcheck="false" class="inp" id="q_subjto" placeholder="e.g. inspection fee, port surcharge"></div>
           <div class="inp-group full-col"><label class="inp-lbl">Container Note</label><input spellcheck="false" class="inp" id="q_connote" placeholder="e.g. FOOD GRADE ONLY"></div>
@@ -5167,6 +5169,8 @@ function qBuildEmail(){
   const pol     = get('q_pol');
   const inco    = get('q_incoterm');
   const transit = get('q_transit');
+  const vessel  = get('q_vessel');
+  const etd     = get('q_etd');
   const connote = get('q_connote');
   const comm    = get('q_commodity');
   const remarks = get('q_remarks');
@@ -5223,6 +5227,8 @@ function qBuildEmail(){
     carrierBlocks.join('\n\n'),
     localSection,
     transit ? `\n  F/T     : ${transit}` : '',
+    vessel  ? `  Vessel  : ${vessel}` : '',
+    etd     ? `  ETD     : ${etd}` : '',
     inco    ? `  Incoterm: ${inco}` : '',
     comm    ? `\nCommodity: ${comm}` : '',
     remarks ? `Note     : ${remarks}` : '',
@@ -5447,6 +5453,9 @@ function qCopyLine(){
   const subjto     = get('q_subjto');
   const connote    = get('q_connote');
   const remarks    = get('q_remarks');
+  const transit    = get('q_transit');
+  const vessel     = get('q_vessel');
+  const etd        = get('q_etd');
   const rateData   = qRateRows||[];
   if(!rateData.length){ toast('❌ ยังไม่มี rate — เพิ่ม POD ก่อนครับ'); return; }
   // Group by carrier
@@ -5478,6 +5487,9 @@ function qCopyLine(){
     const valids=[...new Set(rows.map(r=>r.valid||globalValid).filter(Boolean))];
     const validStr=valids.length===1?valids[0]:(globalValid||valids[0]||'');
     if(validStr) lines.push(`  Valid   : ${validStr}`);
+    if(vessel)   lines.push(`  Vessel  : ${vessel}`);
+    if(etd)      lines.push(`  ETD     : ${etd}`);
+    if(transit)  lines.push(`  F/T     : ${transit}`);
     return lines.join('\n');
   });
   let text=blocks.join('\n\n');
@@ -5495,7 +5507,7 @@ function qCopyLine(){
 window.qCopyLine = qCopyLine;
 
 function qClear(){
-  ['q_customer','q_carrier','q_pol','q_pod','q_incoterm','q_valid','q_transit','q_connote','q_commodity','q_remarks','q_subjto','q_r20','q_r40','q_r4h'].forEach(id=>{
+  ['q_customer','q_carrier','q_pol','q_pod','q_incoterm','q_valid','q_transit','q_vessel','q_etd','q_connote','q_commodity','q_remarks','q_subjto','q_r20','q_r40','q_r4h'].forEach(id=>{
     const e=document.getElementById(id); if(e) e.value='';
   });
   qLocalRows=[]; qRateRows=[];
@@ -5519,6 +5531,8 @@ function qSave(){
     incoterm:  get('q_incoterm'),
     valid:     get('q_valid'),
     transit:   get('q_transit'),
+    vessel:    get('q_vessel'),
+    etd:       get('q_etd'),
     subjto:    get('q_subjto'),
     connote:   get('q_connote'),
     commodity: get('q_commodity'),
@@ -5664,6 +5678,7 @@ function qLoadQuot(i){
   const set = (id,val)=>{ const e=document.getElementById(id); if(e) e.value=val||''; };
   set('q_customer', q.customer); set('q_carrier', q.carrier); set('q_pol', q.pol);
   set('q_incoterm', q.incoterm); set('q_valid', q.valid); set('q_transit', q.transit);
+  set('q_vessel',   q.vessel);   set('q_etd',   q.etd);
   set('q_subjto',   q.subjto);   set('q_connote', q.connote);
   set('q_commodity',q.commodity);set('q_remarks', q.remarks);
   qRateRows  = JSON.parse(JSON.stringify(q.rateRows||[]));
@@ -8901,7 +8916,7 @@ window.closePasteRatesModal = function(){
   document.getElementById('paste_rates_modal').style.display = 'none';
 };
 
-function parsePastedRatesText(raw){
+function parsePastedRatesText(raw, carrierOverride, srcOverride){
   if(!raw||!raw.trim()) return [];
 
   // ── helpers ──────────────────────────────────────────────
@@ -9021,9 +9036,12 @@ function parsePastedRatesText(raw){
 
   function makeRate(pod, del, gp20, gp40, hc40, ctx){
     const {validity,date_from,date_to} = parseValidityString(ctx.validity||'');
+    // Carrier priority: row-level ctx.carrier > override > blank
+    const finalCarrier = (ctx.carrier||carrierOverride||'').toUpperCase();
+    const finalSource  = (ctx.source||srcOverride||'FAK').toUpperCase();
     return {
-      source:      (ctx.source||'FAK').toUpperCase(),
-      carrier:     (ctx.carrier||'').toUpperCase(),
+      source:      finalSource,
+      carrier:     finalCarrier,
       pol:         ctx.pol||'',
       pod:         pod.trim(),
       del:         del||ctx.del||'',
@@ -9037,7 +9055,7 @@ function parsePastedRatesText(raw){
   // ── Scan for global context (validity, POL, carrier) ─────
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
 
-  let ctx = {source:'FAK', carrier:'', pol:'', validity:''};
+  let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity:''};
 
   for(const line of lines){
     // Validity: look for lines that mention validity keyword OR contain Thai/English month + year
@@ -9049,9 +9067,11 @@ function parsePastedRatesText(raw){
     // POL
     const polM = cleanLine.match(/port\s+of\s+loading[:\s]+(.+)/i) || cleanLine.match(/\bPOL[:\s]+(.+)/i);
     if(polM) ctx.pol = polM[1].trim();
-    // Carrier
-    const carM = cleanLine.match(/carrier[:\s]+([A-Z0-9 ]+)/i);
-    if(carM) ctx.carrier = carM[1].trim();
+    // Carrier — only scan from text if no override provided
+    if(!carrierOverride){
+      const carM = cleanLine.match(/carrier[:\s]+([A-Z0-9 ]+)/i);
+      if(carM) ctx.carrier = carM[1].trim();
+    }
   }
 
   const results = [];
@@ -9198,7 +9218,9 @@ function parsePastedRatesText(raw){
 
 window.previewPastedRates = function(){
   const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
-  const rows = parsePastedRatesText(raw);
+  const carrierOverride = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
+  const srcOverride     = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
+  const rows = parsePastedRatesText(raw, carrierOverride, srcOverride);
   window._pastedRateRows = rows;
 
   const wrap = document.getElementById('paste_preview_wrap');
@@ -9321,9 +9343,33 @@ window.saveDefaultSpecialRemark = function(){
       <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--cyan)">📋 Paste Rates — Import from Text</div>
       <button onclick="closePasteRatesModal()" style="border:none;background:var(--s2);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px">✕</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;font-family:var(--mono)">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:var(--mono)">
       วางข้อความจาก Excel / อีเมล ได้เลย — รองรับ Tab-separated หรือ Space-separated<br>
       <span style="color:var(--cyan)">รูปแบบ:</span> <code style="background:var(--s2);padding:1px 5px;border-radius:3px;font-size:10px">SRC  CARRIER  POL  POD  ROUTING  20GP  40GP  40HC  VALID</code>
+    </div>
+
+    <!-- Carrier / Source override -->
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">🚢 CARRIER:</span>
+        <input id="paste_carrier_inp" type="text" placeholder="e.g. ONE, CMA, ZIM…"
+          style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--yellow);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;outline:none"
+          onfocus="this.style.borderColor='var(--yellow)'" onblur="this.style.borderColor='var(--border2)'"
+          oninput="previewPastedRates()" placeholder="กรอก Carrier ถ้าข้อความไม่มี">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;min-width:120px">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap">SRC:</span>
+        <select id="paste_src_sel"
+          style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;outline:none;cursor:pointer"
+          onchange="previewPastedRates()">
+          <option value="FAK">FAK</option>
+          <option value="FIX">FIX</option>
+          <option value="BULLET">BULLET</option>
+          <option value="FOOD">FOOD</option>
+          <option value="OTHER">OTHER</option>
+        </select>
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);opacity:.7">← กรอกถ้าข้อความที่วางไม่มีคอลัมน์ Carrier / SRC</div>
     </div>
     <textarea id="paste_rates_ta" rows="12"
       placeholder="วางข้อความที่นี่...&#10;&#10;ตัวอย่าง:&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Los Angeles	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Long Beach	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026"
