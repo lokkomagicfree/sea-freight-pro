@@ -9840,6 +9840,11 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
 
 window.previewPastedRates = function(){
   const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
+  // DEBUG: log raw text to console
+  console.log('=== RAW PASTE TEXT ===');
+  console.log(JSON.stringify(raw.slice(0,500)));
+  console.log('=== LINES ===');
+  raw.split('\n').slice(0,5).forEach((l,i)=>console.log(i,JSON.stringify(l)));
   const carrierOverride  = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
   const srcOverride      = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
   const validityOverride = (document.getElementById('paste_valid_inp')||{}).value?.trim() || '';
