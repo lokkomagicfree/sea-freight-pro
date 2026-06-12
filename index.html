@@ -9413,10 +9413,10 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
       const has = kw => hcols.findIndex(h=>h.includes(kw));
       const polIdx     = has('pol');
       const podIdx     = has('pod');
-      const delIdx     = has('del');
-      const gp20Idx    = hcols.findIndex(h=>/20\s*g?p?/i.test(h)&&!h.includes('40'));
-      const gp40Idx    = hcols.findIndex(h=>/40\s*g?p/i.test(h)&&!h.includes('hc')&&!h.includes('45'));
-      const hc40Idx    = hcols.findIndex(h=>/40\s*h/i.test(h)||/hc/i.test(h));
+      const delIdx     = hcols.findIndex(h=>/\bdel\b|place\s*of\s*del|delivery/i.test(h));
+      const gp20Idx    = hcols.findIndex(h=>/20\s*g/i.test(h)&&!h.includes('40'));
+      const gp40Idx    = hcols.findIndex(h=>/40\s*g/i.test(h)&&!/hc|45/i.test(h));
+      const hc40Idx    = hcols.findIndex(h=>/40\s*h|hc/i.test(h));
       const srcIdx     = has('src');
       const carrierIdx = has('carrier');
       const validIdx   = hcols.findIndex(h=>/valid|expir/i.test(h));
@@ -9424,8 +9424,12 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
       // If we found at least 2 of the key columns + prices → it's a header row
       const foundCols = [polIdx,podIdx,delIdx,gp20Idx,gp40Idx].filter(i=>i>=0).length;
       if(foundCols >= 2 && gp20Idx >= 0){
+        // If POD and DEL both exist but point to same column, DEL takes priority as Place of Delivery
+        const resolvedDel = delIdx >= 0 ? delIdx : -1;
+        // If POD col is same as DEL col or DEL not found, pod=podIdx del=-1
         window._pasteColMap = {
-          pol:polIdx, pod:podIdx, del:delIdx,
+          pol:polIdx, pod:podIdx,
+          del: (resolvedDel >= 0 && resolvedDel !== podIdx) ? resolvedDel : -1,
           gp20:gp20Idx, gp40:gp40Idx, hc40:hc40Idx,
           src:srcIdx, carrier:carrierIdx, valid:validIdx
         };
@@ -9713,33 +9717,49 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           sheet:'Paste', _sel:true
         };
 
+        // Normalise multiline cell values (Excel wraps long text with \n inside a cell)
+        const normCell = s => s.replace(/\n/g,'/').replace(/\s*\/\s*/g,'/').trim();
+        const podNorm  = normCell(rawPod);
+        const delNorm  = normCell(rawDel);
+
+        // When POD and DEL have the same value (e.g. LALB/OAKLAND in both cols),
+        // treat POD as the port list and leave DEL empty
+        const effectiveDel = (delNorm && delNorm !== podNorm) ? delNorm : '';
+
         // Expand routing keyword → list of PODs
-        const expandedPods = expandRouting(rawPod);
+        const expandedPods = expandRouting(podNorm);
 
         if(expandedPods && expandedPods.length > 0){
-          // USEC → [New York NY, Norfolk VA, ...] each becomes a separate row
-          // DEL is the IPI city (rawDel), POD is each port in the group
-          const delCity = rawDel || '';
+          // Routing keyword (USEC/USWC) → expand to port list
+          // DEL = IPI city if different from POD, else empty
+          const delCity = effectiveDel;
           for(const gatePod of expandedPods){
-            // Split rawDel by / for multiple IPI cities
             const delParts = delCity ? delCity.split('/').map(s=>s.trim()).filter(Boolean) : [''];
             for(const d of delParts){
-              results.push({...baseRate, pod: gatePod, del: d});
+              // If DEL is itself a port (not IPI), skip del
+              const isIPI = d && IPI_KEYWORDS.test(d);
+              results.push({...baseRate, pod: gatePod, del: isIPI ? d : ''});
             }
           }
-        } else if(rawPod){
-          // POD is an actual port name (not a routing keyword)
-          // rawDel may be IPI city or empty
-          const podParts = rawPod.split('/').map(s=>s.trim()).filter(Boolean);
-          const delParts = rawDel ? rawDel.split('/').map(s=>s.trim()).filter(Boolean) : [''];
+        } else if(podNorm){
+          // POD is actual port name(s) — may be "/" or newline separated
+          // Split on / to get individual ports
+          const podParts = podNorm.split('/').map(s=>s.trim()).filter(Boolean);
           for(const p of podParts){
-            for(const d of delParts){
-              results.push({...baseRate, pod: p, del: d==='—'?'':d});
+            if(!p || /^[-—]+$/.test(p)) continue;
+            // Each part might itself be a routing keyword → expand
+            const exp = expandRouting(p);
+            if(exp && exp.length > 0){
+              for(const gw of exp){
+                results.push({...baseRate, pod: gw, del: effectiveDel});
+              }
+            } else {
+              results.push({...baseRate, pod: p, del: effectiveDel});
             }
           }
-        } else if(rawDel){
-          // No POD — rawDel is the only destination (seaport or city)
-          const delParts = rawDel.split('/').map(s=>s.trim()).filter(Boolean);
+        } else if(effectiveDel){
+          // No POD — DEL is the only destination
+          const delParts = effectiveDel.split('/').map(s=>s.trim()).filter(Boolean);
           for(const d of delParts){
             const expanded2 = expandRouting(d);
             if(expanded2){
