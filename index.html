@@ -9662,8 +9662,11 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
       // ── end inline flat mode ──────────────────────────────
 
       let cols = line.split('\t').map(s=>s.trim());
-      if(cols.length < 4) cols = line.split(/\s{2,}/).map(s=>s.trim());
-      if(cols.length < 4) continue;
+      // Only fall back to space-split when NO colMap detected (to avoid splitting "NEW YORK" into 2 cols)
+      if(cols.length < 4 && !window._pasteColMap) cols = line.split(/\s{2,}/).map(s=>s.trim());
+      // When colMap is set, accept even 2-col lines (POD + prices); otherwise require 4
+      const minCols = window._pasteColMap ? 2 : 4;
+      if(cols.length < minCols) continue;
 
       let src='',carrier='',pol='',pod='',del_='',gp20=0,gp40=0,hc40=0,validity='';
 
