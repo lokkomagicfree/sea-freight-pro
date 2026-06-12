@@ -8916,10 +8916,9 @@ window._pasteActive = false;
 window._smartPasteData = []; // 2D array of cell strings
 
 function getRawTextFromPaste(){
-  // Build tab-separated text from the 2D data array
-  // Cells with embedded newlines (multiline Excel cells) are joined with /
+  // Build tab-separated text — multiline cells use | as separator (not / to avoid splitting port names)
   return window._smartPasteData.map(row=>
-    row.map(cell=>(cell||'').replace(/\n+/g,'/').replace(/\s*\/\s*/g,'/').trim()).join('\t')
+    row.map(cell=>(cell||'').replace(/\r?\n+/g,'|').trim()).join('\t')
   ).join('\n');
 }
 
@@ -8935,16 +8934,13 @@ window.handleSmartPaste = function(e){
   let data = [];
 
   if(html && html.includes('<table')){
-    // Parse HTML table — Excel wraps multiline cells with <br> or actual newlines
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
-    // Replace <br> with / before extracting text
-    tmp.querySelectorAll('br').forEach(br=>br.replaceWith('/'));
+    tmp.querySelectorAll('br').forEach(br=>br.replaceWith('|'));
     const rows = tmp.querySelectorAll('tr');
     rows.forEach(tr=>{
       const cells = [...tr.querySelectorAll('td,th')].map(td=>{
-        // Normalize: collapse whitespace, replace newlines with /
-        return td.innerText.trim().replace(/\n+/g,'/').replace(/\s*\/\s*/g,'/').trim();
+        return td.innerText.trim().replace(/\r?\n+/g,'|').trim();
       });
       if(cells.some(c=>c)) data.push(cells);
     });
@@ -9238,6 +9234,7 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
   // Returns array of port strings, or null if not recognised
   function expandRouting(text){
     if(!text) return null;
+    text = fixSlashedName(text);
     const t = text.trim().toUpperCase().replace(/\s+/g,' ');
 
     // Exact match first
@@ -9328,6 +9325,27 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
     };
   }
 
+  // Fix port/city names that got slash-mangled during multiline cell merge
+  // e.g. "LAEM/CHABANG" → "LAEM CHABANG", "NEW/YORK" → "NEW YORK"
+  function fixSlashedName(s){
+    if(!s) return s;
+    return s
+      .replace(/\bLAEM\/CHABANG\b/gi, 'LAEM CHABANG')
+      .replace(/\bLEAM\/CHABANG\b/gi, 'LAEM CHABANG')
+      .replace(/\bBANG\/KOK\b/gi, 'BANGKOK')
+      .replace(/\bNEW\/YORK\b/gi, 'NEW YORK')
+      .replace(/\bLOS\/ANGELES\b/gi, 'LOS ANGELES')
+      .replace(/\bLONG\/BEACH\b/gi, 'LONG BEACH')
+      .replace(/\bNEW\/ORLEANS\b/gi, 'NEW ORLEANS')
+      .replace(/\bFORT\/WORTH\b/gi, 'FORT WORTH')
+      .replace(/\bKANSAS\/CITY\b/gi, 'KANSAS CITY')
+      .replace(/\bSALT\/LAKE\b/gi, 'SALT LAKE')
+      .replace(/\bSAN\/ANTONIO\b/gi, 'SAN ANTONIO')
+      .replace(/\bSAN\/FRANCISCO\b/gi, 'SAN FRANCISCO')
+      .replace(/\bHONG\/KONG\b/gi, 'HONG KONG')
+      .replace(/\bHO\/CHI\b/gi, 'HO CHI');
+  }
+
   // ── Scan for global context (validity, POL, carrier) ─────
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
 
@@ -9370,7 +9388,7 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           const firstRow = parsed[0];
           const r0c0 = firstRow[0]||'', r0c1 = firstRow[1]||'';
           const firstRowIsPOL = isPOL(r0c0) && !isPrice(firstRow[2]||'');
-          if(firstRowIsPOL){ ctx.pol = r0c0; }
+          if(firstRowIsPOL){ ctx.pol = fixSlashedName(r0c0); }
           const firstRowPriceStart = firstRow.findIndex(isPrice);
           if(firstRowIsPOL && firstRowPriceStart === 3){
             const rest = parsed.slice(1);
@@ -9685,7 +9703,7 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
         // Skip the first row if it was identified as the POL row
         if(m._firstRowIsPOL){
           m._firstRowIsPOL = false;
-          ctx.pol = cols[0] || ctx.pol;
+          ctx.pol = cols[0] ? fixSlashedName(cols[0]) : ctx.pol;
           continue;
         }
 
@@ -9719,8 +9737,14 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
           sheet:'Paste', _sel:true
         };
 
-        // Normalise multiline cell values (Excel wraps long text with \n inside a cell)
-        const normCell = s => s.replace(/\n/g,'/').replace(/\s*\/\s*/g,'/').trim();
+        // Normalise multiline cell values — cells use | as line-break separator
+        const normCell = s => {
+          if(!s) return '';
+          return fixSlashedName(s)
+            .replace(/\|/g, '/')
+            .replace(/\s*\/\s*/g, '/')
+            .trim();
+        };
         const podNorm  = normCell(rawPod);
         const delNorm  = normCell(rawDel);
 
@@ -9840,11 +9864,6 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride, validityOverrid
 
 window.previewPastedRates = function(){
   const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
-  // DEBUG: log raw text to console
-  console.log('=== RAW PASTE TEXT ===');
-  console.log(JSON.stringify(raw.slice(0,500)));
-  console.log('=== LINES ===');
-  raw.split('\n').slice(0,5).forEach((l,i)=>console.log(i,JSON.stringify(l)));
   const carrierOverride  = (document.getElementById('paste_carrier_inp')||{}).value?.trim() || '';
   const srcOverride      = (document.getElementById('paste_src_sel')||{}).value || 'FAK';
   const validityOverride = (document.getElementById('paste_valid_inp')||{}).value?.trim() || '';
