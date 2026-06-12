@@ -8894,120 +8894,232 @@ window.closePasteRatesModal = function(){
 
 function parsePastedRatesText(raw){
   if(!raw||!raw.trim()) return [];
-  const lines = raw.trim().split('\n').map(l=>l.trim()).filter(Boolean);
-  const results = [];
-  const skipPattern = /^(src|carrier|pol|destination|routing|20|40|valid|#)/i;
 
-  for(const line of lines){
-    if(skipPattern.test(line)) continue; // header row
+  // ── helpers ──────────────────────────────────────────────
+  const parsePrice = s => {
+    if(!s) return 0;
+    const n = parseFloat(String(s).replace(/[$,\s,]/g,'').replace(/,/g,''));
+    return isNaN(n) ? 0 : n;
+  };
 
-    // Split by tab first, fall back to multiple-spaces
-    let cols = line.split('\t').map(s=>s.trim());
-    if(cols.length < 4){
-      // try splitting by 2+ spaces
-      cols = line.split(/\s{2,}/).map(s=>s.trim());
+  const MONTHS = {
+    jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11,
+    ม:0,ก:1 /* fallback — Thai abbreviated months handled below */
+  };
+  // Thai month names → 0-based index
+  const THAI_MONTHS = {
+    'มกราคม':0,'กุมภาพันธ์':1,'มีนาคม':2,'เมษายน':3,'พฤษภาคม':4,'มิถุนายน':5,
+    'กรกฎาคม':6,'สิงหาคม':7,'กันยายน':8,'ตุลาคม':9,'พฤศจิกายน':10,'ธันวาคม':11,
+    'ม.ค.':0,'ก.พ.':1,'มี.ค.':2,'เม.ย.':3,'พ.ค.':4,'มิ.ย.':5,
+    'ก.ค.':6,'ส.ค.':7,'ก.ย.':8,'ต.ค.':9,'พ.ย.':10,'ธ.ค.':11
+  };
+
+  function parseValidityString(s){
+    if(!s) return {date_from:'',date_to:'',validity:''};
+    s = s.trim();
+
+    // Thai: "15 มิถุนายน – 30 มิถุนายน 2026" or "15 มิ.ย. - 30 มิ.ย. 2026"
+    for(const [tname, tmo] of Object.entries(THAI_MONTHS)){
+      const re = new RegExp('(\\d{1,2})\\s*'+tname+'\\s*[\\-–]\\s*(\\d{1,2})\\s*[\\w.]*\\s*(\\d{4})');
+      const m = s.match(re);
+      if(m){
+        const yr = parseInt(m[3]);
+        const df = new Date(yr,tmo,parseInt(m[1])).toISOString().split('T')[0];
+        const dt = new Date(yr,tmo,parseInt(m[2])).toISOString().split('T')[0];
+        return {date_from:df, date_to:dt, validity:s};
+      }
     }
-    if(cols.length < 4) continue;
+    // English range: "15 Jun - 30 Jun 2026" or "01-14 JUN 2026"
+    const m1 = s.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if(m1){
+      const mo = MONTHS[(m1[3]||'').substring(0,3).toLowerCase()];
+      const yr = parseInt(m1[4]);
+      if(mo !== undefined && !isNaN(yr)){
+        return {
+          date_from: new Date(yr,mo,parseInt(m1[1])).toISOString().split('T')[0],
+          date_to:   new Date(yr,mo,parseInt(m1[2])).toISOString().split('T')[0],
+          validity:  s
+        };
+      }
+    }
+    // Single month: "Jun 2026"
+    const m2 = s.match(/([A-Za-z]+)\s+(\d{4})/);
+    if(m2){
+      const mo = MONTHS[(m2[1]||'').substring(0,3).toLowerCase()];
+      const yr = parseInt(m2[2]);
+      if(mo !== undefined && !isNaN(yr)){
+        return {
+          date_from: new Date(yr,mo,1).toISOString().split('T')[0],
+          date_to:   new Date(yr,mo+1,0).toISOString().split('T')[0],
+          validity:  s
+        };
+      }
+    }
+    return {date_from:'', date_to:'', validity:s};
+  }
 
-    // Helper: strip $ and commas from price string
-    const parsePrice = s => {
-      if(!s) return 0;
-      const n = parseFloat(s.replace(/[$,\s]/g,''));
-      return isNaN(n) ? 0 : n;
+  function calcStatus(date_from, date_to){
+    if(!date_from||!date_to) return 'unknown';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const df=new Date(date_from), dt=new Date(date_to);
+    if(today<df) return 'upcoming';
+    if(today>dt) return 'expired';
+    return 'active';
+  }
+
+  function makeRate(pod, gp20, gp40, hc40, ctx){
+    const {validity,date_from,date_to} = parseValidityString(ctx.validity||'');
+    return {
+      source: (ctx.source||'FAK').toUpperCase(),
+      carrier: (ctx.carrier||'').toUpperCase(),
+      pol: ctx.pol||'',
+      pod: pod.trim(),
+      del: ctx.del||'',
+      gp20, gp40, hc40, rf20:0, rf40:0,
+      validity, date_from, date_to,
+      valid_status: calcStatus(date_from,date_to),
+      sheet:'Paste', _sel:true
     };
+  }
 
-    // Detect column layout by count
-    // Expected: SRC CARRIER POL POD [ROUTING/VIA] 20GP 40GP 40HC [VALID]
-    let src='', carrier='', pol='', pod='', del_='', gp20=0, gp40=0, hc40=0, validity='';
+  // ── Try to detect Markdown / pipe-table format ───────────
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const isMarkdown = lines.some(l=>l.startsWith('|'));
 
-    if(cols.length >= 8){
-      // Full layout with routing column
-      src      = cols[0];
-      carrier  = cols[1];
-      pol      = cols[2];
-      pod      = cols[3];
-      // col 4 might be routing/via — store as DEL if it's not a price
-      const maybeRoute = cols[4];
-      const isDirect   = /direct|—|-/i.test(maybeRoute);
-      const isVia      = /via/i.test(maybeRoute);
-      del_     = (!isDirect && !isVia) ? maybeRoute : '';
-      gp20     = parsePrice(cols[5]);
-      gp40     = parsePrice(cols[6]);
-      hc40     = parsePrice(cols[7]);
-      validity = cols[8] || '';
-    } else if(cols.length >= 7){
-      // No routing column
-      src      = cols[0];
-      carrier  = cols[1];
-      pol      = cols[2];
-      pod      = cols[3];
-      gp20     = parsePrice(cols[4]);
-      gp40     = parsePrice(cols[5]);
-      hc40     = parsePrice(cols[6]);
-      validity = cols[7] || '';
-    } else if(cols.length >= 5){
-      // Minimal: carrier pol pod 20gp 40gp
-      carrier  = cols[0];
-      pol      = cols[1];
-      pod      = cols[2];
-      gp20     = parsePrice(cols[3]);
-      gp40     = parsePrice(cols[4]);
-      hc40     = parsePrice(cols[5]||'');
-      validity = cols[6] || '';
+  // ── Context extraction from header lines (Validity, POL) ─
+  let ctx = { source:'FAK', carrier:'', pol:'', validity:'' };
+
+  // Scan all lines for context clues regardless of mode
+  for(const line of lines){
+    // Validity (Thai or English)
+    if(/validity|valid|วันที่|ถึง|มิถุนายน|กรกฎาคม|พฤษภาคม|Jun|Jul|Aug|May/i.test(line)){
+      // Try to extract a date range from this line
+      const test = parseValidityString(line.replace(/\*+|\[|\]/g,'').trim());
+      if(test.date_from) ctx.validity = line.replace(/\*+|\[|\]/g,'').trim();
     }
+    // POL from "Port of Loading:" lines
+    const polMatch = line.match(/port\s+of\s+loading[:\s]+(.+)/i) ||
+                     line.match(/\bPOL[:\s]+(.+)/i);
+    if(polMatch) ctx.pol = polMatch[1].replace(/\*+/g,'').trim();
+    // Carrier
+    const carrierMatch = line.match(/carrier[:\s]+([A-Z0-9\s]+)/i);
+    if(carrierMatch) ctx.carrier = carrierMatch[1].trim();
+  }
 
-    // Skip rows that look like pure text / no prices
-    if(!gp20 && !gp40) continue;
+  const results = [];
 
-    // Parse validity date range
-    let date_from='', date_to='';
-    if(validity){
-      // Pattern: "01-14 JUN 2026" or "1 Jun - 30 Jun 2026" or "Jun 1-30 2026"
-      const m1 = validity.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-      const m2 = validity.match(/([A-Za-z]+)\s+(\d{4})/);
-      const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
-      if(m1){
-        const mo = months[(m1[3]||'').substring(0,3).toLowerCase()];
-        const yr = parseInt(m1[4]);
-        if(mo !== undefined && !isNaN(yr)){
-          date_from = new Date(yr, mo, parseInt(m1[1])).toISOString().split('T')[0];
-          date_to   = new Date(yr, mo, parseInt(m1[2])).toISOString().split('T')[0];
-        }
-      } else if(m2){
-        const mo = months[(m2[1]||'').substring(0,3).toLowerCase()];
-        const yr = parseInt(m2[2]);
-        if(mo !== undefined && !isNaN(yr)){
-          date_from = new Date(yr, mo, 1).toISOString().split('T')[0];
-          date_to   = new Date(yr, mo+1, 0).toISOString().split('T')[0];
-        }
+  if(isMarkdown){
+    // ── MARKDOWN TABLE MODE ──────────────────────────────
+    // Track section context (West Coast / East Coast / Lat Krabang)
+    let sectionPol = ctx.pol || '';
+
+    for(let i=0;i<lines.length;i++){
+      const line = lines[i];
+
+      // Section header — update POL context
+      if(/west\s*coast|ท่าเรือฝั่งตะวันตก/i.test(line)) sectionPol = sectionPol||'Laem Chabang';
+      if(/east\s*coast|ท่าเรือฝั่งตะวันออก/i.test(line)) sectionPol = sectionPol||'Laem Chabang';
+      if(/port\s+of\s+loading[:\s]+(.+)/i.test(line)){
+        const m=line.match(/port\s+of\s+loading[:\s]+(.+)/i);
+        if(m) sectionPol = m[1].replace(/\*+/g,'').trim();
+      }
+
+      // Skip non-table lines and separator rows (---|---|---)
+      if(!line.startsWith('|')) continue;
+      if(/^\|[\s\-|]+\|$/.test(line)) continue;
+
+      // Split pipe-delimited columns
+      const cols = line.split('|').map(s=>s.trim()).filter((_,idx,arr)=>idx>0&&idx<arr.length-1);
+      if(cols.length < 3) continue;
+
+      // Skip header rows (contain column name words)
+      if(/ปลายทาง|destination|pod|fak rate|rate structure|หมายเหตุ|remark|20.*ฟุต|40.*ฟุต|port of loading/i.test(cols[0])) continue;
+
+      // --- Layout detection ---
+      // Type A (main rate table): POD | FAK Structure | 20ft | 40ft | Remark
+      // Type B (add-on table):    POL | Remark | FAK | 20add | 40add | Remark
+      const hasPrice = cols.some(c=>/\$[\d,]+/.test(c)||/^\d{3,6}$/.test(c.replace(/[$,]/g,'')));
+      if(!hasPrice) continue;
+
+      // Find price columns (contain $ or are 3-5 digit numbers)
+      const priceIdxs = cols.reduce((acc,c,idx)=>{
+        if(/\$[\d,]+/.test(c)||/^\$?\d{3,6}$/.test(c.replace(/[$,\s]/g,''))) acc.push(idx);
+        return acc;
+      },[]);
+
+      if(priceIdxs.length < 2) continue;
+
+      const gp20 = parsePrice(cols[priceIdxs[0]]);
+      const gp40 = parsePrice(cols[priceIdxs[1]]);
+      const hc40 = parsePrice(cols[priceIdxs[2]]||'') || gp40; // HC defaults to 40GP if not present
+
+      // POD: first col (or split on / for multiple ports)
+      const podRaw = cols[0];
+
+      // Detect if this is an add-on row (Lat Krabang) — skip for now, not a standalone rate
+      if(/lat\s*krabang|ลาดกระบัง/i.test(podRaw) && priceIdxs[0] >= 2) continue;
+
+      // Split multiple ports "New York / Norfolk / Charleston / Savannah"
+      const ports = podRaw.split('/').map(p=>p.trim()).filter(Boolean);
+
+      const rowCtx = {
+        ...ctx,
+        pol: sectionPol || ctx.pol || 'Laem Chabang',
+      };
+
+      for(const port of ports){
+        if(!port || /^[-—]+$/.test(port)) continue;
+        results.push(makeRate(port, gp20, gp40, hc40||gp40, rowCtx));
       }
     }
 
-    // Compute valid_status
-    let valid_status = 'unknown';
-    if(date_from && date_to){
-      const today = new Date(); today.setHours(0,0,0,0);
-      const df = new Date(date_from), dt = new Date(date_to);
-      if(today < df) valid_status = 'upcoming';
-      else if(today > dt) valid_status = 'expired';
-      else valid_status = 'active';
-    }
+  } else {
+    // ── TAB / SPACE DELIMITED MODE (original logic) ───────
+    const skipPattern = /^(src|carrier|pol|destination|routing|20|40|valid|#)/i;
 
-    results.push({
-      source: (src||'FAK').toUpperCase(),
-      carrier: (carrier||'').toUpperCase(),
-      pol: pol||'',
-      pod: pod||'',
-      del: del_||'',
-      gp20, gp40, hc40,
-      rf20:0, rf40:0,
-      validity: validity||'',
-      date_from, date_to,
-      valid_status,
-      sheet: 'Paste',
-      _sel: true   // selected by default
-    });
+    for(const line of lines){
+      if(skipPattern.test(line)) continue;
+
+      let cols = line.split('\t').map(s=>s.trim());
+      if(cols.length < 4) cols = line.split(/\s{2,}/).map(s=>s.trim());
+      if(cols.length < 4) continue;
+
+      let src='',carrier='',pol='',pod='',del_='',gp20=0,gp40=0,hc40=0,validity='';
+
+      if(cols.length >= 8){
+        src=cols[0]; carrier=cols[1]; pol=cols[2]; pod=cols[3];
+        const maybeRoute=cols[4];
+        const isDirect=/direct|—|-/i.test(maybeRoute);
+        const isVia=/via/i.test(maybeRoute);
+        del_=(!isDirect&&!isVia)?maybeRoute:'';
+        gp20=parsePrice(cols[5]); gp40=parsePrice(cols[6]); hc40=parsePrice(cols[7]);
+        validity=cols[8]||'';
+      } else if(cols.length >= 7){
+        src=cols[0]; carrier=cols[1]; pol=cols[2]; pod=cols[3];
+        gp20=parsePrice(cols[4]); gp40=parsePrice(cols[5]); hc40=parsePrice(cols[6]);
+        validity=cols[7]||'';
+      } else if(cols.length >= 5){
+        carrier=cols[0]; pol=cols[1]; pod=cols[2];
+        gp20=parsePrice(cols[3]); gp40=parsePrice(cols[4]);
+        hc40=parsePrice(cols[5]||''); validity=cols[6]||'';
+      }
+
+      if(!gp20 && !gp40) continue;
+
+      const vObj = parseValidityString(validity||ctx.validity);
+      results.push({
+        source:(src||ctx.source||'FAK').toUpperCase(),
+        carrier:(carrier||ctx.carrier||'').toUpperCase(),
+        pol: pol||ctx.pol||'',
+        pod, del:del_||'',
+        gp20,gp40,hc40,rf20:0,rf40:0,
+        validity:vObj.validity, date_from:vObj.date_from, date_to:vObj.date_to,
+        valid_status:calcStatus(vObj.date_from,vObj.date_to),
+        sheet:'Paste', _sel:true
+      });
+    }
   }
+
   return results;
 }
 
