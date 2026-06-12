@@ -9207,16 +9207,60 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   // FIX #2 — Via keyword → resolve to actual gateway port
   // "via USWC / via LAX / via LGB"  → POD = Los Angeles
   // "via USEC / via Norfolk / via NYK" → POD = New York
+  // ── Routing keyword → full port list ─────────────────────
+  // USEC/USWC/PRR/VAN expand to ALL ports in that service group
+  const ROUTING_PORTS = {
+    'USEC':   ['New York, NY','Norfolk, VA','Savannah, GA','Charleston, SC','Baltimore, MD','Boston, MA','Jacksonville, FL'],
+    'USWC':   ['Los Angeles, CA','Long Beach, CA','Oakland, CA','Seattle, WA','Tacoma, WA'],
+    'USGC':   ['Houston, TX','New Orleans, LA','Mobile, AL','Tampa, FL'],
+    'LALB':   ['Los Angeles, CA','Long Beach, CA'],
+    'LALB/OAK/SEA': ['Los Angeles, CA','Long Beach, CA','Oakland, CA','Seattle, WA'],
+    'PRR':    ['Chicago, IL'],   // Pennsylvania Railroad corridor via USEC
+    'VAN':    ['Vancouver, BC'], // Canada West
+    'DIRECT': [],
+  };
+
+  // Resolve a routing keyword or "via X" string to gateway port name(s)
+  // Returns array of port strings, or null if not recognised
+  function expandRouting(text){
+    if(!text) return null;
+    const t = text.trim().toUpperCase().replace(/\s+/g,' ');
+
+    // Exact match first
+    if(ROUTING_PORTS[t]) return ROUTING_PORTS[t].length ? ROUTING_PORTS[t] : null;
+
+    // Partial / fuzzy
+    const tl = t.toLowerCase();
+    if(/\busec\b|us\s*east\s*coast/.test(tl)) return ROUTING_PORTS['USEC'];
+    if(/\buswc\b|us\s*west\s*coast/.test(tl)) return ROUTING_PORTS['USWC'];
+    if(/\busgc\b|gulf\s*coast/.test(tl))       return ROUTING_PORTS['USGC'];
+    if(/\blalb\b/.test(tl))                     return ROUTING_PORTS['LALB'];
+    if(/los\s*angeles|lax/i.test(tl))           return ['Los Angeles, CA'];
+    if(/long\s*beach|lbg|lgb/i.test(tl))        return ['Long Beach, CA'];
+    if(/oakland|oak/i.test(tl))                 return ['Oakland, CA'];
+    if(/seattle|sea\b/i.test(tl))               return ['Seattle, WA'];
+    if(/tacoma/i.test(tl))                      return ['Tacoma, WA'];
+    if(/new\s*york|nyk|nyc/i.test(tl))          return ['New York, NY'];
+    if(/norfolk|nfk/i.test(tl))                 return ['Norfolk, VA'];
+    if(/savannah|sav/i.test(tl))                return ['Savannah, GA'];
+    if(/charleston|chs/i.test(tl))              return ['Charleston, SC'];
+    if(/baltimore|bal/i.test(tl))               return ['Baltimore, MD'];
+    if(/boston/i.test(tl))                      return ['Boston, MA'];
+    if(/jacksonville|jax/i.test(tl))            return ['Jacksonville, FL'];
+    if(/houston/i.test(tl))                     return ['Houston, TX'];
+    if(/miami/i.test(tl))                       return ['Miami, FL'];
+    if(/tampa/i.test(tl))                       return ['Tampa, FL'];
+    if(/mobile/i.test(tl))                      return ['Mobile, AL'];
+    if(/vancouver/i.test(tl))                   return ['Vancouver, BC'];
+    if(/chicago/i.test(tl))                     return ['Chicago, IL'];
+    return null;
+  }
+
+  // Legacy single-port resolver (used by inline flat mode)
   function resolveViaPort(text){
-    if(!/via/i.test(text)) return null;
-    const t = text.toLowerCase();
-    if(/uswc|wc|lax|lbg|los\s*angeles|long\s*beach|oakland|seattle|tacoma|us\s*west/i.test(t))
-      return 'Los Angeles';
-    if(/usec|ec|nyk|new\s*york|norfolk|savannah|charleston|us\s*east/i.test(t))
-      return 'New York';
-    if(/usgc|gulf|houston|new\s*orleans/i.test(t))
-      return 'Houston';
-    return null; // via something unrecognised — keep as-is
+    if(!text) return null;
+    const ports = expandRouting(text.replace(/^via\s*/i,''));
+    return ports ? ports[0] : null;
   }
 
   // FIX #1 — IPI detection: any inland city text → DEL (not POD)
@@ -9258,11 +9302,40 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
   // ── Scan for global context (validity, POL, carrier) ─────
   const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
 
-  let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity:''};
+  let ctx = {source: srcOverride||'FAK', carrier: carrierOverride||'', pol:'', validity:'', _lastGateway:''};
+  window._pasteColMap = null; // reset column map
 
   for(const line of lines){
-    // Validity: look for lines that mention validity keyword OR contain Thai/English month + year
     const cleanLine = line.replace(/\*+/g,'').replace(/\[|\]/g,'').trim();
+
+    // ── Column header detection (tab-separated header row) ──
+    // Detect rows like: POL \t POD \t DEL \t 20GP \t 40GP \t 40HC
+    if(!window._pasteColMap && line.includes('\t')){
+      const hcols = line.split('\t').map(s=>s.trim().toLowerCase());
+      const has = kw => hcols.findIndex(h=>h.includes(kw));
+      const polIdx     = has('pol');
+      const podIdx     = has('pod');
+      const delIdx     = has('del');
+      const gp20Idx    = hcols.findIndex(h=>/20\s*g?p?/i.test(h)&&!h.includes('40'));
+      const gp40Idx    = hcols.findIndex(h=>/40\s*g?p/i.test(h)&&!h.includes('hc')&&!h.includes('45'));
+      const hc40Idx    = hcols.findIndex(h=>/40\s*h/i.test(h)||/hc/i.test(h));
+      const srcIdx     = has('src');
+      const carrierIdx = has('carrier');
+      const validIdx   = hcols.findIndex(h=>/valid|expir/i.test(h));
+
+      // If we found at least 2 of the key columns + prices → it's a header row
+      const foundCols = [polIdx,podIdx,delIdx,gp20Idx,gp40Idx].filter(i=>i>=0).length;
+      if(foundCols >= 2 && gp20Idx >= 0){
+        window._pasteColMap = {
+          pol:polIdx, pod:podIdx, del:delIdx,
+          gp20:gp20Idx, gp40:gp40Idx, hc40:hc40Idx,
+          src:srcIdx, carrier:carrierIdx, valid:validIdx
+        };
+        continue; // skip header row itself
+      }
+    }
+
+    // Validity: look for lines that mention validity keyword OR contain Thai/English month + year
     if(/validity|valid\s*date|วันที่|มิถุนายน|กรกฎาคม|พฤษภาคม|สิงหาคม|ตุลาคม|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i.test(cleanLine)){
       const test = parseValidityString(cleanLine);
       if(test.date_from && !ctx.validity) ctx.validity = cleanLine;
@@ -9391,25 +9464,40 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
 
         // Step 3: walk tokens, greedily collect [routing?] [dest tokens] [price price price]
         const pushResult = (routing, destStr, p20, p40, hc, polStr) => {
-          // Dest might be "New York, NY/Savannah,GA/Norfolk,VA" — split on /
           const rawPorts = destStr.split('/').map(s=>s.trim()).filter(Boolean);
-          const viaResolved = resolveViaPort(routing||'');
+          const expandedGateways = expandRouting(routing||'');
 
           rawPorts.forEach(rawPort => {
             if(!rawPort || /^[-—]+$/.test(rawPort)) return;
-            // Remove state abbreviation from port name for cleaner display
-            // e.g. "Atlanta, GA" → keep as-is for readability
             const podClean = rawPort.trim();
-            // IPI detection
             const isIPI = IPI_KEYWORDS.test(podClean);
-            const pod   = isIPI ? (viaResolved || (routing&&resolveViaPort('via '+routing)) || '') : podClean;
-            const del   = isIPI ? podClean : '';
 
-            if(!p20 && !p40) return;
-            results.push(makeRate(pod||podClean, del, p20, p40, hc||p40, {
-              ...ctx,
-              pol: polStr || ctx.pol || 'Laem Chabang',
-            }));
+            if(isIPI){
+              // IPI city → DEL, gateway ports → POD (one row per gateway)
+              const gateways = expandedGateways || [resolveViaPort('via '+routing)||''];
+              gateways.forEach(gw => {
+                if(!p20 && !p40) return;
+                results.push(makeRate(gw||podClean, podClean, p20, p40, hc||p40, {
+                  ...ctx, pol: polStr || ctx.pol || 'Laem Chabang',
+                }));
+              });
+            } else {
+              // Seaport → check if it's actually a routing keyword
+              const exp2 = expandRouting(podClean);
+              if(exp2 && exp2.length > 0){
+                exp2.forEach(gw => {
+                  if(!p20 && !p40) return;
+                  results.push(makeRate(gw, '', p20, p40, hc||p40, {
+                    ...ctx, pol: polStr || ctx.pol || 'Laem Chabang',
+                  }));
+                });
+              } else {
+                if(!p20 && !p40) return;
+                results.push(makeRate(podClean, '', p20, p40, hc||p40, {
+                  ...ctx, pol: polStr || ctx.pol || 'Laem Chabang',
+                }));
+              }
+            }
           });
         };
 
@@ -9484,16 +9572,79 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
 
       let src='',carrier='',pol='',pod='',del_='',gp20=0,gp40=0,hc40=0,validity='';
 
+      // ── Smart column mapping ─────────────────────────────
+      // If we have a detected header map from earlier, use it
+      if(window._pasteColMap){
+        const m = window._pasteColMap;
+        const g = idx => (idx>=0 && cols[idx]!==undefined) ? cols[idx] : '';
+        const polVal     = g(m.pol) || ctx.pol || '';
+        const rawPod     = g(m.pod).trim();  // may be routing keyword USEC/USWC/PRR/VAN
+        const rawDel     = g(m.del).trim();  // city name(s)
+        const gp20       = parsePrice(g(m.gp20));
+        const gp40       = parsePrice(g(m.gp40));
+        const hc40       = parsePrice(g(m.hc40)||g(m.gp40));
+        const validityVal= g(m.valid) || ctx.validity || '';
+        const srcVal     = g(m.src)  || ctx.source || 'FAK';
+        const carrierVal = g(m.carrier) || ctx.carrier || '';
+
+        if(!gp20 && !gp40) continue;
+
+        const vObj = parseValidityString(validityVal);
+        const baseRate = {
+          source:      (srcVal||'FAK').toUpperCase(),
+          carrier:     (carrierVal||carrierOverride||'').toUpperCase(),
+          pol:         polVal,
+          gp20, gp40, hc40, rf20:0, rf40:0,
+          validity:    vObj.validity, date_from:vObj.date_from, date_to:vObj.date_to,
+          valid_status:calcStatus(vObj.date_from,vObj.date_to),
+          sheet:'Paste', _sel:true
+        };
+
+        // Expand routing keyword → list of PODs
+        const expandedPods = expandRouting(rawPod);
+
+        if(expandedPods && expandedPods.length > 0){
+          // USEC → [New York NY, Norfolk VA, ...] each becomes a separate row
+          // DEL is the IPI city (rawDel), POD is each port in the group
+          const delCity = rawDel || '';
+          for(const gatePod of expandedPods){
+            // Split rawDel by / for multiple IPI cities
+            const delParts = delCity ? delCity.split('/').map(s=>s.trim()).filter(Boolean) : [''];
+            for(const d of delParts){
+              results.push({...baseRate, pod: gatePod, del: d});
+            }
+          }
+        } else if(rawPod){
+          // POD is an actual port name (not a routing keyword)
+          // rawDel may be IPI city or empty
+          const podParts = rawPod.split('/').map(s=>s.trim()).filter(Boolean);
+          const delParts = rawDel ? rawDel.split('/').map(s=>s.trim()).filter(Boolean) : [''];
+          for(const p of podParts){
+            for(const d of delParts){
+              results.push({...baseRate, pod: p, del: d==='—'?'':d});
+            }
+          }
+        } else if(rawDel){
+          // No POD — rawDel is the only destination (seaport or city)
+          const delParts = rawDel.split('/').map(s=>s.trim()).filter(Boolean);
+          for(const d of delParts){
+            const expanded2 = expandRouting(d);
+            if(expanded2){
+              for(const p of expanded2) results.push({...baseRate, pod:p, del:''});
+            } else {
+              results.push({...baseRate, pod:d, del:''});
+            }
+          }
+        }
+        continue;
+      }
+
       if(cols.length >= 8){
         src=cols[0]; carrier=cols[1]; pol=cols[2]; pod=cols[3];
         const maybeRoute=cols[4];
-        // FIX #2 tab mode: resolve via keyword → POD
         const viaResolved = resolveViaPort(maybeRoute);
-        if(viaResolved){
-          // IPI row: original pod becomes DEL, via-port becomes POD
-          del_=pod; pod=viaResolved;
-        } else if(!/direct|—|-$/i.test(maybeRoute)){
-          // Not Direct and not via — could be IPI city
+        if(viaResolved){ del_=pod; pod=viaResolved; }
+        else if(!/direct|—|-$/i.test(maybeRoute)){
           if(IPI_KEYWORDS.test(pod)){ del_=pod; pod=''; }
           else del_=maybeRoute;
         }
@@ -9504,15 +9655,36 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
         gp20=parsePrice(cols[4]); gp40=parsePrice(cols[5]); hc40=parsePrice(cols[6]);
         validity=cols[7]||'';
       } else if(cols.length >= 5){
-        carrier=cols[0]; pol=cols[1]; pod=cols[2];
-        gp20=parsePrice(cols[3]); gp40=parsePrice(cols[4]);
-        hc40=parsePrice(cols[5]||''); validity=cols[6]||'';
+        // Could be: POD | DEL | 20GP | 40GP | 40HC  (this Excel format without POL col)
+        const c0isRouting = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT)$/i.test(cols[0]);
+        const c0isPort    = /[A-Za-z]/.test(cols[0]) && !parsePrice(cols[0]);
+        const c1isCity    = /[A-Za-z]/.test(cols[1]) && !parsePrice(cols[1]);
+        const c2isPrice   = parsePrice(cols[2]) > 0;
+
+        if(c0isPort && c1isCity && c2isPrice){
+          // POD/routing | DEL city | prices
+          const rawPod = cols[0];
+          const rawDel = cols[1];
+          const viaFromPod = resolveViaPort('via '+rawPod)||resolveViaPort(rawPod);
+          if(viaFromPod && c0isRouting){ pod=viaFromPod; del_=rawDel; }
+          else { pod=rawPod; del_=rawDel; }
+          gp20=parsePrice(cols[2]); gp40=parsePrice(cols[3]); hc40=parsePrice(cols[4]||cols[3]);
+          pol=ctx.pol||'';
+        } else {
+          carrier=cols[0]; pol=cols[1]; pod=cols[2];
+          gp20=parsePrice(cols[3]); gp40=parsePrice(cols[4]);
+          hc40=parsePrice(cols[5]||''); validity=cols[6]||'';
+        }
       }
 
       if(!gp20&&!gp40) continue;
 
-      // FIX #1 tab mode: if POD is IPI city, move to DEL
-      if(!del_ && IPI_KEYWORDS.test(pod)){ del_=pod; pod=''; }
+      // If POD is IPI city and no DEL set yet, move it
+      if(!del_ && IPI_KEYWORDS.test(pod)){
+        del_=pod; pod=ctx._lastGateway||'';
+      }
+      // Track last gateway for context
+      if(pod && !IPI_KEYWORDS.test(pod)) ctx._lastGateway=pod;
 
       const vObj = parseValidityString(validity||ctx.validity);
       results.push({
