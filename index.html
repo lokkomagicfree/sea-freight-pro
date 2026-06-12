@@ -405,6 +405,7 @@ body{font-size:14px;font-weight:450}
       </select>
       <button onclick="clearFilters()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">✕ Clear</button>
       <button onclick="addManualRate()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.3)">+ Add Rate</button>
+      <button onclick="openPasteRatesModal()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--cyan);border-color:rgba(41,128,185,.35)">📋 Paste Rates</button>
     </div>
   </div>
 
@@ -8874,6 +8875,222 @@ window.applyFilterPrefs = function(){
 };
 
 // ── Default Special Remark ──────────────────────────────────
+
+// ══════════════════════════════════════════════
+// PASTE RATES — Modal & Parser
+// ══════════════════════════════════════════════
+
+window._pastedRateRows = [];
+
+window.openPasteRatesModal = function(){
+  const m = document.getElementById('paste_rates_modal');
+  m.style.display = 'flex';
+  setTimeout(()=>{ const ta=document.getElementById('paste_rates_ta'); if(ta) ta.focus(); },80);
+};
+
+window.closePasteRatesModal = function(){
+  document.getElementById('paste_rates_modal').style.display = 'none';
+};
+
+function parsePastedRatesText(raw){
+  if(!raw||!raw.trim()) return [];
+  const lines = raw.trim().split('\n').map(l=>l.trim()).filter(Boolean);
+  const results = [];
+  const skipPattern = /^(src|carrier|pol|destination|routing|20|40|valid|#)/i;
+
+  for(const line of lines){
+    if(skipPattern.test(line)) continue; // header row
+
+    // Split by tab first, fall back to multiple-spaces
+    let cols = line.split('\t').map(s=>s.trim());
+    if(cols.length < 4){
+      // try splitting by 2+ spaces
+      cols = line.split(/\s{2,}/).map(s=>s.trim());
+    }
+    if(cols.length < 4) continue;
+
+    // Helper: strip $ and commas from price string
+    const parsePrice = s => {
+      if(!s) return 0;
+      const n = parseFloat(s.replace(/[$,\s]/g,''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    // Detect column layout by count
+    // Expected: SRC CARRIER POL POD [ROUTING/VIA] 20GP 40GP 40HC [VALID]
+    let src='', carrier='', pol='', pod='', del_='', gp20=0, gp40=0, hc40=0, validity='';
+
+    if(cols.length >= 8){
+      // Full layout with routing column
+      src      = cols[0];
+      carrier  = cols[1];
+      pol      = cols[2];
+      pod      = cols[3];
+      // col 4 might be routing/via — store as DEL if it's not a price
+      const maybeRoute = cols[4];
+      const isDirect   = /direct|—|-/i.test(maybeRoute);
+      const isVia      = /via/i.test(maybeRoute);
+      del_     = (!isDirect && !isVia) ? maybeRoute : '';
+      gp20     = parsePrice(cols[5]);
+      gp40     = parsePrice(cols[6]);
+      hc40     = parsePrice(cols[7]);
+      validity = cols[8] || '';
+    } else if(cols.length >= 7){
+      // No routing column
+      src      = cols[0];
+      carrier  = cols[1];
+      pol      = cols[2];
+      pod      = cols[3];
+      gp20     = parsePrice(cols[4]);
+      gp40     = parsePrice(cols[5]);
+      hc40     = parsePrice(cols[6]);
+      validity = cols[7] || '';
+    } else if(cols.length >= 5){
+      // Minimal: carrier pol pod 20gp 40gp
+      carrier  = cols[0];
+      pol      = cols[1];
+      pod      = cols[2];
+      gp20     = parsePrice(cols[3]);
+      gp40     = parsePrice(cols[4]);
+      hc40     = parsePrice(cols[5]||'');
+      validity = cols[6] || '';
+    }
+
+    // Skip rows that look like pure text / no prices
+    if(!gp20 && !gp40) continue;
+
+    // Parse validity date range
+    let date_from='', date_to='';
+    if(validity){
+      // Pattern: "01-14 JUN 2026" or "1 Jun - 30 Jun 2026" or "Jun 1-30 2026"
+      const m1 = validity.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+      const m2 = validity.match(/([A-Za-z]+)\s+(\d{4})/);
+      const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+      if(m1){
+        const mo = months[(m1[3]||'').substring(0,3).toLowerCase()];
+        const yr = parseInt(m1[4]);
+        if(mo !== undefined && !isNaN(yr)){
+          date_from = new Date(yr, mo, parseInt(m1[1])).toISOString().split('T')[0];
+          date_to   = new Date(yr, mo, parseInt(m1[2])).toISOString().split('T')[0];
+        }
+      } else if(m2){
+        const mo = months[(m2[1]||'').substring(0,3).toLowerCase()];
+        const yr = parseInt(m2[2]);
+        if(mo !== undefined && !isNaN(yr)){
+          date_from = new Date(yr, mo, 1).toISOString().split('T')[0];
+          date_to   = new Date(yr, mo+1, 0).toISOString().split('T')[0];
+        }
+      }
+    }
+
+    // Compute valid_status
+    let valid_status = 'unknown';
+    if(date_from && date_to){
+      const today = new Date(); today.setHours(0,0,0,0);
+      const df = new Date(date_from), dt = new Date(date_to);
+      if(today < df) valid_status = 'upcoming';
+      else if(today > dt) valid_status = 'expired';
+      else valid_status = 'active';
+    }
+
+    results.push({
+      source: (src||'FAK').toUpperCase(),
+      carrier: (carrier||'').toUpperCase(),
+      pol: pol||'',
+      pod: pod||'',
+      del: del_||'',
+      gp20, gp40, hc40,
+      rf20:0, rf40:0,
+      validity: validity||'',
+      date_from, date_to,
+      valid_status,
+      sheet: 'Paste',
+      _sel: true   // selected by default
+    });
+  }
+  return results;
+}
+
+window.previewPastedRates = function(){
+  const raw = (document.getElementById('paste_rates_ta')||{}).value || '';
+  const rows = parsePastedRatesText(raw);
+  window._pastedRateRows = rows;
+
+  const wrap = document.getElementById('paste_preview_wrap');
+  const tbody = document.getElementById('paste_preview_body');
+  const countEl = document.getElementById('paste_preview_count');
+  const warnEl  = document.getElementById('paste_warn');
+  const importBtn    = document.getElementById('paste_import_btn');
+  const importSelBtn = document.getElementById('paste_import_sel_btn');
+
+  if(!rows.length){
+    wrap.style.display = 'none';
+    importBtn.disabled = true;
+    importSelBtn.disabled = true;
+    return;
+  }
+
+  wrap.style.display = '';
+  countEl.textContent = rows.length;
+  importBtn.disabled = false;
+  importSelBtn.disabled = false;
+
+  const vsClass = s => s==='active'?'vs-active':s==='expired'?'vs-expired':s==='upcoming'?'vs-upcoming':'vs-unknown';
+  const vsLabel = s => s==='active'?'Active':s==='expired'?'Expired':s==='upcoming'?'Soon':'?';
+  const fmt = n => n ? '$'+n.toLocaleString() : '—';
+
+  tbody.innerHTML = rows.map((r,i)=>`
+    <tr>
+      <td><span class="cb src-${(r.source||'').toLowerCase()}">${r.source}</span></td>
+      <td style="font-family:var(--mono);font-size:11px">${r.carrier}</td>
+      <td style="font-size:11px">${r.pol}</td>
+      <td style="font-size:11px">${r.pod}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.del||'—'}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--green)">${fmt(r.gp20)}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${fmt(r.gp40)}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${fmt(r.hc40)}</td>
+      <td><span class="vstat ${vsClass(r.valid_status)}">${vsLabel(r.valid_status)}</span> <span style="font-size:10px;color:var(--muted)">${r.validity||''}</span></td>
+      <td style="text-align:center"><input type="checkbox" ${r._sel?'checked':''} onchange="window._pastedRateRows[${i}]._sel=this.checked" style="accent-color:var(--cyan);cursor:pointer"></td>
+    </tr>`).join('');
+
+  // Warn about skipped/bad rows
+  const rawLines = raw.trim().split('\n').filter(l=>l.trim()&&!/^(src|carrier|pol|dest)/i.test(l.trim())).length;
+  const skipped = rawLines - rows.length;
+  if(skipped > 0){
+    warnEl.style.display = '';
+    warnEl.textContent = `⚠ ${skipped} แถวถูกข้ามเพราะไม่พบราคา หรือรูปแบบไม่ตรง`;
+  } else {
+    warnEl.style.display = 'none';
+  }
+};
+
+window.importPastedRates = function(selOnly){
+  const rows = window._pastedRateRows || [];
+  const toImport = selOnly ? rows.filter(r=>r._sel) : rows;
+  if(!toImport.length){ toast('⚠ ไม่มีแถวที่เลือก'); return; }
+
+  let added = 0;
+  toImport.forEach(r=>{
+    const rate = {
+      source: r.source, carrier: r.carrier, pol: r.pol, pod: r.pod, del: r.del,
+      gp20: r.gp20, gp40: r.gp40, hc40: r.hc40, rf20: r.rf20||0, rf40: r.rf40||0,
+      validity: r.validity, date_from: r.date_from, date_to: r.date_to,
+      valid_status: r.valid_status, sheet: r.sheet||'Paste'
+    };
+    ALL_RATES.unshift(rate);
+    added++;
+  });
+
+  buildFilters(); applyFilter(); storageSave();
+  toast(`✅ Import แล้ว ${added} rates!`);
+  closePasteRatesModal();
+};
+
+window.importSelectedPastedRates = function(){
+  window.importPastedRates(true);
+};
+
+
 window.saveDefaultSpecialRemark = function(){
   const val = (document.getElementById('bpdf_special_remark')?.value || '').trim();
   localStorage.setItem('sfp_default_special_remark', val);
@@ -8912,6 +9129,48 @@ window.saveDefaultSpecialRemark = function(){
     </div>
   </div>
 </div>
+<!-- ═══ PASTE RATES MODAL ═══ -->
+<div id="paste_rates_modal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:780px;max-height:90vh;overflow-y:auto;padding:20px 22px;box-shadow:0 8px 40px rgba(192,57,43,.2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--cyan)">📋 Paste Rates — Import from Text</div>
+      <button onclick="closePasteRatesModal()" style="border:none;background:var(--s2);border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;font-family:var(--mono)">
+      วางข้อความจาก Excel / อีเมล ได้เลย — รองรับ Tab-separated หรือ Space-separated<br>
+      <span style="color:var(--cyan)">รูปแบบ:</span> <code style="background:var(--s2);padding:1px 5px;border-radius:3px;font-size:10px">SRC  CARRIER  POL  POD  ROUTING  20GP  40GP  40HC  VALID</code>
+    </div>
+    <textarea id="paste_rates_ta" rows="12"
+      placeholder="วางข้อความที่นี่...&#10;&#10;ตัวอย่าง:&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Los Angeles	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026&#10;FAK	ONE	LEAM CHABANG / BANGKOK	Long Beach	Direct	$2,700	$3,400	$3,400	01-14 JUN 2026"
+      style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;line-height:1.6;resize:vertical;outline:none;box-sizing:border-box"
+      onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border2)'"
+      oninput="previewPastedRates()"></textarea>
+
+    <!-- Preview table -->
+    <div id="paste_preview_wrap" style="display:none;margin-top:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--cyan);font-family:var(--mono);margin-bottom:6px;letter-spacing:.08em">PREVIEW — <span id="paste_preview_count">0</span> ROWS DETECTED</div>
+      <div style="overflow-x:auto;border-radius:7px;border:1px solid var(--border);max-height:280px;overflow-y:auto">
+        <table class="tbl" style="min-width:700px">
+          <thead><tr>
+            <th>SRC</th><th>CARRIER</th><th>POL</th><th>POD</th><th>DEL / ROUTING</th>
+            <th style="text-align:right">20'GP</th><th style="text-align:right">40'GP</th><th style="text-align:right">40'HC</th>
+            <th>VALID</th><th style="text-align:center">✓</th>
+          </tr></thead>
+          <tbody id="paste_preview_body"></tbody>
+        </table>
+      </div>
+      <div id="paste_warn" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(183,128,10,.08);border:1px solid rgba(183,128,10,.3);border-radius:6px;font-size:11px;color:var(--gold);font-family:var(--mono)"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">
+      <button onclick="importPastedRates()" id="paste_import_btn" class="btn btn-cyan" style="font-size:12px;padding:8px 20px" disabled>✅ Import All</button>
+      <button onclick="importSelectedPastedRates()" id="paste_import_sel_btn" class="btn btn-ghost" style="font-size:12px;padding:8px 16px;color:var(--cyan)" disabled>☑ Import Selected</button>
+      <button onclick="document.getElementById('paste_rates_ta').value='';previewPastedRates()" class="btn btn-ghost" style="font-size:12px;padding:8px 14px">🗑 Clear</button>
+      <button onclick="closePasteRatesModal()" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;margin-left:auto">✕ Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="email_modal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto;padding:20px 22px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
