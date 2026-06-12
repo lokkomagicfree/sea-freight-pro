@@ -9163,6 +9163,118 @@ function parsePastedRatesText(raw, carrierOverride, srcOverride){
     for(const line of lines){
       if(skipPat.test(line)) continue;
 
+      // ── INLINE / FLAT MODE detection ─────────────────────
+      // Pattern: "POL [ROUTING] CITY,ST $p1 $p2 $p3 [ROUTING] CITY,ST $p1 $p2 $p3 ..."
+      // All records on one line, separated only by prices acting as delimiters.
+      // Detect: line has 3+ price tokens ($x,xxx) and city,ST abbreviations or / separated ports
+      const priceTokens = line.match(/\$[\d,]+/g) || [];
+      const hasCityState = /[A-Za-z]+,\s*[A-Z]{2}\b/.test(line);
+      const isInlineFlat = priceTokens.length >= 3 && hasCityState &&
+                           !line.includes('\t') && line.length > 60;
+
+      if(isInlineFlat){
+        // ── Tokenize inline flat ──────────────────────────
+        // Known routing keywords that prefix a destination group
+        const ROUTING_KW = /^(USEC|USWC|USGC|PRR|VAN|LALB|OAK|SEA|DIRECT|T\/S|TS|VIA\s+\w+)$/i;
+        const PRICE_RE   = /^\$[\d,]+$/;
+
+        // Split by whitespace but preserve "City, ST" as single tokens
+        // Strategy: tokenize the whole line, then walk tokens to extract records
+
+        // Step 1: replace "$x,xxx" with placeholder to prevent comma-split confusion
+        let normalized = line;
+        // Step 2: split on whitespace; commas inside "City, ST" are fine
+        const raw_tokens = normalized.split(/\s+/).filter(Boolean);
+
+        // Step 3: walk tokens, greedily collect [routing?] [dest tokens] [price price price]
+        const pushResult = (routing, destStr, p20, p40, hc, polStr) => {
+          // Dest might be "New York, NY/Savannah,GA/Norfolk,VA" — split on /
+          const rawPorts = destStr.split('/').map(s=>s.trim()).filter(Boolean);
+          const viaResolved = resolveViaPort(routing||'');
+
+          rawPorts.forEach(rawPort => {
+            if(!rawPort || /^[-—]+$/.test(rawPort)) return;
+            // Remove state abbreviation from port name for cleaner display
+            // e.g. "Atlanta, GA" → keep as-is for readability
+            const podClean = rawPort.trim();
+            // IPI detection
+            const isIPI = IPI_KEYWORDS.test(podClean);
+            const pod   = isIPI ? (viaResolved || (routing&&resolveViaPort('via '+routing)) || '') : podClean;
+            const del   = isIPI ? podClean : '';
+
+            if(!p20 && !p40) return;
+            results.push(makeRate(pod||podClean, del, p20, p40, hc||p40, {
+              ...ctx,
+              pol: polStr || ctx.pol || 'Laem Chabang',
+            }));
+          });
+        };
+
+        // Detect POL at start (before any price token)
+        // POL candidates: words before first $ sign that don't look like routing keywords
+        // e.g. "LAEM CHABANG" or "BANGKOK"
+        let polTokens = [];
+        let i = 0;
+        while(i < raw_tokens.length && !PRICE_RE.test(raw_tokens[i])){
+          // If we hit a routing keyword and already have 1+ pol tokens, stop pol collection
+          if(ROUTING_KW.test(raw_tokens[i]) && polTokens.length > 0) break;
+          // If we see City,ST pattern, stop pol collection
+          if(/[A-Za-z]+,[A-Z]{2}/.test(raw_tokens[i])) break;
+          polTokens.push(raw_tokens[i]);
+          i++;
+        }
+        // If the first pol token group looks like only routing (no multi-word city),
+        // and ctx already has POL, prefer ctx
+        const detectedPOL = polTokens.join(' ').trim() || ctx.pol || '';
+
+        // Now walk remaining tokens to extract records
+        // State: accumulate routing keyword, dest tokens, then 3 prices
+        let curRouting = '';
+        let destTokens = [];
+        let prices     = [];
+
+        const flushRecord = () => {
+          if(!destTokens.length || prices.length < 2) { destTokens=[]; prices=[]; curRouting=''; return; }
+          const p20 = parsePrice(prices[0]);
+          const p40 = parsePrice(prices[1]);
+          const hc  = parsePrice(prices[2]||prices[1]);
+          pushResult(curRouting, destTokens.join(' '), p20, p40, hc, detectedPOL);
+          destTokens=[]; prices=[]; curRouting='';
+        };
+
+        while(i < raw_tokens.length){
+          const tok = raw_tokens[i];
+
+          if(PRICE_RE.test(tok)){
+            prices.push(tok);
+            // After 3 prices we have a complete record
+            if(prices.length === 3){
+              flushRecord();
+            }
+          } else if(prices.length > 0){
+            // We got some prices but then a non-price token — flush partial and start new record
+            flushRecord();
+            if(ROUTING_KW.test(tok)){
+              curRouting = tok;
+            } else {
+              destTokens.push(tok);
+            }
+          } else if(ROUTING_KW.test(tok)){
+            // Flush previous dest if any
+            if(destTokens.length) flushRecord();
+            curRouting = tok;
+          } else {
+            destTokens.push(tok);
+          }
+          i++;
+        }
+        // Flush any remaining
+        if(destTokens.length && prices.length >= 2) flushRecord();
+
+        continue; // done with this line
+      }
+      // ── end inline flat mode ──────────────────────────────
+
       let cols = line.split('\t').map(s=>s.trim());
       if(cols.length < 4) cols = line.split(/\s{2,}/).map(s=>s.trim());
       if(cols.length < 4) continue;
