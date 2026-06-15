@@ -1399,8 +1399,10 @@ window._goPage = function(p){ curPage=p; applyFilter(false); };
 const PER_PAGE = 20;
 let sortField  = 'gp20'; let sortAsc = true;
 
-const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Others'];
-const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Surrender Fee','Inland Haulage','AMS/ENS','Others'];
+const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Handling Fee','Others'];
+const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Surrender Fee','Inland Haulage','AMS/ENS','Handling Fee','Others'];
+// Charges that multiply by number of containers (per-CTN)
+const PER_CTN_CHARGES = new Set(['Ocean Freight','Ocean Freight (per CBM)','THC Origin','THC Dest','Inland Haulage','ISPS']);
 
 const MN = {'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
 
@@ -2543,6 +2545,8 @@ function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
 
+  const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
+
   // Charges that need per-container-type split inputs
   const SPLIT_CHARGES = ['Ocean Freight','THC Origin','THC Dest'];
   const ctnTypes = (_ctnRows||[]).filter(r=>r.qty>0);
@@ -2559,6 +2563,10 @@ function buildCharges(){
       data-apr="0" title="Toggle As per receipt">APR</button>` : '';
 
     const doSplit = needSplit && SPLIT_CHARGES.includes(name);
+    const isPerCtn = PER_CTN_CHARGES.has(name);
+    const qtyLabel = isPerCtn && totalQty > 1
+      ? `<span style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-left:4px">×${totalQty}</span>`
+      : '';
 
     if(doSplit){
       // Per-ctn-type sell/cost inputs
@@ -2577,7 +2585,7 @@ function buildCharges(){
             oninput="recalc()" style="color:var(--red);text-align:right;padding:3px 6px;font-size:11px">
         </div>`).join('');
       return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}" data-split="true">
-        <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
+        <td style="font-size:12px;padding:6px 10px">${name}${ccy}${qtyLabel}</td>
         <td style="padding:4px 6px">${sellInputs}</td>
         <td style="padding:4px 6px;display:flex;align-items:center;gap:3px;flex-direction:column">${costInputs}</td>
         <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
@@ -2586,7 +2594,7 @@ function buildCharges(){
     }
 
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}">
-    <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
+    <td style="font-size:12px;padding:6px 10px">${name}${ccy}${qtyLabel}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
     <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
       <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
@@ -2610,27 +2618,31 @@ function recalc(){
   let ts=0, tc=0;
 
   rows.forEach(row=>{
-    const isTHB = row.dataset?.thb==='true';
+    const isTHB   = row.dataset?.thb==='true';
     const isSplit = row.dataset?.split==='true';
+    const chargeName = row.dataset?.charge || '';
     const rate = isTHB?(exRate||35):1;
+
+    // Only multiply by container qty for designated per-CTN charges
+    const isPerCtn = [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
+    const qty = isPerCtn ? totalQty : 1;
 
     let rowSell=0, rowCost=0;
 
     if(isSplit){
-      // Sum sell × qty per ctn type
       row.querySelectorAll('.sell-inp').forEach(inp=>{
-        const qty = parseInt(inp.dataset.qty)||1;
-        rowSell += (parseFloat(inp.value)||0) * qty;
+        const ctnQty = parseInt(inp.dataset.qty)||1;
+        rowSell += (parseFloat(inp.value)||0) * ctnQty;
       });
       row.querySelectorAll('.cost-inp').forEach(inp=>{
-        const qty = parseInt(inp.dataset.qty)||1;
-        rowCost += (parseFloat(inp.value)||0) * qty;
+        const ctnQty = parseInt(inp.dataset.qty)||1;
+        rowCost += (parseFloat(inp.value)||0) * ctnQty;
       });
     } else {
       const si = row.querySelector('.sell-inp');
       const ci = row.querySelector('.cost-inp');
-      rowSell = (parseFloat(si?.value)||0) * totalQty;
-      rowCost = (parseFloat(ci?.value)||0) * totalQty;
+      rowSell = (parseFloat(si?.value)||0) * qty;
+      rowCost = (parseFloat(ci?.value)||0) * qty;
     }
 
     const pr = rowSell - rowCost;
