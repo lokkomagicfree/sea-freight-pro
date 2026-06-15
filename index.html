@@ -3243,7 +3243,12 @@ function editShipment(idx){
   set('s_bltype',j.bltype);set('s_sc',j.sc);set('s_ams',j.ams);
   set('s_commodity',j.commodity);set('s_hscode',j.hscode);
   set('s_cy_date',j.cyDate||'');set('s_rtn_date',j.rtnDate||'');
-  set('s_si_cutoff',j.siCutoff||'');set('s_vgm_cutoff',j.vgmCutoff||'');set('s_doc_cutoff',j.docCutoff||'');set('s_gate_closing',j.gateClosing||'');
+  // Use bpdfData values if available (more up-to-date from Booking Confirmation PDF)
+  const bd = j.bpdfData || {};
+  set('s_si_cutoff',   bd.bpdf_si_cutoff   || j.siCutoff    || '');
+  set('s_vgm_cutoff',  bd.bpdf_vgm_cutoff  || j.vgmCutoff   || '');
+  set('s_doc_cutoff',  bd.bpdf_cfm_bl      || j.docCutoff   || '');
+  set('s_gate_closing',bd.bpdf_gate_closing || j.gateClosing || '');
   set('s_connote',j.connote);
   // Restore route picker
   if(j.pol){const rp=g('r_pol');if(rp)rp.value=j.pol;window._selPol=j.pol;}
@@ -3832,6 +3837,12 @@ window.copyPreBkg = function(idx){
   set('note',     p.note);
   set('etd',      p.etd);
   set('freetime', p.freeTime);
+  set('cy_date',    '');
+  set('rtn_date',   '');
+  set('si_cutoff',  p.siCutoff || '');
+  set('vgm_cutoff', p.vgmCutoff || '');
+  set('doc_cutoff', p.docCutoff || '');
+  set('gate_closing',p.gateClosing || '');
   document.getElementById('pbkg_m_status').value = 'pending';
   document.getElementById('pbkg_modal').style.display = 'flex';
   // Focus booking no field so user types new booking number
@@ -3843,10 +3854,10 @@ window.openAddPreBkgModal = function(){
   _preBkgEditIdx=null;
   document.getElementById('pbkg_modal_title').textContent='+ Add Pre-Booking';
   document.getElementById('pbkg_release_btn').style.display='none';
-  ['bkgno','customer','carrier','pol','pod','note'].forEach(f=>{
+  ['bkgno','customer','carrier','pol','pod','note','si_cutoff','vgm_cutoff','doc_cutoff','gate_closing'].forEach(f=>{
     const e=document.getElementById('pbkg_m_'+f);if(e)e.value='';
   });
-  ['etd','freetime'].forEach(f=>{const e=document.getElementById('pbkg_m_'+f);if(e)e.value='';});
+  ['etd','freetime','cy_date','rtn_date'].forEach(f=>{const e=document.getElementById('pbkg_m_'+f);if(e)e.value='';});
   document.getElementById('pbkg_m_status').value='pending';
   document.getElementById('pbkg_modal').style.display='flex';
 };
@@ -3857,9 +3868,12 @@ window.openEditPreBkgModal = function(idx){
   document.getElementById('pbkg_modal_title').textContent='✏️ Edit Pre-Booking';
   document.getElementById('pbkg_release_btn').style.display = p.status==='pending'?'':'none';
   const set=(id,v)=>{const e=document.getElementById('pbkg_m_'+id);if(e)e.value=v||'';};
-  set('bkgno',p.bkgno); set('customer',p.customer); set('carrier',p.carrier);
-  set('pol',p.pol);      set('pod',p.pod);           set('note',p.note);
-  set('etd',p.etd);      set('freetime',p.freeTime);
+  set('bkgno',p.bkgno);      set('customer',p.customer);   set('carrier',p.carrier);
+  set('pol',p.pol);           set('pod',p.pod);             set('note',p.note);
+  set('etd',p.etd);           set('freetime',p.freeTime);
+  set('cy_date',p.cyDate);    set('rtn_date',p.rtnDate);
+  set('si_cutoff',p.siCutoff); set('vgm_cutoff',p.vgmCutoff);
+  set('doc_cutoff',p.docCutoff); set('gate_closing',p.gateClosing);
   document.getElementById('pbkg_m_status').value=p.status||'pending';
   document.getElementById('pbkg_modal').style.display='flex';
 };
@@ -3870,12 +3884,18 @@ window.savePreBkg = async function(){
     bkgno:g2('bkgno'), customer:g2('customer').toUpperCase(), carrier:g2('carrier').toUpperCase(),
     pol:g2('pol'), pod:g2('pod'), etd:g2('etd'),
     freeTime:g2('freetime'), note:g2('note'),
+    cyDate:g2('cy_date'), rtnDate:g2('rtn_date'),
+    siCutoff:g2('si_cutoff'), vgmCutoff:g2('vgm_cutoff'),
+    docCutoff:g2('doc_cutoff'), gateClosing:g2('gate_closing'),
     status:document.getElementById('pbkg_m_status')?.value||'pending',
     updatedAt:new Date().toISOString()
   };
   if(!p.bkgno){ toast('กรุณากรอก Booking No.'); return; }
-  if(_preBkgEditIdx!==null) _preBkgList[_preBkgEditIdx]=p;
-  else _preBkgList.unshift(p);
+  if(_preBkgEditIdx!==null){ 
+    // preserve fields not in modal (refno, releasedAt)
+    const prev = _preBkgList[_preBkgEditIdx]||{};
+    _preBkgList[_preBkgEditIdx]={...prev,...p};
+  } else _preBkgList.unshift(p);
   await savePreBkgList();
   document.getElementById('pbkg_modal').style.display='none';
   renderPreBooking();
@@ -3916,14 +3936,20 @@ window.releaseToShipment = async function(){
 
   const set=(id,v)=>{const e=document.getElementById(id);if(e&&v!==undefined&&v!=='')e.value=v;};
   setTimeout(()=>{
-    set('s_bkgno',   p.bkgno);
-    set('s_refno',   p.refno || '');
-    set('s_customer', p.customer || p.bkgno);
-    set('s_carrier',  p.carrier);
+    set('s_bkgno',       p.bkgno);
+    set('s_refno',       p.refno || '');
+    set('s_customer',    p.customer || p.bkgno);
+    set('s_carrier',     p.carrier);
     const polEl=document.getElementById('r_pol'); if(polEl&&p.pol){polEl.value=p.pol; window._selPol=p.pol;}
     const podEl=document.getElementById('r_pod'); if(podEl&&p.pod){podEl.value=p.pod; window._selPod=p.pod;}
-    set('s_etd',     p.etd);
-    set('s_remarks', p.note || '');
+    set('s_etd',         p.etd);
+    set('s_remarks',     p.note || '');
+    set('s_cy_date',     p.cyDate || '');
+    set('s_rtn_date',    p.rtnDate || '');
+    set('s_si_cutoff',   p.siCutoff || '');
+    set('s_vgm_cutoff',  p.vgmCutoff || '');
+    set('s_doc_cutoff',  p.docCutoff || '');
+    set('s_gate_closing',p.gateClosing || '');
     // Scroll to form
     const card=document.getElementById('shipment_form_card');
     if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
@@ -7768,6 +7794,12 @@ function clearImgExtract(){
       <div class="inp-group"><label class="inp-lbl">ETD</label><input type="date" id="pbkg_m_etd" class="inp"></div>
       <div class="inp-group"><label class="inp-lbl">POL</label><input id="pbkg_m_pol" class="inp" placeholder="e.g. Laem Chabang"></div>
       <div class="inp-group"><label class="inp-lbl">POD</label><input id="pbkg_m_pod" class="inp" placeholder="e.g. New York"></div>
+      <div class="inp-group"><label class="inp-lbl">CY Date</label><input type="date" id="pbkg_m_cy_date" class="inp"></div>
+      <div class="inp-group"><label class="inp-lbl">RTN Date</label><input type="date" id="pbkg_m_rtn_date" class="inp"></div>
+      <div class="inp-group"><label class="inp-lbl">SI Cut-Off</label><input id="pbkg_m_si_cutoff" class="inp" placeholder="30/JUN/2026 17:00 HRS"></div>
+      <div class="inp-group"><label class="inp-lbl">VGM Cut-Off</label><input id="pbkg_m_vgm_cutoff" class="inp" placeholder="30/JUN/2026 17:00 HRS"></div>
+      <div class="inp-group"><label class="inp-lbl">Doc Cut-Off</label><input id="pbkg_m_doc_cutoff" class="inp" placeholder="30/JUN/2026 17:00 HRS"></div>
+      <div class="inp-group"><label class="inp-lbl">Gate Closing</label><input id="pbkg_m_gate_closing" class="inp" placeholder="02/JUN/2026 20:00 HRS"></div>
       <div class="inp-group">
         <label class="inp-lbl">Cancellation Free Time</label>
         <input type="datetime-local" id="pbkg_m_freetime" class="inp">
@@ -8487,6 +8519,27 @@ function saveBpdfData(){
   const data = {};
   BPDF_IDS.forEach(id=>{ const el=document.getElementById(id); if(el) data[id]=el.value; });
   savedJobs[_bpdfIdx].bpdfData = data;
+
+  // ── Sync key fields back to Shipment record so they appear in the form ──
+  const j = savedJobs[_bpdfIdx];
+  const gv2 = id => (document.getElementById(id)?.value||'').trim();
+  j.siCutoff   = gv2('bpdf_si_cutoff');
+  j.vgmCutoff  = gv2('bpdf_vgm_cutoff');
+  j.docCutoff  = gv2('bpdf_cfm_bl');
+  j.gateClosing= gv2('bpdf_gate_closing');
+  // CY/RTN from bpdf_pu_date / bpdf_ti_date
+  if(gv2('bpdf_pu_date')) j.pickupDate = gv2('bpdf_pu_date');
+  if(gv2('bpdf_ti_date')) j.turninDate = gv2('bpdf_ti_date');
+  // Vessel info
+  if(gv2('bpdf_vsl'))        j.vessel        = gv2('bpdf_vsl').split('/')[0]?.trim() || j.vessel;
+  if(gv2('bpdf_mother_vsl')) j.motherVessel  = gv2('bpdf_mother_vsl').split('/')[0]?.trim() || j.motherVessel;
+  if(gv2('bpdf_carrier'))    j.carrier       = gv2('bpdf_carrier');
+  j.paperlessCode = gv2('bpdf_paperless');
+  j.pickupPlace   = gv2('bpdf_pu_place');
+  j.pickupPic     = gv2('bpdf_pu_pic');
+  j.turninAt      = gv2('bpdf_ti_at');
+  j.turninPic     = gv2('bpdf_ti_pic');
+
   storageSave();
 }
 
