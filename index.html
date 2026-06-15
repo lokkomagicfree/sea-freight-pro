@@ -8446,12 +8446,12 @@ function openBookingPdfModal(idx){
   set('bpdf_vgm_cutoff',    j.vgmCutoff || '');
   set('bpdf_gate_closing',  j.gateClosing || '');
   set('bpdf_paperless',     j.paperlessCode || '');
-  set('bpdf_pu_ref',        j.no || j.bookingNo || '');
-  set('bpdf_pu_date',       fmtDate(j.cyDate) || j.pickupDate || '');          // 4. CY Date
+  set('bpdf_pu_ref',        '');
+  set('bpdf_pu_date',       fmtDate(j.cyDate) || j.pickupDate || '');
   set('bpdf_pu_place',      j.pickupPlace || '');
   set('bpdf_pu_pic',        j.pickupPic || '');
-  set('bpdf_ti_ref',        j.no || j.bookingNo || '');
-  set('bpdf_ti_date',       fmtDate(j.rtnDate) || j.turninDate || '');         // 4. RTN Date
+  set('bpdf_ti_ref',        '');
+  set('bpdf_ti_date',       fmtDate(j.rtnDate) || j.turninDate || '');
   set('bpdf_ti_at',         j.turninAt || '');
   set('bpdf_ti_pic',        j.turninPic || '');
   set('bpdf_commodity',     j.commodity || '');
