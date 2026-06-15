@@ -8459,17 +8459,31 @@ function openBookingPdfModal(idx){
   set('bpdf_hs_code',       j.hsCode || 'Please advise');
   set('bpdf_special_remark',j.specialRemark || '');
 
-  // Load previously saved PDF fields (override only non-system fields)
+  // Load previously saved PDF fields — only restore fields that were actually saved with a value
+  // These are fields the user manually typed into the modal (not auto-filled from shipment)
   const saved = j.bpdfData || {};
-  const BPDF_IDS = ['bpdf_shipper','bpdf_shipper_ref','bpdf_bkgno','bpdf_carrier',
-    'bpdf_vsl','bpdf_mother_vsl','bpdf_etd','bpdf_eta',
-    'bpdf_port_receive','bpdf_port_discharge','bpdf_port_loading','bpdf_final_dest',
-    'bpdf_port_transit','bpdf_volume','bpdf_si_cutoff','bpdf_cfm_bl',
-    'bpdf_vgm_cutoff','bpdf_gate_closing','bpdf_paperless',
+  const BPDF_USER_FIELDS = [
+    // Cutoff times — user enters these manually
+    'bpdf_si_cutoff','bpdf_cfm_bl','bpdf_vgm_cutoff','bpdf_gate_closing',
+    // Vessel / carrier overrides
+    'bpdf_vsl','bpdf_mother_vsl','bpdf_carrier','bpdf_etd','bpdf_eta',
+    // Port overrides
+    'bpdf_port_receive','bpdf_port_discharge','bpdf_port_loading','bpdf_final_dest','bpdf_port_transit',
+    // Paperless & cutoffs
+    'bpdf_paperless',
+    // Pick up & Turn-in (user fills)
     'bpdf_pu_ref','bpdf_pu_date','bpdf_pu_place','bpdf_pu_pic',
     'bpdf_ti_ref','bpdf_ti_date','bpdf_ti_at','bpdf_ti_pic',
-    'bpdf_commodity','bpdf_weight','bpdf_hs_code','bpdf_special_remark'];
-  BPDF_IDS.forEach(id=>{ if(saved[id] !== undefined){ const el=document.getElementById(id); if(el) el.value=saved[id]; } });
+    // Other
+    'bpdf_shipper','bpdf_shipper_ref','bpdf_bkgno',
+    'bpdf_volume','bpdf_commodity','bpdf_weight','bpdf_hs_code','bpdf_special_remark',
+  ];
+  BPDF_USER_FIELDS.forEach(id=>{
+    if(saved[id] !== undefined && saved[id] !== ''){
+      const el=document.getElementById(id);
+      if(el) el.value = saved[id];
+    }
+  });
 
   // Load default special remark if field is still empty
   const srEl = document.getElementById('bpdf_special_remark');
