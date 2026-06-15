@@ -2538,6 +2538,12 @@ window.deleteLocalChargeTemplate = async function(){
 function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
+
+  // Charges that need per-container-type split inputs
+  const SPLIT_CHARGES = ['Ocean Freight','THC Origin','THC Dest'];
+  const ctnTypes = (_ctnRows||[]).filter(r=>r.qty>0);
+  const needSplit = ctnTypes.length > 1;
+
   tbody.innerHTML=items.map((name,i)=>{
     const isTHB=isThbCharge(name);
     const ccy=isTHB
@@ -2547,6 +2553,34 @@ function buildCharges(){
     const aprBtn = isLocal ? `<button type="button" onclick="toggleAPR(this)"
       style="font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;white-space:nowrap;font-family:var(--mono);margin-left:3px"
       data-apr="0" title="Toggle As per receipt">APR</button>` : '';
+
+    const doSplit = needSplit && SPLIT_CHARGES.includes(name);
+
+    if(doSplit){
+      // Per-ctn-type sell/cost inputs
+      const sellInputs = ctnTypes.map(r=>
+        `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px">${r.type}</span>
+          <input type="number" class="sell-inp inp" value="0" min="0" step="0.01"
+            data-ctn="${r.type}" data-qty="${r.qty}"
+            oninput="recalc()" style="color:var(--green);text-align:right;padding:3px 6px;font-size:11px">
+        </div>`).join('');
+      const costInputs = ctnTypes.map(r=>
+        `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px">${r.type}</span>
+          <input type="number" class="cost-inp inp" value="0" min="0" step="0.01"
+            data-ctn="${r.type}" data-qty="${r.qty}"
+            oninput="recalc()" style="color:var(--red);text-align:right;padding:3px 6px;font-size:11px">
+        </div>`).join('');
+      return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}" data-split="true">
+        <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
+        <td style="padding:4px 6px">${sellInputs}</td>
+        <td style="padding:4px 6px;display:flex;align-items:center;gap:3px;flex-direction:column">${costInputs}</td>
+        <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
+        <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
+      </tr>`;
+    }
+
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}">
     <td style="font-size:12px;padding:6px 10px">${name}${ccy}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
@@ -2569,21 +2603,43 @@ function recalc(){
     badge.textContent = label;
   }
   const rows=[...document.querySelectorAll('#charge_body tr')];
-  const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
-  const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
-  let ts=0,tc=0;
-  sells.forEach((s,i)=>{
-    const c=costs[i]||0,pr=s-c,mg=s>0?pr/s*100:0;
-    const isTHB=rows[i]?.dataset?.thb==='true';
-    const rate=isTHB?(exRate||35):1;
-    // Summary uses USD equivalent
-    ts+=s/rate; tc+=c/rate;
-    if(rows[i]){
-      rows[i].querySelector('.row-profit').textContent=(s||c)?(isTHB?'฿'+pr.toLocaleString('th-TH',{maximumFractionDigits:0}):'$'+pr.toFixed(2)):'—';
-      rows[i].querySelector('.row-margin').textContent=s?mg.toFixed(1)+'%':'—';
+  let ts=0, tc=0;
+
+  rows.forEach(row=>{
+    const isTHB = row.dataset?.thb==='true';
+    const isSplit = row.dataset?.split==='true';
+    const rate = isTHB?(exRate||35):1;
+
+    let rowSell=0, rowCost=0;
+
+    if(isSplit){
+      // Sum sell × qty per ctn type
+      row.querySelectorAll('.sell-inp').forEach(inp=>{
+        const qty = parseInt(inp.dataset.qty)||1;
+        rowSell += (parseFloat(inp.value)||0) * qty;
+      });
+      row.querySelectorAll('.cost-inp').forEach(inp=>{
+        const qty = parseInt(inp.dataset.qty)||1;
+        rowCost += (parseFloat(inp.value)||0) * qty;
+      });
+    } else {
+      const si = row.querySelector('.sell-inp');
+      const ci = row.querySelector('.cost-inp');
+      rowSell = (parseFloat(si?.value)||0) * totalQty;
+      rowCost = (parseFloat(ci?.value)||0) * totalQty;
     }
+
+    const pr = rowSell - rowCost;
+    const mg = rowSell > 0 ? pr/rowSell*100 : 0;
+    ts += rowSell/rate;
+    tc += rowCost/rate;
+
+    const profitEl = row.querySelector('.row-profit');
+    const marginEl = row.querySelector('.row-margin');
+    if(profitEl) profitEl.textContent = (rowSell||rowCost) ? (isTHB?'฿'+pr.toLocaleString('th-TH',{maximumFractionDigits:0}):'$'+pr.toFixed(2)) : '—';
+    if(marginEl) marginEl.textContent = rowSell ? mg.toFixed(1)+'%' : '—';
   });
-  ts*=totalQty; tc*=totalQty;
+
   const _rStatus=v('s_status')||'pending';
   const _rActive=(_rStatus==='confirmed'||_rStatus==='loaded'||_rStatus==='completed')&&_rStatus!=='cancelled';
   const profit=_rActive?ts-tc:0,margin=_rActive&&ts>0?(ts-tc)/ts*100:0;
@@ -3089,10 +3145,30 @@ function openMap(vessel,mmsi){window.open('https://www.marinetraffic.com/en/ais/
 // ── Save / Edit / Duplicate shipment ──────────────────────
 function saveShipment(){
   const etdVal=v('s_etd'),etaVal=v('s_eta'),jobType=v('s_jobtype');
-  const sells=[...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
-  const costs=[...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
   const chargeRows=[...document.querySelectorAll('#charge_body tr')];
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
+  // Build sells/costs arrays — for split rows store weighted total (sell×qty per type summed)
+  const sells = chargeRows.map(row=>{
+    if(row.dataset.split==='true'){
+      let t=0; row.querySelectorAll('.sell-inp').forEach(inp=>{ t+=(parseFloat(inp.value)||0)*(parseInt(inp.dataset.qty)||1); }); return t;
+    }
+    return parseFloat(row.querySelector('.sell-inp')?.value)||0;
+  });
+  const costs = chargeRows.map(row=>{
+    if(row.dataset.split==='true'){
+      let t=0; row.querySelectorAll('.cost-inp').forEach(inp=>{ t+=(parseFloat(inp.value)||0)*(parseInt(inp.dataset.qty)||1); }); return t;
+    }
+    return parseFloat(row.querySelector('.cost-inp')?.value)||0;
+  });
+  // Also save per-type values for split rows so we can restore them
+  const sellsPerType = chargeRows.map(row=>{
+    if(row.dataset.split!=='true') return null;
+    const obj={}; row.querySelectorAll('.sell-inp').forEach(inp=>{ obj[inp.dataset.ctn]=parseFloat(inp.value)||0; }); return obj;
+  });
+  const costsPerType = chargeRows.map(row=>{
+    if(row.dataset.split!=='true') return null;
+    const obj={}; row.querySelectorAll('.cost-inp').forEach(inp=>{ obj[inp.dataset.ctn]=parseFloat(inp.value)||0; }); return obj;
+  });
   let ts=0,tc=0;
   sells.forEach((s,i)=>{
     const c=costs[i]||0;
@@ -3113,7 +3189,7 @@ function saveShipment(){
     jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),motherVoy:v('s_mother_voy'),remarks:v('s_remarks'),
     csAssigned:v('s_cs_assigned')||'', csTasks:v('s_cs_tasks')||'',
     status:v('s_status')||'pending',chargeType:v('s_type'),
-    sells,costs,sell:ts,cost:tc,profit,margin,comm,commThb:comm*exRate,commRate,rate:exRate,
+    sells,costs,sellsPerType,costsPerType,sell:ts,cost:tc,profit,margin,comm,commThb:comm*exRate,commRate,rate:exRate,
     carrier:v2('s_carrier'),incoterm:v2('s_incoterm'),consignee:v2('s_consignee'),
     bltype:v2('s_bltype'),sc:v2('s_sc'),ams:v2('s_ams'),commodity:v2('s_commodity'),
     hscode:v2('s_hscode'),
@@ -3192,12 +3268,25 @@ function editShipment(idx){
   buildCharges();
 loadLCTemplates();
   if(j.sells&&j.costs){
-    const si=[...document.querySelectorAll('.sell-inp')],ci=[...document.querySelectorAll('.cost-inp')];
-    j.sells.forEach((v,i)=>{if(si[i])si[i].value=v;});j.costs.forEach((v,i)=>{if(ci[i])ci[i].value=v;});
+    const chargeRows=[...document.querySelectorAll('#charge_body tr')];
+    chargeRows.forEach((row,i)=>{
+      if(row.dataset.split==='true' && j.sellsPerType?.[i]){
+        // Restore per-type values
+        row.querySelectorAll('.sell-inp').forEach(inp=>{
+          inp.value = j.sellsPerType[i][inp.dataset.ctn] || 0;
+        });
+        row.querySelectorAll('.cost-inp').forEach(inp=>{
+          inp.value = j.costsPerType?.[i]?.[inp.dataset.ctn] || 0;
+        });
+      } else {
+        const si=row.querySelector('.sell-inp'), ci=row.querySelector('.cost-inp');
+        if(si) si.value = j.sells[i]||0;
+        if(ci) ci.value = j.costs[i]||0;
+      }
+    });
     // Restore APR flags
     if(j.aprFlags && j.aprFlags.length){
-      const rows=[...document.querySelectorAll('#charge_body tr')];
-      rows.forEach((r,i)=>{
+      chargeRows.forEach((r,i)=>{
         const btn=r.querySelector('button[data-apr]');
         if(btn && j.aprFlags[i]===true && btn.dataset.apr!=='1') window.toggleAPR(btn);
       });
@@ -8255,10 +8344,13 @@ window.closeShipmentDetail = closeShipmentDetail;
         </div>
       </div>
     </div>
-    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;background:var(--s2)">
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;background:var(--s2);flex-wrap:wrap">
       <button onclick="generateBookingPDF()" class="btn btn-cyan" style="font-size:12px;padding:6px 18px">📥 Download PDF</button>
+      <button onclick="saveBpdfDataManual()" class="btn btn-ghost" style="font-size:12px;padding:6px 16px;color:var(--green);border-color:rgba(39,174,96,.4);font-weight:700">💾 Save</button>
       <button onclick="duplicateBookingPDF()" class="btn btn-gold" style="font-size:12px;padding:6px 18px">📋 Duplicate & Edit</button>
-      <button onclick="closeBookingPdfModal()" class="btn btn-ghost" style="font-size:12px;padding:6px 18px;background:var(--s3);border:1.5px solid var(--border2);color:var(--text);font-weight:700">Cancel</button>
+      <button onclick="copyBpdfVesselInfo()" class="btn btn-ghost" style="font-size:12px;padding:6px 16px;color:var(--cyan);border-color:rgba(41,128,185,.4)" title="Copy ข้อมูลเรือ/cutoff/pickup/turnin เพื่อ paste ใส่ Shipment อื่น">📤 Copy Vessel Info</button>
+      <button onclick="pasteBpdfVesselInfo()" class="btn btn-ghost" id="paste_vessel_btn" style="font-size:12px;padding:6px 16px;color:var(--muted);border-color:rgba(39,174,96,.4)" title="Paste ข้อมูลที่ copy ไว้">📥 Paste</button>
+      <button onclick="closeBookingPdfModal()" class="btn btn-ghost" style="font-size:12px;padding:6px 18px;background:var(--s3);border:1.5px solid var(--border2);color:var(--text);font-weight:700">✕ Close</button>
     </div>
   </div>
 </div>
@@ -8348,6 +8440,21 @@ function openBookingPdfModal(idx){
   modal.style.zIndex = '9999';
   modal._justOpened = true;
   setTimeout(()=>{ modal._justOpened = false; }, 300);
+
+  // Highlight paste button if clipboard has data
+  setTimeout(function(){
+    var pasteBtn = document.getElementById('paste_vessel_btn');
+    if(!pasteBtn) return;
+    var hasClip = !!window._bpdfClipboard;
+    if(!hasClip){ try{ hasClip=!!localStorage.getItem('bpdf_vessel_clipboard'); }catch(ex){} }
+    pasteBtn.style.opacity = hasClip ? '1' : '0.35';
+    if(hasClip){
+      try{
+        var d = window._bpdfClipboard || JSON.parse(localStorage.getItem('bpdf_vessel_clipboard')||'{}');
+        pasteBtn.title = 'Paste: ' + (d.bpdf_vsl||'') + (d.bpdf_carrier ? ' ('+d.bpdf_carrier+')' : '');
+      }catch(ex){}
+    }
+  }, 150);
 }
 
 
@@ -8366,6 +8473,14 @@ function saveBpdfData(){
   savedJobs[_bpdfIdx].bpdfData = data;
   storageSave();
 }
+
+window.saveBpdfDataManual = function(){
+  saveBpdfData();
+  toast('💾 Saved แล้ว!');
+  // Flash the save button green briefly
+  const btn = document.querySelector('[onclick="saveBpdfDataManual()"]');
+  if(btn){ btn.style.background='rgba(39,174,96,.2)'; setTimeout(()=>btn.style.background='',1200); }
+};
 
 function closeBookingPdfModal(){
   saveBpdfData();
@@ -8604,8 +8719,12 @@ function duplicateBookingPDF(){
     }, 4000);
   }
   toast('📋 Duplicate — กรอก Booking No. ใหม่แล้ว Download PDF ได้เลยครับ');
+}
 
-// ── SOP PDF Generator ──────────────────────────────────────
+// ── Copy Vessel Info ──────────────────────────────────────
+window._bpdfClipboard = null;
+
+
 window.renderSOP = function(){
   const jobs = window.savedJobs || [];
   const search = (document.getElementById('sop_search')?.value||'').toLowerCase();
@@ -8890,8 +9009,6 @@ window.generateSopPDF = function(idx){
   toast('📥 Downloaded: SOP_'+(j.no||'DRAFT')+'.pdf');
 };
 
-
-}
 
 // ── Filter Preferences (localStorage — simple & reliable) ──
 window.saveFilterPrefs = function(){
@@ -9984,6 +10101,53 @@ window.saveDefaultSpecialRemark = function(){
   if(badge){ badge.style.display = val ? '' : 'none'; badge.textContent = '✓ Default saved'; }
   // brief flash
   setTimeout(()=>{ if(badge) badge.textContent = val ? '✓ Default saved' : ''; }, 2000);
+};
+
+// ── Copy / Paste Vessel Info (Booking PDF Modal) ──────────
+// ── Copy / Paste Vessel Info (Booking PDF Modal) ──────────
+const BPDF_VESSEL_FIELDS = [
+  'bpdf_carrier','bpdf_vsl','bpdf_mother_vsl','bpdf_etd','bpdf_eta',
+  'bpdf_port_receive','bpdf_port_discharge','bpdf_port_loading',
+  'bpdf_final_dest','bpdf_port_transit',
+  'bpdf_si_cutoff','bpdf_cfm_bl','bpdf_vgm_cutoff','bpdf_gate_closing',
+  'bpdf_paperless',
+  'bpdf_pu_ref','bpdf_pu_date','bpdf_pu_place','bpdf_pu_pic',
+  'bpdf_ti_ref','bpdf_ti_date','bpdf_ti_at','bpdf_ti_pic',
+];
+
+window.copyBpdfVesselInfo = function(){
+  const data = {};
+  BPDF_VESSEL_FIELDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) data[id] = el.value || '';
+  });
+  window._bpdfClipboard = data;
+  try{ localStorage.setItem('bpdf_vessel_clipboard', JSON.stringify(data)); }catch(e){}
+  toast('📤 Copied Vessel Info แล้ว — เปิด PDF modal ของ Shipment อื่น แล้วกด Paste');
+};
+
+window.pasteBpdfVesselInfo = function(){
+  let data = window._bpdfClipboard;
+  if(!data){ try{ const s=localStorage.getItem('bpdf_vessel_clipboard'); if(s) data=JSON.parse(s); }catch(e){} }
+  if(!data){ toast('⚠️ ไม่มีข้อมูลที่ copy ไว้ กรุณากด Copy Vessel Info ก่อน'); return; }
+
+  const preview = [
+    data.bpdf_vsl         ? `🚢 Vessel: ${data.bpdf_vsl}` : null,
+    data.bpdf_carrier     ? `🏢 Carrier: ${data.bpdf_carrier}` : null,
+    data.bpdf_si_cutoff   ? `📅 SI Cutoff: ${data.bpdf_si_cutoff}` : null,
+    data.bpdf_gate_closing? `🚪 Gate: ${data.bpdf_gate_closing}` : null,
+    data.bpdf_paperless   ? `📱 Paperless: ${data.bpdf_paperless}` : null,
+    data.bpdf_pu_place    ? `📍 Pick up: ${data.bpdf_pu_place}` : null,
+    data.bpdf_ti_at       ? `🔄 Turn-in: ${data.bpdf_ti_at}` : null,
+  ].filter(Boolean).join('\n');
+
+  if(!confirm(`Paste ข้อมูลต่อไปนี้ใส่ modal ปัจจุบัน?\n\n${preview}\n\n(จะทับ Carrier, Vessel, Cutoff, Paperless, Pick up, Turn-in)`)) return;
+
+  BPDF_VESSEL_FIELDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && data[id] !== undefined) el.value = data[id];
+  });
+  toast('📥 Paste Vessel Info เรียบร้อยแล้ว');
 };
 
 
