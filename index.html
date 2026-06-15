@@ -1037,6 +1037,10 @@ body{font-size:14px;font-weight:450}
     <div class="card" style="margin-bottom:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--cyan)">🚛 IN-TRANSIT / CROSS BORDER TRACKING</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="dbit_search_ref" class="fi" placeholder="REF... e.g. QBKK" oninput="renderDbIntransit()"
+          style="width:140px;font-size:11px;padding:4px 10px">
+        <input id="dbit_search_bkg" class="fi" placeholder="Booking... e.g. ZIMU" oninput="renderDbIntransit()"
+          style="width:160px;font-size:11px;padding:4px 10px">
         <span id="dbit_sync_badge" style="font-size:10px;font-family:var(--mono);color:var(--muted)"></span>
         <button onclick="dbStorageSave();toast('⬆ Syncing to CS Portal…')" class="btn btn-ghost" style="font-size:10px;padding:3px 10px">☁ Sync to CS</button>
         <select id="dbit_month_filter" class="inp" style="font-size:11px;padding:4px 8px;width:130px" onchange="renderDbIntransit()">
@@ -3548,8 +3552,13 @@ function renderDbIntransit(){
   if(!tbody) return;
   const months=[...new Set(dbRows.map(r=>r.month).filter(Boolean))].sort();
   if(mSel){ const prev=mSel.value; mSel.innerHTML='<option value="">All Months</option>'+months.map(m=>{ const[y,mo]=m.split('-'); return `<option value="${m}" ${m===prev?'selected':''}>${(MN[mo]||mo)} ${y}</option>`; }).join(''); mSel.value=prev; }
-  const curMth=mSel?.value||'';
-  const filtered=curMth?dbRows.filter(r=>r.month===curMth):dbRows;
+  const curMth   = mSel?.value || '';
+  const qRef     = (document.getElementById('dbit_search_ref')?.value || '').trim().toLowerCase();
+  const qBkg     = (document.getElementById('dbit_search_bkg')?.value || '').trim().toLowerCase();
+
+  let filtered = curMth ? dbRows.filter(r=>r.month===curMth) : dbRows;
+  if(qRef) filtered = filtered.filter(r=>(r.scno||r.refno||r.custBkg||'').toLowerCase().includes(qRef));
+  if(qBkg) filtered = filtered.filter(r=>(r.bkgno||r.carrier||'').toLowerCase().includes(qBkg));
   const fmtT=n=>n?n.toLocaleString('th-TH',{maximumFractionDigits:0}):'—';
 
   const ddSel=(id,field,val,opts)=>`<select onchange="updateDbRow(${id},'${field}',this.value)" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:${val==='YES'?'var(--green)':'var(--muted)'};font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none">${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('')}</select>`;
