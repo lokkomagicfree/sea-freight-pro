@@ -3883,7 +3883,19 @@ window.savePreBkg = async function(){
 };
 
 window.quickRelease = function(idx){
-  _preBkgEditIdx=idx;
+  const p = _preBkgList[idx];
+  if(!p) return;
+  _preBkgEditIdx = idx;
+
+  // Show REF input modal before releasing
+  const existing = p.refno || '';
+  const ref = window.prompt(
+    `📋 กรอก REF No. ก่อน Release\n\nBooking: ${p.bkgno || '—'}\nCustomer: ${p.customer || '—'}`,
+    existing
+  );
+  if(ref === null) return; // cancelled
+
+  p.refno = ref.trim();
   releaseToShipment();
 };
 
@@ -3900,18 +3912,22 @@ window.releaseToShipment = async function(){
 
   // Switch to Shipments tab and pre-fill form
   showPage('shipments');
-  // Pre-fill shipment form
-  const set=(id,v)=>{const e=document.getElementById(id);if(e&&v)e.value=v;};
+  window._editIdx = null; // ensure new shipment
+
+  const set=(id,v)=>{const e=document.getElementById(id);if(e&&v!==undefined&&v!=='')e.value=v;};
   setTimeout(()=>{
-    set('s_bkgno', p.bkgno);
-    set('s_customer', p.customer||p.bkgno);
-    set('s_carrier', p.carrier);
-    set('r_pol', p.pol); window._selPol=p.pol||'';
-    set('r_pod', p.pod); window._selPod=p.pod||'';
-    set('s_etd', p.etd);
-    set('s_remarks', p.note||'');
-    const cf=document.getElementById('s_carrier');if(cf&&p.carrier)cf.value=p.carrier;
-    toast('🚢 โหลดข้อมูลจาก Pre-Booking: '+p.bkgno+' — กรอกข้อมูลเพิ่มแล้ว Save ได้เลยครับ');
+    set('s_bkgno',   p.bkgno);
+    set('s_refno',   p.refno || '');
+    set('s_customer', p.customer || p.bkgno);
+    set('s_carrier',  p.carrier);
+    const polEl=document.getElementById('r_pol'); if(polEl&&p.pol){polEl.value=p.pol; window._selPol=p.pol;}
+    const podEl=document.getElementById('r_pod'); if(podEl&&p.pod){podEl.value=p.pod; window._selPod=p.pod;}
+    set('s_etd',     p.etd);
+    set('s_remarks', p.note || '');
+    // Scroll to form
+    const card=document.getElementById('shipment_form_card');
+    if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
+    toast('🚢 Pre-fill เรียบร้อย — ตรวจสอบข้อมูลแล้วกด 💾 Save Shipment ได้เลยครับ');
   }, 300);
 
   renderPreBooking();
