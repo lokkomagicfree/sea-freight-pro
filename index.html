@@ -2418,24 +2418,50 @@ function isThbCharge(name){ return THB_CHARGES.some(t=>name===t); }
 
 window.toggleAPR = function(btn){
   const isOn = btn.dataset.apr === '1';
-  const costInp = btn.previousElementSibling;
-  if(!costInp) return;
+  const row = btn.closest('tr');
+  if(!row) return;
+  const costInp = btn.previousElementSibling; // cost input
+  const sellInp = row.querySelector('.sell-inp');
+
   if(!isOn){
-    // Turn ON: disable cost input, show APR
-    costInp.dataset.aprVal = costInp.value; // save current value
-    costInp.value = 0;
-    costInp.disabled = true;
-    costInp.style.opacity = '0.3';
+    // Turn ON — disable both SELL and COST, show APR
+    if(sellInp){
+      sellInp.dataset.aprVal = sellInp.value;
+      sellInp.value = '';
+      sellInp.disabled = true;
+      sellInp.placeholder = 'APR';
+      sellInp.style.opacity = '0.4';
+      sellInp.style.fontStyle = 'italic';
+    }
+    if(costInp){
+      costInp.dataset.aprVal = costInp.value;
+      costInp.value = '';
+      costInp.disabled = true;
+      costInp.placeholder = 'APR';
+      costInp.style.opacity = '0.4';
+      costInp.style.fontStyle = 'italic';
+    }
     btn.dataset.apr = '1';
     btn.style.background = 'rgba(192,57,43,.15)';
     btn.style.color = 'var(--red)';
     btn.style.borderColor = 'var(--red)';
     btn.textContent = 'APR ✓';
   } else {
-    // Turn OFF: re-enable
-    costInp.value = costInp.dataset.aprVal || 0;
-    costInp.disabled = false;
-    costInp.style.opacity = '1';
+    // Turn OFF — restore both inputs
+    if(sellInp){
+      sellInp.value = sellInp.dataset.aprVal || 0;
+      sellInp.disabled = false;
+      sellInp.placeholder = '';
+      sellInp.style.opacity = '1';
+      sellInp.style.fontStyle = '';
+    }
+    if(costInp){
+      costInp.value = costInp.dataset.aprVal || 0;
+      costInp.disabled = false;
+      costInp.placeholder = '';
+      costInp.style.opacity = '1';
+      costInp.style.fontStyle = '';
+    }
     btn.dataset.apr = '0';
     btn.style.background = 'var(--s2)';
     btn.style.color = 'var(--muted)';
@@ -3305,7 +3331,6 @@ loadLCTemplates();
         if(ci) ci.value = j.costs[i]||0;
       }
     });
-    // Restore APR flags
     if(j.aprFlags && j.aprFlags.length){
       chargeRows.forEach((r,i)=>{
         const btn=r.querySelector('button[data-apr]');
