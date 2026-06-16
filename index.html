@@ -3594,8 +3594,8 @@ function renderDbIntransit(){
   const qBkg     = (document.getElementById('dbit_search_bkg')?.value || '').trim().toLowerCase();
 
   let filtered = curMth ? dbRows.filter(r=>r.month===curMth) : dbRows;
-  if(qRef) filtered = filtered.filter(r=>(r.scno||r.refno||r.custBkg||'').toLowerCase().includes(qRef));
-  if(qBkg) filtered = filtered.filter(r=>(r.bkgno||r.carrier||'').toLowerCase().includes(qBkg));
+  if(qRef) filtered = filtered.filter(r=>(r.customerBooking||'').toLowerCase().includes(qRef));
+  if(qBkg) filtered = filtered.filter(r=>(r.bookingNo||'').toLowerCase().includes(qBkg));
   const fmtT=n=>n?n.toLocaleString('th-TH',{maximumFractionDigits:0}):'—';
 
   const ddSel=(id,field,val,opts)=>`<select onchange="updateDbRow(${id},'${field}',this.value)" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:${val==='YES'?'var(--green)':'var(--muted)'};font-size:11px;font-family:var(--mono);padding:3px 4px;outline:none">${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('')}</select>`;
