@@ -589,7 +589,7 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">Job Type</label>
             <select class="inp" id="s_jobtype"><option value="export">Export</option><option value="import">Import</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Status</label>
-            <select class="inp" id="s_status">
+            <select class="inp" id="s_status" onchange="recalc()">
               <option value="pending">⏳ Pending</option><option value="confirmed">✅ Confirmed</option>
               <option value="loaded">🚢 Loaded</option>
               <option value="completed">✔ Completed</option>
