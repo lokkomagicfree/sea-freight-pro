@@ -6181,7 +6181,11 @@ window.addEventListener('message', function(ev){
   else if(msg.type === 'save_draft'){
     try{ localStorage.setItem(WSR_STORE_KEY, JSON.stringify(msg.data)); }catch(e){}
     if(window.fbSet){
-      window.fbSet('data/weeklyReportDraft', {data: msg.data, updatedAt: new Date().toISOString()}).catch(()=>{});
+      // Firestore rejects nested arrays (the secured/bco/coloader/etc. sections are
+      // arrays of arrays) — store the whole payload as a JSON string to sidestep that.
+      window.fbSet('data/weeklyReportDraft', {dataJson: JSON.stringify(msg.data), updatedAt: new Date().toISOString()}).catch(e=>{
+        console.warn('Weekly report Firestore save failed', e);
+      });
     }
     f.contentWindow.postMessage({source:'sfp', type:'save_ack', ok:true, silent: !!msg.silent}, '*');
   }
@@ -6822,15 +6826,17 @@ onAuthStateChanged(auth, async user=>{
     onSnapshot(_wsrRef, (snap)=>{
       if(!snap.exists()) return;
       const payload = snap.data();
-      if(!payload?.data) return;
-      const remote = JSON.stringify(payload.data);
+      if(!payload?.dataJson) return;
+      let parsedData = null;
+      try{ parsedData = JSON.parse(payload.dataJson); }catch(e){ return; }
+      const remote = payload.dataJson;
       let local = null;
       try{ local = localStorage.getItem(WSR_STORE_KEY); }catch(e){}
       if(remote === local) return; // no change, or this is our own save echoing back
       try{ localStorage.setItem(WSR_STORE_KEY, remote); }catch(e){}
       const f = document.getElementById('wsr_iframe');
       if(f && f.dataset.loaded && f.contentWindow){
-        f.contentWindow.postMessage({source:'sfp', type:'draft_data', data: payload.data}, '*');
+        f.contentWindow.postMessage({source:'sfp', type:'draft_data', data: parsedData}, '*');
         const b = document.getElementById('wsr_sync_badge');
         if(b){ b.textContent='🔄 Updated'; b.style.color='var(--cyan)'; setTimeout(()=>b.textContent='',3000); }
         console.log('🔄 Weekly Report draft updated from another device');
