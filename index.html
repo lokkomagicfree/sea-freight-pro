@@ -3026,10 +3026,45 @@ function statusSel(cur,idx){
 }
 function updateStatus(idx,newStatus){
   if(!savedJobs[idx])return;
-  savedJobs[idx].status=newStatus;
-  if(!savedJobs[idx].statusHistory)savedJobs[idx].statusHistory=[];
-  savedJobs[idx].statusHistory.push({status:newStatus,date:new Date().toISOString(),note:'Changed'});
+  const j=savedJobs[idx];
+  j.status=newStatus;
+  if(!j.statusHistory)j.statusHistory=[];
+  j.statusHistory.push({status:newStatus,date:new Date().toISOString(),note:'Changed'});
+  recalcJobFinancials(j);
   renderShipments();updateAlertCount();storageSave();
+}
+
+// Recompute profit/margin/comm/commThb on a job after its status changes,
+// using the sell/cost figures already stored on the job (set at save time).
+function recalcJobFinancials(j){
+  const ts=j.sell||j.totalSell||0, tc=j.cost||j.totalCost||0;
+  const _active=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed')&&j.status!=='cancelled';
+  j.profit = _active ? ts-tc : 0;
+  j.margin = _active && ts>0 ? j.profit/ts*100 : 0;
+  j.comm   = _active ? j.profit*(j.commRate??commRate) : 0;
+  j.commThb= j.comm*(j.rate||exRate);
+}
+
+// Auto-advance status to "loaded" once ETD has passed — only for jobs
+// currently "confirmed". Pending and cancelled jobs are left untouched.
+function autoAdvanceOverdueETD(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  let changed = false;
+  (savedJobs||[]).forEach(j=>{
+    if(j.status!=='confirmed') return;
+    if(!j.etd) return;
+    const etdDate = new Date(j.etd+'T00:00:00');
+    if(isNaN(etdDate)) return;
+    if(etdDate < today){
+      j.status='loaded';
+      if(!j.statusHistory)j.statusHistory=[];
+      j.statusHistory.push({status:'loaded',date:new Date().toISOString(),note:'Auto-advanced (ETD passed)'});
+      recalcJobFinancials(j);
+      changed = true;
+    }
+  });
+  if(changed){ renderShipments(); updateAlertCount(); storageSave(); }
+  return changed;
 }
 function openMap(vessel,mmsi){window.open('https://www.marinetraffic.com/en/ais/home/centerx:100/centery:13/zoom:8','_blank');}
 
@@ -4696,6 +4731,7 @@ async function fetchRate(){
 // ── Init ───────────────────────────────────────────────────
 buildCharges();
 storageLoad();   // load from localStorage first (fallback before Firebase)
+autoAdvanceOverdueETD();   // bump pending/confirmed jobs past ETD to "loaded"
 initCtnRows();
 renderShipments();
 renderTodos();
@@ -4703,6 +4739,7 @@ renderCSTeam();
 renderCSDatalist();
 fetchRate();
 setInterval(fetchRate,60000);
+setInterval(autoAdvanceOverdueETD,3600000); // re-check every hour in case the app stays open past midnight
 showLoadRatesPrompt();
 setTimeout(()=>{ initExportDates?.(); qLoadFromStorage?.(); updateAlertCount(); updateRateCacheBadge(); },200);
 
