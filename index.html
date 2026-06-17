@@ -6782,7 +6782,7 @@ async function initFirestoreSync(){
     rateMeta: rateMetaSnap,
     hasJobs: !!jobsSnap?.jobs,
   });
-  if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; renderNewBizList?.(); }
+  if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; window.renderNewBizList?.(); }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
   if(dbItSnap?.rows){
