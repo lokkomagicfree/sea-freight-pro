@@ -1199,7 +1199,10 @@ body{font-size:14px;font-weight:450}
         <div style="font-size:16px;font-weight:700;color:var(--cyan)">📊 Weekly Sale Report</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">กรอกข้อมูลรายสัปดาห์ — New Secured Business, BCO/Co-loader Accounts, Monthly Target</div>
       </div>
-      <button onclick="window.open('','_blank').document.write(document.getElementById('wsr_iframe').contentDocument.documentElement.outerHTML)" class="btn btn-ghost" style="font-size:11px;padding:5px 14px">↗ Open in New Tab</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="wsr_sync_badge" style="font-size:11px;font-weight:700"></span>
+        <button onclick="window.open('','_blank').document.write(document.getElementById('wsr_iframe').contentDocument.documentElement.outerHTML)" class="btn btn-ghost" style="font-size:11px;padding:5px 14px">↗ Open in New Tab</button>
+      </div>
     </div>
     <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
       <iframe id="wsr_iframe" style="width:100%;border:none;min-height:1400px;display:block" title="Weekly Sale Report"></iframe>
@@ -6159,7 +6162,21 @@ window.addEventListener('message', function(ev){
   if(!f || !f.contentWindow) return;
 
   if(msg.type === 'request_monthly_profit'){
-    f.contentWindow.postMessage({source:'sfp', type:'monthly_profit', data:getMonthlyProfitFromShipments()}, '*');
+    // If Firestore jobs sync hasn't finished yet, wait briefly so we don't
+    // answer with stale/empty data right after a page refresh.
+    const respond = () => f.contentWindow.postMessage({source:'sfp', type:'monthly_profit', data:getMonthlyProfitFromShipments()}, '*');
+    if(window._jobsSyncReady){
+      respond();
+    } else {
+      let waited = 0;
+      const iv = setInterval(()=>{
+        waited += 150;
+        if(window._jobsSyncReady || waited >= 4000){
+          clearInterval(iv);
+          respond();
+        }
+      }, 150);
+    }
   }
   else if(msg.type === 'save_draft'){
     try{ localStorage.setItem(WSR_STORE_KEY, JSON.stringify(msg.data)); }catch(e){}
@@ -6799,6 +6816,26 @@ onAuthStateChanged(auth, async user=>{
         console.log('🔄 Jobs updated by CS Portal');
       }
     }, ()=>{});
+
+    // Real-time listener for Weekly Report draft — push to iframe live on other devices
+    const _wsrRef = doc(db,'users',uid(),'data','weeklyReportDraft');
+    onSnapshot(_wsrRef, (snap)=>{
+      if(!snap.exists()) return;
+      const payload = snap.data();
+      if(!payload?.data) return;
+      const remote = JSON.stringify(payload.data);
+      let local = null;
+      try{ local = localStorage.getItem(WSR_STORE_KEY); }catch(e){}
+      if(remote === local) return; // no change, or this is our own save echoing back
+      try{ localStorage.setItem(WSR_STORE_KEY, remote); }catch(e){}
+      const f = document.getElementById('wsr_iframe');
+      if(f && f.dataset.loaded && f.contentWindow){
+        f.contentWindow.postMessage({source:'sfp', type:'draft_data', data: payload.data}, '*');
+        const b = document.getElementById('wsr_sync_badge');
+        if(b){ b.textContent='🔄 Updated'; b.style.color='var(--cyan)'; setTimeout(()=>b.textContent='',3000); }
+        console.log('🔄 Weekly Report draft updated from another device');
+      }
+    }, ()=>{});
   } else {
     _currentUser = null;
     if(overlay) overlay.style.display='flex';
@@ -6821,6 +6858,7 @@ async function initFirestoreSync(){
     hasJobs: !!jobsSnap?.jobs,
   });
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; window.renderNewBizList?.(); }
+  window._jobsSyncReady = true;
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
   if(dbItSnap?.rows){
