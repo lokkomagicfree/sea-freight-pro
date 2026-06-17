@@ -3515,6 +3515,7 @@ function renderShipments(){
 // ══════════════════════════════════════════════════
 let dbRows = [];
 window.__getDbRows = () => dbRows;
+window.__setDbRows = (rows) => { dbRows = rows; };
 function dbStorageSave(){
   try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){}
   // Sync to Firestore — retry up to 5s if fbSet not ready yet
@@ -8019,17 +8020,9 @@ onAuthStateChanged(auth, async user=>{
       const remote = JSON.stringify(data.rows);
       const local  = JSON.stringify(window.__getDbRows?.() || []);
       if(remote !== local){
-        // Merge CS updates back into dbRows
-        const remoteRows = data.rows;
-        const currentRows = window.__getDbRows?.() || [];
-        remoteRows.forEach(rr=>{
-          const local = currentRows.find(lr=>lr.id===rr.id);
-          if(local){
-            local.invoice   = rr.invoice;
-            local.sentToDb  = rr.sentToDb;
-          }
-        });
-        try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(currentRows)); }catch(e){}
+        // Replace local rows entirely with remote data
+        window.__setDbRows?.(remoteRows);
+        try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(remoteRows)); }catch(e){}
         window.renderDbIntransit?.();
         // Show badge
         const b = document.getElementById('dbit_sync_badge');
@@ -8093,7 +8086,11 @@ async function initFirestoreSync(){
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; renderNewBizList?.(); }
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
-  if(dbItSnap?.rows)         { window.dbRows = dbItSnap.rows; try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){} }
+  if(dbItSnap?.rows){
+    window.__setDbRows?.(dbItSnap.rows);
+    try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){}
+    window.renderDbIntransit?.();
+  }
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
     if(settSnap.exRate!==undefined)   window.exRate   = settSnap.exRate;
