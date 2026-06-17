@@ -3439,10 +3439,10 @@ function renderShipments(){
         <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
-        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.profit>0?'var(--green)':j.profit<0?'var(--red)':'var(--muted)'};font-weight:600;padding:7px 10px">${j.profit?'$'+Math.round(j.profit):'—'}</td>
-        <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:7px 10px">${j.margin.toFixed(1)}%</td>
-        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">$${j.comm.toFixed(2)}</td>
-        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.profit>0?'var(--green)':j.profit<0?'var(--red)':'var(--muted)'};font-weight:600;padding:7px 10px">${j.status==='cancelled'?'—':(j.profit?'$'+Math.round(j.profit):'—')}</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:7px 10px">${j.status==='cancelled'?'—':j.margin.toFixed(1)+'%'}</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">${j.status==='cancelled'?'—':'$'+j.comm.toFixed(2)}</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.status==='cancelled'?'—':j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'}</td>
         <td style="padding:5px 8px;min-width:110px">${statusSel(j.status,j._idx)}</td>
         <td style="padding:4px 8px;min-width:160px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value;storageSave()" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;padding:2px 4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
@@ -4186,8 +4186,9 @@ function renderMonthlySummary(groups,sortedKeys){
   let gS=0,gC=0,gP=0,gCo=0,gT=0,gJ=0,gDb=0;
   tbody.innerHTML=mergedKeys.map((key)=>{
     const jobs=(groups[key])||[];
-    const mS=jobs.reduce((s,j)=>s+j.sell,0),mC=jobs.reduce((s,j)=>s+j.cost,0),mP=jobs.reduce((s,j)=>s+j.profit,0);
-    const mCo=jobs.reduce((s,j)=>s+j.comm,0),mT=jobs.reduce((s,j)=>s+j.commThb,0);
+    const activeJobs = jobs.filter(j=>j.status!=='cancelled');
+    const mS=activeJobs.reduce((s,j)=>s+j.sell,0),mC=activeJobs.reduce((s,j)=>s+j.cost,0),mP=activeJobs.reduce((s,j)=>s+j.profit,0);
+    const mCo=activeJobs.reduce((s,j)=>s+j.comm,0),mT=activeJobs.reduce((s,j)=>s+j.commThb,0);
     const mDb=dbByMonth[key]||0;  // Transit profit in THB
     const mDbCount=dbCountByMonth[key]||0;
     const mDbComm = mDb * (window.commRate||0.25); // Transit comm = profit × commRate
