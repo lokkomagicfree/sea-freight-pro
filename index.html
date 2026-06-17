@@ -6811,8 +6811,8 @@ onAuthStateChanged(auth, async user=>{
       const local  = JSON.stringify(window.__getDbRows?.() || []);
       if(remote !== local){
         // Replace local rows entirely with remote data
-        window.__setDbRows?.(remoteRows);
-        try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(remoteRows)); }catch(e){}
+        window.__setDbRows?.(data.rows);
+        try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(data.rows)); }catch(e){}
         window.renderDbIntransit?.();
         // Show badge
         const b = document.getElementById('dbit_sync_badge');
