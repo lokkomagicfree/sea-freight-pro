@@ -4484,7 +4484,7 @@ function recalcMonthlyComm(inp){
   }, 500);
 }
 
-function commDueDate(key){if(!key||key==='Unknown')return null;const[y,m]=key.split('-').map(Number);return new Date(y,m-1+4,1);}
+function commDueDate(key){if(!key||key==='Unknown')return null;const[y,m]=key.split('-').map(Number);return new Date(y,m-1+5,1);}
 function commDueLabel(key){const d=commDueDate(key);if(!d)return'—';const MN2=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return MN2[d.getMonth()+1]+' '+String(d.getFullYear()).slice(2);}
 function commDueColor(key){const d=commDueDate(key);if(!d)return'var(--muted)';const now=new Date(),diff=Math.ceil((d-now)/86400000);if(diff<0)return'var(--red)';if(diff<=30)return'var(--yellow)';return'var(--muted)';}
 
