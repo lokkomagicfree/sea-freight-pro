@@ -488,6 +488,7 @@ body{font-size:14px;font-weight:450}
     <!-- Filters -->
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input class="fi" id="bkg_search" placeholder="🔍 Booking No…" oninput="renderShipments()" spellcheck="false" style="width:170px;font-size:12px;padding:6px 10px">
+      <input class="fi" id="jobno_search" placeholder="🔍 Job No…" oninput="renderShipments()" spellcheck="false" style="width:160px;font-size:12px;padding:6px 10px">
       <input class="fi" id="ref_search" placeholder="🔍 REF No…" oninput="renderShipments()" spellcheck="false" style="width:150px;font-size:12px;padding:6px 10px">
       <input class="fi" id="cust_search" placeholder="🔍 Customer…" oninput="renderShipments()" spellcheck="false" style="width:160px;font-size:12px;padding:6px 10px">
       <select class="fi" id="month_filter" onchange="window._monthFilterCleared=!this.value;renderShipments();saveFilterPrefs()" style="width:145px;font-size:12px;padding:6px 10px">
@@ -517,6 +518,7 @@ body{font-size:14px;font-weight:450}
         <thead><tr>
           <th style="width:32px"><input type="checkbox" id="chk_all" onclick="toggleAllChk(this)" style="cursor:pointer;accent-color:var(--cyan)"></th>
           <th style="">Booking No.</th>
+          <th style="">Job No.</th>
           <th style="">Ref No.</th>
           <th style="">Customer</th>
           <th style="">ETD</th>
@@ -575,6 +577,7 @@ body{font-size:14px;font-weight:450}
         </div>
         <div class="four-col">
           <div class="inp-group"><label class="inp-lbl">Booking No.</label><input spellcheck="false" class="inp" id="s_bkgno" placeholder="e.g. BKG-001"></div>
+          <div class="inp-group"><label class="inp-lbl">Job No.</label><input spellcheck="false" class="inp" id="s_jobno" placeholder="e.g. WLCLCH260626638"></div>
           <div class="inp-group"><label class="inp-lbl">Ref No.</label><input spellcheck="false" class="inp" id="s_refno" placeholder="Ref…"></div>
           <div class="inp-group"><label class="inp-lbl">Customer</label><input spellcheck="false" class="inp" id="s_customer" placeholder="Customer name"></div>
           <div class="inp-group"><label class="inp-lbl">Shipper</label><input spellcheck="false" class="inp" id="s_shipper" placeholder="Shipper name"></div>
@@ -3113,6 +3116,7 @@ function saveShipment(){
   const comm   = _active ? profit*commRate : 0;
   const jobData={
     no:v('s_bkgno')||('BKG-'+String(savedJobs.length+1).padStart(3,'0')),
+    jobno:v('s_jobno')||'',
     refno:v('s_refno'),customer:v('s_customer'),shipper:v('s_shipper'),
     etd:etdVal,eta:etaVal,etdMonth:etdVal?etdVal.slice(0,7):'Unknown',etaMonth:etaVal?etaVal.slice(0,7):'Unknown',
     jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),motherVoy:v('s_mother_voy'),remarks:v('s_remarks'),
@@ -3163,7 +3167,7 @@ function editShipment(idx){
   const j=savedJobs[idx];if(!j)return;
   window._editIdx=idx;
   const set=(id,val)=>{const e=g(id);if(e)e.value=val||'';};
-  set('s_bkgno',j.no);set('s_refno',j.refno);set('s_customer',j.customer);set('s_shipper',j.shipper);
+  set('s_bkgno',j.no);set('s_jobno',j.jobno||'');set('s_refno',j.refno);set('s_customer',j.customer);set('s_shipper',j.shipper);
   set('s_etd',j.etd);set('s_eta',j.eta);set('s_vessel',j.vessel);set('s_mother_vessel',j.motherVessel||'');set('s_voyage',j.voyage);set('s_mother_voy',j.motherVoy||'');
   set('s_remarks',j.remarks);set('s_status',j.status);set('s_jobtype',j.jobType);
   set('s_cs_assigned',j.csAssigned||'');set('s_cs_tasks',j.csTasks||'');
@@ -3243,7 +3247,7 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
@@ -3256,6 +3260,7 @@ function clearForm(){
 // ── Render Shipments ───────────────────────────────────────
 function renderShipments(){
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
+  const jobnoQ=(v('jobno_search')||'').toLowerCase().trim();
   const ref=(v('ref_search')||'').toLowerCase().trim();
   const cust=(v('cust_search')||'').toLowerCase().trim();
   const stFilt=v('status_filter')||'';
@@ -3278,6 +3283,7 @@ function renderShipments(){
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
     if(bkg&&!(j.no||'').toLowerCase().includes(bkg))return false;
+    if(jobnoQ&&!(j.jobno||'').toLowerCase().includes(jobnoQ))return false;
     if(ref&&!(j.refno||'').toLowerCase().includes(ref))return false;
     if(cust&&!(j.customer||j.shipper||'').toLowerCase().includes(cust))return false;
     if(stFilt&&j.status!==stFilt)return false;
@@ -3314,6 +3320,7 @@ function renderShipments(){
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
         <td style="padding:4px 8px;text-align:center;position:sticky;left:0;z-index:2;background:var(--s1)"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);position:sticky;left:38px;z-index:2;background:var(--s1);box-shadow:2px 0 5px rgba(0,0,0,.07)">${j.no||'—'}</td>
+        <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--gold)">${j.jobno||'—'}</td>
         <td style="padding:7px 8px;font-size:11px">${j.refno||'—'}</td>
         <td style="padding:7px 8px;font-size:11px">${j.customer||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px">${j.etd||'—'}</td>
@@ -3937,7 +3944,7 @@ window.renderSCPage = async function(){
   const sf = document.getElementById('sc_status_filter')?.value||'';
 
   const filtered = _scList.filter((sc,i)=>{
-    const txt = [sc.scno,sc.carrier,sc.customer,sc.pol,sc.pod].join(' ').toLowerCase();
+    const txt = [sc.scno,sc.carrier,sc.trade,sc.commodity,sc.nac].join(' ').toLowerCase();
     if(q && !txt.includes(q)) return false;
     if(sf && getSCStatus(sc)!==sf) return false;
     return true;
@@ -3951,32 +3958,19 @@ window.renderSCPage = async function(){
   };
 
   const fmtDate = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
-  const fmtNum  = n=>n?'$'+Number(n).toLocaleString():'—';
 
   tbody.innerHTML = filtered.length ? filtered.map((sc,fi)=>{
     const idx = _scList.indexOf(sc);
     const status = getSCStatus(sc);
-    const used = sc.usedTeu||0, total = sc.totalTeu||0;
-    const pct = total>0 ? Math.round(used/total*100) : 0;
-    const barColor = pct>=90?'var(--red)':pct>=70?'var(--gold)':'var(--green)';
-    const usageHtml = total>0 ? `
-      <div style="font-family:var(--mono);font-size:11px">${used}/${total} TEU</div>
-      <div style="background:var(--border);border-radius:4px;height:5px;margin-top:3px;overflow:hidden;min-width:80px">
-        <div style="background:${barColor};height:100%;width:${Math.min(pct,100)}%;transition:width .3s"></div>
-      </div>
-      <div style="font-size:9px;color:var(--muted);margin-top:1px">${pct}% used</div>` : '—';
+    const validRange = (sc.validFrom||sc.validTo) ? `${fmtDate(sc.validFrom)} – ${fmtDate(sc.validTo)}` : '—';
 
     return `<tr style="border-bottom:1px solid var(--border)${status==='expired'?';opacity:.6':''}">
       <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${sc.scno||'—'}</td>
       <td style="font-size:11px;color:var(--orange)">${sc.carrier||'—'}</td>
-      <td style="font-size:11px">${sc.customer||'—'}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${sc.pol||''}${sc.pol&&sc.pod?' → ':''}${sc.pod||''}</td>
-      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green)">${fmtNum(sc.gp20)}</td>
-      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan)">${fmtNum(sc.gp40)}</td>
-      <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan)">${fmtNum(sc.hc40)}</td>
-      <td style="font-family:var(--mono);font-size:10px">${fmtDate(sc.validFrom)}</td>
-      <td style="font-family:var(--mono);font-size:10px">${fmtDate(sc.validTo)}</td>
-      <td style="padding:6px 10px">${usageHtml}</td>
+      <td style="font-size:11px">${sc.trade||'—'}</td>
+      <td style="font-size:11px">${sc.commodity||'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px">${sc.nac||'—'}</td>
+      <td style="font-family:var(--mono);font-size:10px">${validRange}</td>
       <td style="font-size:11px;color:var(--muted);max-width:150px;word-wrap:break-word">${sc.note||'—'}</td>
       <td style="text-align:center">${statusBadge(status)}</td>
       <td style="text-align:center;white-space:nowrap">
@@ -3984,7 +3978,7 @@ window.renderSCPage = async function(){
         <button onclick="deleteSC(${idx})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">✕</button>
       </td>
     </tr>`;
-  }).join('') : `<tr><td colspan="13" style="padding:32px;text-align:center;color:var(--muted)">ไม่พบ SC — กด "+ Add SC" เพื่อเพิ่ม</td></tr>`;
+  }).join('') : `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--muted)">ไม่พบ SC — กด "+ Add SC" เพื่อเพิ่ม</td></tr>`;
 
   const active = _scList.filter(s=>getSCStatus(s)==='active').length;
   const expiring = _scList.filter(s=>getSCStatus(s)==='expiring').length;
@@ -3994,10 +3988,7 @@ window.renderSCPage = async function(){
 window.openAddSCModal = function(){
   _scEditIdx = null;
   document.getElementById('sc_modal_title').textContent = '+ Add SC';
-  ['scno','carrier','customer','pol','pod','from','to','note'].forEach(f=>{
-    const el=document.getElementById('sc_m_'+f); if(el) el.value='';
-  });
-  ['20gp','40gp','40hc','used','total'].forEach(f=>{
+  ['scno','carrier','trade','commodity','nac','from','to','note'].forEach(f=>{
     const el=document.getElementById('sc_m_'+f); if(el) el.value='';
   });
   document.getElementById('sc_modal').style.display='flex';
@@ -4008,11 +3999,9 @@ window.openEditSCModal = function(idx){
   _scEditIdx = idx;
   document.getElementById('sc_modal_title').textContent = '✏️ Edit SC';
   const set=(id,v)=>{const e=document.getElementById('sc_m_'+id);if(e)e.value=v||'';};
-  set('scno',sc.scno); set('carrier',sc.carrier); set('customer',sc.customer);
-  set('pol',sc.pol);   set('pod',sc.pod);
-  set('20gp',sc.gp20); set('40gp',sc.gp40); set('40hc',sc.hc40);
+  set('scno',sc.scno); set('carrier',sc.carrier);
+  set('trade',sc.trade); set('commodity',sc.commodity); set('nac',sc.nac);
   set('from',sc.validFrom); set('to',sc.validTo);
-  set('used',sc.usedTeu); set('total',sc.totalTeu);
   set('note',sc.note);
   document.getElementById('sc_modal').style.display='flex';
 };
@@ -4020,11 +4009,9 @@ window.openEditSCModal = function(idx){
 window.saveSC = async function(){
   const g2=id=>document.getElementById('sc_m_'+id)?.value||'';
   const sc = {
-    scno:g2('scno'),carrier:g2('carrier').toUpperCase(),customer:g2('customer').toUpperCase(),
-    pol:g2('pol'),pod:g2('pod'),
-    gp20:parseFloat(g2('20gp'))||0, gp40:parseFloat(g2('40gp'))||0, hc40:parseFloat(g2('40hc'))||0,
+    scno:g2('scno'),carrier:g2('carrier').toUpperCase(),
+    trade:g2('trade'),commodity:g2('commodity'),nac:g2('nac'),
     validFrom:g2('from'), validTo:g2('to'),
-    usedTeu:parseFloat(g2('used'))||0, totalTeu:parseFloat(g2('total'))||0,
     note:g2('note'), updatedAt:new Date().toISOString()
   };
   if(!sc.scno){ toast('กรุณากรอก SC No.'); return; }
@@ -4592,8 +4579,8 @@ function exportWeekly(){
 
 function exportCSV(){
   if(!savedJobs.length){toast('No shipments to export');return;}
-  const h='Booking No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,Commission USD,Commission THB\n';
-  const rows=savedJobs.map(j=>[j.no,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,j.sell.toFixed(2),j.cost.toFixed(2),j.profit.toFixed(2),j.margin.toFixed(1),j.comm.toFixed(2),j.commThb.toFixed(0)].map(v=>'"'+(v||'')+'"').join(',')).join('\n');
+  const h='Booking No,Job No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,Commission USD,Commission THB\n';
+  const rows=savedJobs.map(j=>[j.no,j.jobno,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,j.sell.toFixed(2),j.cost.toFixed(2),j.profit.toFixed(2),j.margin.toFixed(1),j.comm.toFixed(2),j.commThb.toFixed(0)].map(v=>'"'+(v||'')+'"').join(',')).join('\n');
   const blob=new Blob([h+rows],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='shipments_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
@@ -6508,7 +6495,7 @@ function clearImgExtract(){
       <button onclick="openAddSCModal()" class="btn btn-cyan" style="font-size:12px;padding:8px 18px">+ Add SC</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <input id="sc_search" class="fi" placeholder="🔍 ค้นหา SC No. / Carrier / Customer…" oninput="renderSCPage()" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px">
+      <input id="sc_search" class="fi" placeholder="🔍 ค้นหา SC No. / Carrier / Trade / Commodity / NAC…" oninput="renderSCPage()" style="flex:1;min-width:200px;font-size:12px;padding:6px 10px">
       <select id="sc_status_filter" class="fi" onchange="renderSCPage()" style="font-size:12px;padding:6px 10px">
         <option value="">All Status</option>
         <option value="active">✅ Active</option>
@@ -6519,10 +6506,9 @@ function clearImgExtract(){
     <div class="tbl-wrap">
       <table class="tbl" style="min-width:900px">
         <thead><tr>
-          <th>SC No.</th><th>Carrier</th><th>Customer</th><th>POL → POD</th>
-          <th style="text-align:right">20GP</th><th style="text-align:right">40GP</th><th style="text-align:right">40HC</th>
-          <th>Valid From</th><th>Valid To</th>
-          <th style="text-align:center">การใช้ (TEU)</th>
+          <th>SC No.</th><th>Carrier</th>
+          <th>Trade</th><th>Commodity</th><th>NAC</th>
+          <th>Valid</th>
           <th>หมายเหตุ</th>
           <th style="text-align:center;width:70px">Status</th>
           <th style="width:60px"></th>
@@ -6541,23 +6527,11 @@ function clearImgExtract(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="inp-group"><label class="inp-lbl">SC No.</label><input id="sc_m_scno" class="inp" placeholder="e.g. SIN0113N26"></div>
       <div class="inp-group"><label class="inp-lbl">Carrier</label><input id="sc_m_carrier" class="inp" placeholder="e.g. WHL"></div>
-      <div class="inp-group"><label class="inp-lbl">Customer</label><input id="sc_m_customer" class="inp" placeholder="e.g. DB GROUP"></div>
-      <div class="inp-group"><label class="inp-lbl">POL</label><input id="sc_m_pol" class="inp" placeholder="e.g. Laem Chabang"></div>
-      <div class="inp-group full-col"><label class="inp-lbl">POD</label><input id="sc_m_pod" class="inp" placeholder="e.g. New York, NY"></div>
-      <div class="inp-group"><label class="inp-lbl">20GP (USD)</label><input type="number" id="sc_m_20gp" class="inp" placeholder="0"></div>
-      <div class="inp-group"><label class="inp-lbl">40GP (USD)</label><input type="number" id="sc_m_40gp" class="inp" placeholder="0"></div>
-      <div class="inp-group"><label class="inp-lbl">40HC (USD)</label><input type="number" id="sc_m_40hc" class="inp" placeholder="0"></div>
+      <div class="inp-group"><label class="inp-lbl">Trade</label><input id="sc_m_trade" class="inp" placeholder="e.g. Asia – US East Coast"></div>
+      <div class="inp-group"><label class="inp-lbl">Commodity</label><input id="sc_m_commodity" class="inp" placeholder="e.g. Furniture"></div>
+      <div class="inp-group"><label class="inp-lbl">NAC</label><input id="sc_m_nac" class="inp" placeholder="e.g. 12345"></div>
       <div class="inp-group"><label class="inp-lbl">Valid From</label><input type="date" id="sc_m_from" class="inp"></div>
-      <div class="inp-group"><label class="inp-lbl">Valid To</label><input type="date" id="sc_m_to" class="inp"></div>
-      <div class="inp-group full-col">
-        <label class="inp-lbl">การใช้ SC <span style="font-size:9px;color:var(--muted)">(TEU ที่ใช้ / ทั้งหมด)</span></label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="number" id="sc_m_used" class="inp" placeholder="ใช้แล้ว" style="width:110px">
-          <span style="color:var(--muted);font-weight:700">/</span>
-          <input type="number" id="sc_m_total" class="inp" placeholder="ทั้งหมด" style="width:110px">
-          <span style="font-size:11px;color:var(--muted)">TEU</span>
-        </div>
-      </div>
+      <div class="inp-group full-col"><label class="inp-lbl">Valid To</label><input type="date" id="sc_m_to" class="inp"></div>
       <div class="inp-group full-col"><label class="inp-lbl">หมายเหตุ</label>
         <textarea id="sc_m_note" class="inp" rows="3" placeholder="หมายเหตุ / เงื่อนไขพิเศษ…" style="resize:vertical"></textarea>
       </div>
@@ -6665,7 +6639,7 @@ function clearImgExtract(){
 
     <!-- Filter bar -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-      <input id="sop_search" class="fi" placeholder="🔍 Booking / Customer…" oninput="renderSOP()" style="width:200px;font-size:12px">
+      <input id="sop_search" class="fi" placeholder="🔍 Booking / Job No. / Customer…" oninput="renderSOP()" style="width:200px;font-size:12px">
       <select id="sop_month_fil" class="fi" onchange="renderSOP()" style="font-size:12px">
         <option value="">All Months</option>
       </select>
@@ -6685,6 +6659,7 @@ function clearImgExtract(){
         <thead>
           <tr style="background:var(--s2)">
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">BOOKING NO.</th>
+            <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">JOB NO.</th>
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">CUSTOMER / SHIPPER</th>
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">CARRIER</th>
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">ETD</th>
@@ -6694,7 +6669,7 @@ function clearImgExtract(){
           </tr>
         </thead>
         <tbody id="sop_tbody">
-          <tr><td colspan="7" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">⏳ กำลังโหลด…</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">⏳ กำลังโหลด…</td></tr>
         </tbody>
       </table>
     </div>
@@ -7693,7 +7668,7 @@ window.renderSOP = function(){
   }
 
   let filtered = jobs.filter(j=>{
-    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
+    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
     if(monthFil && (j.etdMonth||j.etaMonth||'')!==monthFil) return false;
     if(statusFil && j.status!==statusFil) return false;
     return true;
@@ -7706,7 +7681,7 @@ window.renderSOP = function(){
   if(!tbody) return;
 
   if(!filtered.length){
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">${jobs.length?'🔍 ไม่พบ Shipment':'📋 ยังไม่มี Shipment'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">${jobs.length?'🔍 ไม่พบ Shipment':'📋 ยังไม่มี Shipment'}</td></tr>`;
     return;
   }
 
@@ -7719,6 +7694,7 @@ window.renderSOP = function(){
     const globalIdx = jobs.indexOf(j);
     return `<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${j.no||'—'}</td>
+      <td style="padding:10px 12px;font-family:var(--mono);font-size:11px;color:var(--gold)">${j.jobno||'—'}</td>
       <td style="padding:10px 12px">
         <div style="font-size:12px;font-weight:600">${j.customer||'—'}</div>
         ${j.shipper&&j.shipper!==j.customer?`<div style="font-size:10px;color:var(--muted)">${j.shipper}</div>`:''}
@@ -7852,6 +7828,7 @@ function buildSopPdfFromJob(j){
   }
 
   infoRow('Customer name :',j.customer||'—','Booking No. :',j.no||'—');
+  if(j.jobno) infoRow('Job No. :',j.jobno,'','');
   infoRow('Shipper :',j.shipper||'—','Consignee :',j.consignee||'—');
   infoRow('Incoterm :',j.incoterm||'—','Ship Mode :','Ocean');
   infoRow('Carrier :',j.carrier||j.selCarrier||'—','BL Type :',j.bltype||'—');
