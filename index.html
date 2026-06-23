@@ -2457,25 +2457,38 @@ function buildCharges(){
       : '';
 
     if(doSplit){
-      // Per-ctn-type sell/cost inputs
-      const sellInputs = ctnTypes.map(r=>
-        `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px">${r.type}</span>
+      // Per-ctn-type sell/cost inputs, ordered 20GP first then 40GP/40HC.
+      // IMPORTANT: stays as ONE <tr> per charge (not one per container type) —
+      // saveShipment()/recalc() map 1 <tr> to 1 charge throughout the file,
+      // so splitting into multiple <tr> here would corrupt the sells/costs
+      // arrays. Instead, a CSS grid inside each <td> stacks 20GP above 40HC
+      // while keeping Sell and Cost visually aligned row-by-row.
+      const sortedCtnTypes = [...ctnTypes].sort((a,b)=>{
+        const order = {'20GP':0,'40GP':1,'40HC':2,'45HC':3};
+        return (order[a.type]??9) - (order[b.type]??9);
+      });
+      const sellInputs = sortedCtnTypes.map(r=>
+        `<div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px;flex-shrink:0">${r.type}</span>
           <input type="number" class="sell-inp inp" value="0" min="0" step="0.01"
             data-ctn="${r.type}" data-qty="${r.qty}"
-            oninput="recalc()" style="color:var(--green);text-align:right;padding:3px 6px;font-size:11px">
+            oninput="recalc()" style="color:var(--green);text-align:right;padding:3px 6px;font-size:11px;width:100%">
         </div>`).join('');
-      const costInputs = ctnTypes.map(r=>
-        `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px">${r.type}</span>
+      const costInputs = sortedCtnTypes.map(r=>
+        `<div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono);min-width:32px;flex-shrink:0">${r.type}</span>
           <input type="number" class="cost-inp inp" value="0" min="0" step="0.01"
             data-ctn="${r.type}" data-qty="${r.qty}"
-            oninput="recalc()" style="color:var(--red);text-align:right;padding:3px 6px;font-size:11px">
+            oninput="recalc()" style="color:var(--red);text-align:right;padding:3px 6px;font-size:11px;width:100%">
         </div>`).join('');
       return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}" data-split="true">
         <td style="font-size:12px;padding:6px 10px;vertical-align:top">${name}${ccy}${qtyLabel}</td>
-        <td style="padding:4px 6px;display:flex;flex-direction:column;gap:2px">${sellInputs}</td>
-        <td style="padding:4px 6px;display:flex;flex-direction:column;gap:2px">${costInputs}</td>
+        <td style="padding:4px 6px;vertical-align:top">
+          <div style="display:grid;grid-template-rows:repeat(${sortedCtnTypes.length},auto);gap:4px">${sellInputs}</div>
+        </td>
+        <td style="padding:4px 6px;vertical-align:top">
+          <div style="display:grid;grid-template-rows:repeat(${sortedCtnTypes.length},auto);gap:4px">${costInputs}</div>
+        </td>
         <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px;vertical-align:top" class="row-profit">—</td>
         <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px;vertical-align:top" class="row-margin">—</td>
       </tr>`;
