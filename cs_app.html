@@ -166,6 +166,7 @@ select.inp{cursor:pointer}
         <thead>
           <tr>
             <th>BOOKING NO.</th>
+            <th>JOB NO.</th>
             <th>CUSTOMER</th>
             <th>POL → POD</th>
             <th>DEL</th>
@@ -745,7 +746,7 @@ function renderTable(){
 
   const jobs = allJobs.filter((j,i)=>{
     j._idx = i;
-    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
+    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
     if(stFil && j.status !== stFil) return false;
     if(mFil && (j.etdMonth||j.etaMonth||'') !== mFil) return false;
     if(tasksOnly){
@@ -769,7 +770,7 @@ function renderTable(){
 
   const tbody = document.getElementById('cs_tbody');
   if(!jobs.length){
-    tbody.innerHTML = `<tr><td colspan="12"><div class="empty">ไม่มี Shipment ที่ assign ให้ <b>${AGENT}</b></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13"><div class="empty">ไม่มี Shipment ที่ assign ให้ <b>${AGENT}</b></div></td></tr>`;
     return;
   }
 
@@ -806,6 +807,13 @@ function renderTable(){
 
     return `<tr>
       <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span class="new-star" title="New Shipment">★</span>':''} ${j.no||'—'}</span></td>
+      <td style="padding:6px 8px">
+        <input value="${(j.jobno||'').replace(/"/g,'&quot;')}" placeholder="Job No…"
+          onchange="inlineUpdate(${j._idx},'jobno',this.value,this)"
+          style="font-family:var(--mono);font-size:10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--gold);width:140px;outline:none"
+          onfocus="this.style.borderColor='var(--red)'"
+          onblur="this.style.borderColor='var(--border2)'">
+      </td>
       <td style="font-size:12px">${j.customer||j.shipper||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap">${pol} → ${pod}</td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap">${j.del||'—'}</td>
@@ -1081,7 +1089,7 @@ window.renderCSSOPDocs = function(){
 
   // Show all shipments assigned to this CS agent (or all if not filtered)
   let jobs = (_allShipmentsForSOP.length ? _allShipmentsForSOP : allJobs).filter(j => {
-    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
+    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
     return true;
   }).sort((a,b) => (b.etd||'').localeCompare(a.etd||''));
 
@@ -1102,6 +1110,7 @@ window.renderCSSOPDocs = function(){
         <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${j.no||'—'}</span>
         <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${stCol[j.status]||'var(--muted)'}">${(j.status||'—').toUpperCase()}</span>
       </div>
+      ${j.jobno ? `<div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-bottom:4px">Job No: ${j.jobno}</div>` : ''}
       <div style="font-size:11px;font-weight:600;margin-bottom:2px">${j.customer||j.shipper||'—'}</div>
       <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px">${j.carrier||'—'} · ETD ${etd} · ${vessel}</div>
       <button onclick="csGenerateSopPDF(${i})"
@@ -1231,6 +1240,7 @@ function buildSopPdfFromJob(j){
   }
 
   infoRow('Customer name :',j.customer||'—','Booking No. :',j.no||'—');
+  if(j.jobno) infoRow('Job No. :',j.jobno,'','');
   infoRow('Shipper :',j.shipper||'—','Consignee :',j.consignee||'—');
   infoRow('Incoterm :',j.incoterm||'—','Ship Mode :','Ocean');
   infoRow('Carrier :',j.carrier||j.selCarrier||'—','BL Type :',j.bltype||'—');
@@ -1364,7 +1374,7 @@ signInAnonymously(auth)
   </div>
 
   <div style="padding:12px 18px 8px">
-    <input id="cs_sop_search" placeholder="🔍 Booking / Customer…" oninput="renderCSSOPDocs()"
+    <input id="cs_sop_search" placeholder="🔍 Booking / Job No. / Customer…" oninput="renderCSSOPDocs()"
       style="width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;font-family:var(--mono);box-sizing:border-box;outline:none;margin-bottom:8px">
     <div id="cs_sop_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px"></div>
   </div>
