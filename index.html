@@ -252,6 +252,7 @@ body{font-size:14px;font-weight:450}
     </div>
     <div id="fb_sync_badge" style="display:none;font-size:9px;font-family:var(--mono);color:var(--green);padding:2px 4px;background:rgba(34,197,94,.1);border-radius:4px">☁</div>
     <button id="fb_force_sync" onclick="forceSyncAll()" style="display:none;font-size:9px;font-family:var(--mono);background:rgba(41,128,185,.15);border:1px solid rgba(41,128,185,.4);color:#fff;padding:2px 6px;border-radius:5px;cursor:pointer">⬆</button>
+    <button id="clear_cache_btn" onclick="clearAppCache()" title="Clear local cache (เคลียร์ข้อมูลที่ค้างในเครื่อง แล้วโหลดใหม่จาก cloud)" style="font-size:9px;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:2px 6px;border-radius:5px;cursor:pointer">🧹</button>
   </div>
 </div>
 <!-- Mobile floating load button (shows only when no rates) -->
@@ -1399,6 +1400,38 @@ function markRatesLoaded(){
   // Call whenever fresh rates are loaded — clears the "user cleared" flag
   try{ localStorage.removeItem('sfp_rates_cleared'); }catch(e){}
 }
+
+// Clears all locally cached app data and reloads. When signed in, the cloud
+// (Firestore) is the source of truth, so a reload re-fetches everything fresh —
+// this fixes a stale/corrupt local cache that keeps mismatching the cloud and
+// triggering repeat syncs. Does NOT delete anything in the cloud.
+function clearAppCache(){
+  const signedIn = !!window._currentUid;
+  const msg = signedIn
+    ? 'ล้าง cache ในเครื่องนี้แล้วโหลดใหม่จาก cloud?\n\n• ข้อมูลบน cloud ไม่ถูกลบ\n• ระบบจะดึงข้อมูลล่าสุดกลับมาให้อัตโนมัติ'
+    : '⚠️ ยังไม่ได้ Sign in — ข้อมูลที่ยังไม่ sync ขึ้น cloud จะหายถาวร\n\nต้องการล้าง cache ในเครื่องต่อไหม?';
+  if(!confirm(msg)) return;
+
+  // Flush any pending debounced cloud writes first so nothing in-flight is lost.
+  try{ if(signedIn && window._sfpFlushToCloud) window._sfpFlushToCloud(); }catch(e){}
+
+  const keys = [
+    STORAGE_KEY, RATE_KEY, SETTINGS_KEY, QUOT_KEY, TODO_KEY,
+    'sfp_jobs', 'sfp_db_intransit',
+    'seafreight_salereport_v1', 'seafreight_sr_reports_v1',
+    'seafreight_quotations_v1', 'seafreight_rates_v1',
+    WSR_STORE_KEY
+  ];
+  keys.forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+  // Reset dirty-tracking + the "rates cleared" flag so cloud rates reload.
+  try{ localStorage.removeItem('sfp_rates_cleared'); }catch(e){}
+  window._sfpSyncHash = {};
+
+  toast('🧹 Cleared cache — reloading…');
+  setTimeout(()=>location.reload(), 600);
+}
+window.clearAppCache = clearAppCache;
+
 function userClearedRates(){
   try{ return localStorage.getItem('sfp_rates_cleared')==='1'; }catch(e){ return false; }
 }
@@ -3484,17 +3517,24 @@ window.__getDbRows = () => dbRows;
 window.__setDbRows = (rows) => { dbRows = rows; };
 function dbStorageSave(){
   try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(dbRows)); }catch(e){}
-  // Sync to Firestore — retry up to 5s if fbSet not ready yet
-  const doSync = (attempt) => {
-    if(typeof window.fbSet === 'function'){
-      window.fbSet('data/dbIntransit', {rows: dbRows, updatedAt: new Date().toISOString()})
-        .then(()=>{ const b=document.getElementById('dbit_sync_badge'); if(b){b.textContent='☁ Synced';b.style.color='var(--green)';setTimeout(()=>b.textContent='',2000);} })
-        .catch(e=>console.warn('dbIntransit sync error',e));
-    } else if(attempt < 10){
-      setTimeout(()=>doSync(attempt+1), 500);
-    }
-  };
-  doSync(0);
+  // Debounced, dirty-tracked Firestore sync — skip the write entirely when
+  // the rows are unchanged from what's already in the cloud.
+  clearTimeout(window._dbitSaveTimer);
+  window._dbitSaveTimer = setTimeout(()=>{
+    const doSync = (attempt) => {
+      if(typeof window.fbSet === 'function'){
+        const h = window._sfpHash ? window._sfpHash(dbRows) : null;
+        if(h !== null && window._sfpSyncHash && h === window._sfpSyncHash.dbIntransit) return; // unchanged
+        window.fbSet('data/dbIntransit', {rows: dbRows, updatedAt: new Date().toISOString()})
+          .then(()=>{ if(window._sfpSyncHash && h!==null) window._sfpSyncHash.dbIntransit = h;
+            const b=document.getElementById('dbit_sync_badge'); if(b){b.textContent='☁ Synced';b.style.color='var(--green)';setTimeout(()=>b.textContent='',2000);} })
+          .catch(e=>console.warn('dbIntransit sync error',e));
+      } else if(attempt < 10){
+        setTimeout(()=>doSync(attempt+1), 500);
+      }
+    };
+    doSync(0);
+  }, 2000);
 }
 function dbStorageLoad(){ try{ const r=localStorage.getItem('sfp_db_intransit'); if(r) dbRows=JSON.parse(r); }catch(e){ dbRows=[]; } }
 dbStorageLoad();
@@ -5714,30 +5754,26 @@ function qSave(){
 function qSaveToStorage(){
   try{ localStorage.setItem(QUOT_KEY, JSON.stringify(savedQuotations)); }
   catch(e){ console.warn('Quot save failed:', e); }
-  // Sync to Firestore
+  // Debounced + dirty-tracked Firestore sync (shares the hash with storageSave
+  // so quotations are never written twice for the same change).
+  const b = document.getElementById('quot_autosave');
+  if(b){ b.textContent='● Saving…'; b.style.color='var(--gold)'; }
   if(window.fbSet){
     clearTimeout(window._qSaveTimer);
     window._qSaveTimer = setTimeout(async ()=>{
-      try{ await window.fbSet('data/quotations',{quotations:savedQuotations,updatedAt:new Date().toISOString()}); }
-      catch(e){ console.warn('Quot Firestore sync error',e); }
-    }, 800);
-  }
-  // Flash badge
-  const b = document.getElementById('quot_autosave');
-  if(b){ b.textContent='● Saving…'; b.style.color='var(--gold)';
-    setTimeout(async ()=>{
-      // Confirm Firestore sync
+      const h = window._sfpHash ? window._sfpHash(savedQuotations||[]) : null;
+      if(h !== null && window._sfpSyncHash && h === window._sfpSyncHash.quotations){
+        if(b){ b.textContent='☁️ Synced ✓'; b.style.color='var(--green)'; }
+        return; // unchanged — no write, no read
+      }
       try{
-        if(window.fbGet){
-          const check = await window.fbGet('data/quotations');
-          if(check?.quotations?.length){
-            b.textContent='☁️ Synced ✓'; b.style.color='var(--green)';
-            return;
-          }
-        }
-      }catch(e){}
-      b.textContent='● Saved (local)'; b.style.color='var(--cyan)';
-    }, 1200); }
+        await window.fbSet('data/quotations',{quotations:savedQuotations,updatedAt:new Date().toISOString()});
+        if(window._sfpSyncHash && h!==null) window._sfpSyncHash.quotations = h;
+        if(b){ b.textContent='☁️ Synced ✓'; b.style.color='var(--green)'; }
+      }
+      catch(e){ console.warn('Quot Firestore sync error',e); if(b){ b.textContent='● Saved (local)'; b.style.color='var(--cyan)'; } }
+    }, 1500);
+  } else if(b){ b.textContent='● Saved (local)'; b.style.color='var(--cyan)'; }
 }
 
 async function qLoadFromStorage(){
@@ -6780,6 +6816,20 @@ const db   = getFirestore(app);
 const storage = getStorage(app);
 let _currentUser = null;
 
+// ── Dirty-tracking to avoid wasteful Firestore writes/reads ──────────────
+// Firestore (Spark plan) caps daily reads/writes. Previously storageSave()
+// rewrote EVERY doc — including all rate chunks — on every tiny edit, which
+// burned the quota ("exceed"). We now hash each dataset and only write the
+// docs that actually changed.
+window._sfpSyncHash = window._sfpSyncHash || {};
+function _sfpHash(obj){
+  const s = (typeof obj === 'string') ? obj : JSON.stringify(obj == null ? null : obj);
+  let h = 5381;
+  for(let i=0;i<s.length;i++){ h = ((h<<5) + h + s.charCodeAt(i)) | 0; }
+  return h + ':' + s.length;
+}
+window._sfpHash = _sfpHash;
+
 // Remember login for 30 days
 setPersistence(auth, browserLocalPersistence);
 
@@ -6846,12 +6896,23 @@ onAuthStateChanged(auth, async user=>{
     if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
     await initFirestoreSync();
-    // Push current jobs to Firestore so CS Portal can read them
+    // Push current jobs to Firestore so CS Portal can read them —
+    // but ONLY if local differs from what we just loaded from cloud.
+    // initFirestoreSync() seeds window._sfpSyncHash with the cloud values,
+    // so on a normal load with no offline edits this writes nothing.
     try{
-      await fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()});
+      const jobsH = _sfpHash(window.savedJobs||[]);
+      if(jobsH !== window._sfpSyncHash.jobs){
+        await fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()});
+        window._sfpSyncHash.jobs = jobsH;
+      }
       const dbRowsData = window.__getDbRows?.() || [];
-      await fbSet('data/dbIntransit', {rows: dbRowsData, updatedAt: new Date().toISOString()});
-      console.log('☁ Auto-pushed to Firestore: jobs=', window.savedJobs?.length||0, 'dbRows=', dbRowsData.length);
+      const dbH = _sfpHash(dbRowsData);
+      if(dbH !== window._sfpSyncHash.dbIntransit){
+        await fbSet('data/dbIntransit', {rows: dbRowsData, updatedAt: new Date().toISOString()});
+        window._sfpSyncHash.dbIntransit = dbH;
+      }
+      console.log('☁ Login sync check done (jobs=', window.savedJobs?.length||0, 'dbRows=', dbRowsData.length, ')');
     }catch(e){ console.warn('Auto-push error',e); }
 
     // Listen for CS Portal changes to dbIntransit (real-time sync back)
@@ -6866,6 +6927,7 @@ onAuthStateChanged(auth, async user=>{
       if(remote !== local){
         // Replace local rows entirely with remote data
         window.__setDbRows?.(data.rows);
+        window._sfpSyncHash.dbIntransit = _sfpHash(data.rows); // cloud copy — don't re-push
         try{ localStorage.setItem('sfp_db_intransit', JSON.stringify(data.rows)); }catch(e){}
         window.renderDbIntransit?.();
         // Show badge
@@ -6881,6 +6943,8 @@ onAuthStateChanged(auth, async user=>{
       if(!snap.exists()) return;
       const data = snap.data();
       if(!data?.jobs) return;
+      // Skip our own write echoing back (saves needless re-render work).
+      if(_sfpHash(data.jobs) === window._sfpSyncHash.jobs) return;
       const remoteJobs = data.jobs;
       // Merge CS-editable fields back into savedJobs
       let changed = false;
@@ -6901,6 +6965,9 @@ onAuthStateChanged(auth, async user=>{
       });
       if(changed){
         try{ localStorage.setItem('sfp_jobs', JSON.stringify(window.savedJobs)); }catch(e){}
+        // Cloud now holds these jobs — record the hash so the next storageSave
+        // doesn't redundantly push an identical copy back.
+        window._sfpSyncHash.jobs = _sfpHash(window.savedJobs||[]);
         window.renderShipments?.();
         window.updateAlertCount?.();
         window.renderNewBizList?.();
@@ -6969,6 +7036,16 @@ async function initFirestoreSync(){
   if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
   if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
 
+  // Seed dirty-tracking hashes with the cloud state we just loaded, so the
+  // first storageSave / login auto-push writes nothing unless data actually
+  // changed locally. This is the core of the quota fix.
+  window._sfpSyncHash.jobs       = _sfpHash(window.savedJobs||[]);
+  window._sfpSyncHash.todos      = _sfpHash(window.todos||[]);
+  window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+  window._sfpSyncHash.quotations = _sfpHash(window.savedQuotations||[]);
+  window._sfpSyncHash.rates      = _sfpHash(window.ALL_RATES||[]); // re-seeded after chunk load below
+  window._sfpSyncHash.dbIntransit= _sfpHash(window.__getDbRows?.()||[]);
+
   // Load rates from Firestore chunks — skip if user intentionally cleared
   if(rateMetaSnap?.chunks > 0 && !userClearedRates()){
     try{
@@ -6979,6 +7056,8 @@ async function initFirestoreSync(){
       if(allRates.length){
         window.ALL_RATES = allRates;
         try{ localStorage.setItem('seafreight_rates_v1', JSON.stringify(allRates)); }catch(e){}
+        // Re-seed rate hash to the cloud copy so storageSave won't re-upload it.
+        window._sfpSyncHash.rates = _sfpHash(window.ALL_RATES||[]);
       }
     }catch(e){ console.warn('Rate load error',e); }
   }
@@ -7028,38 +7107,86 @@ async function initFirestoreSync(){
       }
       promises.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt:new Date().toISOString()}));
       await Promise.all(promises);
+      window._sfpSyncHash.rates = _sfpHash(rates);
       showSyncBadge(true);
       toast('☁ Rates synced to cloud ('+rates.length+' routes)');
     }catch(e){ showSyncBadge(false); console.warn('Rate sync error',e); }
   };
 
-  // ── Patch storageSave → also write to Firestore ──
+  // ── Patch storageSave → debounced, dirty-tracked Firestore write ──
+  // Only docs whose contents changed get written, and rapid edits are
+  // coalesced into a single flush. Rate chunks (the big cost) are written
+  // ONLY when ALL_RATES actually changed — not on every unrelated save.
   const origSave = window.storageSave;
-  window.storageSave = async function(){
-    const r = origSave?.();
-    if(!uid()) return r;
-    try{
-      const savePromises = [
-        fbSet('data/jobs',      {jobs: window.savedJobs||[],         updatedAt: new Date().toISOString()}),
-        fbSet('data/todos',     {todos: window.todos||[],            updatedAt: new Date().toISOString()}),
-        fbSet('data/settings',  {commRate: window.commRate,          exRate: window.exRate}),
-        fbSet('data/quotations',{quotations: window.savedQuotations||[], updatedAt: new Date().toISOString()}),
-      ];
-      const rates = window.ALL_RATES||[];
-      if(rates.length){
-        const CHUNK = 500;
-        const numChunks = Math.ceil(rates.length/CHUNK);
-        for(let i=0;i<numChunks;i++){
-          savePromises.push(fbSet(`data/rates_${i}`, {rates: rates.slice(i*CHUNK,(i+1)*CHUNK)}));
-        }
-        savePromises.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt:new Date().toISOString()}));
+  let _flushTimer = null;
+  let _flushInFlight = false;
+
+  async function _sfpFlushToCloud(){
+    if(!uid()) return;
+    if(_flushInFlight){ // re-arm; another flush is running
+      clearTimeout(_flushTimer);
+      _flushTimer = setTimeout(_sfpFlushToCloud, 1500);
+      return;
+    }
+    const writes = [];
+    const newHash = {};
+    const now = () => new Date().toISOString();
+
+    const jobsH = _sfpHash(window.savedJobs||[]);
+    if(jobsH !== window._sfpSyncHash.jobs){
+      writes.push(fbSet('data/jobs', {jobs: window.savedJobs||[], updatedAt: now()}));
+      newHash.jobs = jobsH;
+    }
+    const todosH = _sfpHash(window.todos||[]);
+    if(todosH !== window._sfpSyncHash.todos){
+      writes.push(fbSet('data/todos', {todos: window.todos||[], updatedAt: now()}));
+      newHash.todos = todosH;
+    }
+    const settH = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+    if(settH !== window._sfpSyncHash.settings){
+      writes.push(fbSet('data/settings', {commRate: window.commRate, exRate: window.exRate}));
+      newHash.settings = settH;
+    }
+    const quotH = _sfpHash(window.savedQuotations||[]);
+    if(quotH !== window._sfpSyncHash.quotations){
+      writes.push(fbSet('data/quotations', {quotations: window.savedQuotations||[], updatedAt: now()}));
+      newHash.quotations = quotH;
+    }
+    // Rates — the expensive part. Write chunks ONLY when they changed.
+    const rates = window.ALL_RATES||[];
+    const ratesH = _sfpHash(rates);
+    if(ratesH !== window._sfpSyncHash.rates){
+      const CHUNK = 500;
+      const numChunks = Math.ceil(rates.length/CHUNK);
+      for(let i=0;i<numChunks;i++){
+        writes.push(fbSet(`data/rates_${i}`, {rates: rates.slice(i*CHUNK,(i+1)*CHUNK)}));
       }
-      await Promise.all(savePromises);
+      writes.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt: now()}));
+      newHash.rates = ratesH;
+    }
+
+    if(!writes.length) return; // nothing changed → zero writes
+    _flushInFlight = true;
+    try{
+      await Promise.all(writes);
+      Object.assign(window._sfpSyncHash, newHash);
       showSyncBadge(true);
-      console.log('☁ Saved to Firestore: jobs='+( window.savedJobs?.length||0));
+      console.log('☁ Synced changed:', Object.keys(newHash).join(', '));
     }catch(e){ showSyncBadge(false); console.warn('Save error',e); }
+    finally{ _flushInFlight = false; }
+  }
+  window._sfpFlushToCloud = _sfpFlushToCloud;
+
+  window.storageSave = function(){
+    const r = origSave?.();            // local save stays instant
+    if(!uid()) return r;
+    clearTimeout(_flushTimer);
+    _flushTimer = setTimeout(_sfpFlushToCloud, 4000); // debounce cloud writes 4s
     return r;
   };
+
+  // Flush any pending debounced changes before the tab closes so nothing is lost.
+  window.addEventListener('beforeunload', ()=>{ try{ if(uid()) _sfpFlushToCloud(); }catch(e){} });
 
   // ── Force sync all data to Firestore ──
   window.forceSyncAll = async function(){
@@ -7080,6 +7207,12 @@ async function initFirestoreSync(){
         promises.push(fbSet('data/rateMeta',{chunks:numChunks,total:rates.length,updatedAt:new Date().toISOString()}));
       }
       await Promise.all(promises);
+      // Record hashes — cloud is now in sync, so the next debounced flush is a no-op.
+      window._sfpSyncHash.jobs       = _sfpHash(window.savedJobs||[]);
+      window._sfpSyncHash.todos      = _sfpHash(window.todos||[]);
+      window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+      window._sfpSyncHash.quotations = _sfpHash(window.savedQuotations||[]);
+      window._sfpSyncHash.rates      = _sfpHash(rates);
       showSyncBadge(true);
       toast(`✅ Synced: ${window.savedJobs?.length||0} jobs, ${rates.length} rates ☁`);
     }catch(e){ showSyncBadge(false); toast('❌ Sync failed: '+e.message); }

@@ -355,12 +355,15 @@ async function renderOnlineUsers(){
 
 function startPresence(){
   if(!AGENT) return;
-  writePresence();
-  renderOnlineUsers();
-  _presenceInterval = setInterval(()=>{
-    writePresence();
-    renderOnlineUsers();
-  }, 30000);
+  const tick = ()=>{ if(document.hidden) return; writePresence(); renderOnlineUsers(); };
+  tick(); // initial heartbeat (only if visible)
+  clearInterval(_presenceInterval);
+  // 45s heartbeat (TTL is 60s) and only while the tab is visible — a CS agent
+  // who leaves the tab open in the background no longer burns reads/writes all
+  // day, which was a steady drain on the Firestore quota.
+  _presenceInterval = setInterval(tick, 45000);
+  // When the tab becomes visible again, refresh immediately.
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tick(); });
   // Clean up on tab close
   window.addEventListener('beforeunload', async ()=>{
     try{
