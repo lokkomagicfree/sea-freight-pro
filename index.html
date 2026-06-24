@@ -8015,12 +8015,25 @@ function buildSopPdfFromJob(j){
     const out=[];
     names.slice(1).forEach((n,i)=>{
       const idx=i+1;
-      const apr = aprCheck ? !!(j.aprFlags && j.aprFlags[idx]) : false;
+      // APR ("As per receipt") is a property of the charge row, so it applies to
+      // BOTH the selling and cost sides — not only the cost call. Compute it
+      // unconditionally so an APR charge like THC shows "As per receipt" in the
+      // SELLING RATES section too.
+      const apr = !!(j.aprFlags && j.aprFlags[idx]);
       const perType = arr?.[idx];
       if(SPLIT_CHARGE_NAMES.includes(n) && perType && Object.keys(perType).length){
+        let pushedAny=false;
         Object.entries(perType).forEach(([ctnType,val])=>{
-          if(val) out.push({name:`${n} (${ctnTypeLabel(ctnType)})`, val, thb:isThb(n,idx), apr:false});
+          if(val){ out.push({name:`${n} (${ctnTypeLabel(ctnType)})`, val, thb:isThb(n,idx), apr:false}); pushedAny=true; }
         });
+        // Fallback: the per-container breakdown was empty/all-zero (e.g. THC was
+        // entered as a combined amount, or the container type changed after the
+        // per-type values were saved). Use the combined sells/costs value so the
+        // charge — like THC — still appears instead of silently vanishing.
+        if(!pushedAny){
+          const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
+          if(val||apr) out.push({name:n, val, thb:isThb(n,idx), apr});
+        }
       } else {
         const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
         if(val||apr) out.push({name:n, val, thb:isThb(n,idx), apr});
