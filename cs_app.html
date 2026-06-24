@@ -616,6 +616,8 @@ function renderCBAlerts(rows){
             <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">INV From Vendor</th>
             <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sent to Customer</th>
             <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
+            <th style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Cost (฿)</th>
+            <th style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Sell (฿)</th>
           </tr></thead>
           <tbody>
             ${monthRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
@@ -624,6 +626,8 @@ function renderCBAlerts(rows){
               <td style="padding:5px 10px;text-align:center">${badge(r.invoice==='YES',r.id,'invoice','Received','Waiting')}</td>
               <td style="padding:5px 10px;text-align:center">${badge(r.sentToDb==='YES',r.id,'sentToDb','Sent','Pending')}</td>
               <td style="padding:7px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
+              <td style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--red)">${r.cost?Number(r.cost).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
+              <td style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--green)">${r.sell?Number(r.sell).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
             </tr>`).join('')}
           </tbody>
         </table>
