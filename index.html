@@ -2366,7 +2366,31 @@ window.toggleAPR = function(btn){
   recalc();
 };
 
-// ── Local Charge Templates ──────────────────────────────────
+// ── Editable charge currency (for the "Others" row) ──────────
+// Sets a row's currency badge + the tr's data-thb flag, then recalculates so
+// totals and the ฿/$ profit symbol update. Applies to both Selling and Cost
+// since data-thb drives the whole row.
+function setChargeCcy(row, isThb){
+  if(!row) return;
+  const badge = row.querySelector('.ccy-toggle');
+  row.dataset.thb = isThb ? 'true' : 'false';
+  if(badge){
+    badge.textContent = isThb ? 'THB' : 'USD';
+    if(isThb){
+      badge.style.background='rgba(183,128,10,.15)'; badge.style.color='var(--gold)'; badge.style.borderColor='rgba(183,128,10,.3)';
+    }else{
+      badge.style.background='rgba(41,128,185,.1)'; badge.style.color='var(--cyan)'; badge.style.borderColor='rgba(41,128,185,.25)';
+    }
+  }
+}
+window.setChargeCcy = setChargeCcy;
+
+window.toggleChargeCcy = function(badge){
+  const row = badge.closest('tr');
+  if(!row) return;
+  setChargeCcy(row, row.dataset.thb !== 'true'); // flip
+  recalc();
+};
 async function loadLCTemplates(){
   const sel = g('lc_template_sel');
   if(!sel) return;
@@ -2489,6 +2513,15 @@ function buildCharges(){
       ? `<span style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-left:4px">×${totalQty}</span>`
       : '';
 
+    // The "Others" row gets an editable item name + a clickable THB/USD badge.
+    const isEditableName = (name === 'Others');
+    const nameCellInner = isEditableName
+      ? `<input class="charge-name-inp inp" value="${name}" placeholder="Item name" oninput="recalc()"
+           style="font-size:12px;padding:3px 6px;width:130px;border:1px solid var(--border2);border-radius:5px;background:var(--s1)">
+         <span class="ccy-toggle" onclick="toggleChargeCcy(this)" title="คลิกเพื่อสลับ THB / USD"
+           style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(41,128,185,.1);color:var(--cyan);border:1px solid rgba(41,128,185,.25);border-radius:4px;padding:1px 5px;margin-left:5px;cursor:pointer;user-select:none">USD</span>`
+      : `${name}${ccy}${qtyLabel}`;
+
     if(doSplit){
       // Per-ctn-type sell/cost inputs, ordered 20GP first then 40GP/40HC.
       // IMPORTANT: stays as ONE <tr> per charge (not one per container type) —
@@ -2515,7 +2548,7 @@ function buildCharges(){
             oninput="recalc()" style="color:var(--red);text-align:right;padding:3px 6px;font-size:11px;width:100%">
         </div>`).join('');
       return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}" data-split="true">
-        <td style="font-size:12px;padding:6px 10px;vertical-align:top">${name}${ccy}${qtyLabel}</td>
+        <td style="font-size:12px;padding:6px 10px;vertical-align:top">${nameCellInner}</td>
         <td style="padding:4px 6px;vertical-align:top">
           <div style="display:grid;grid-template-rows:repeat(${sortedCtnTypes.length},auto);gap:4px">${sellInputs}</div>
         </td>
@@ -2528,7 +2561,7 @@ function buildCharges(){
     }
 
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="${name.toLowerCase()}" data-thb="${isTHB}">
-    <td style="font-size:12px;padding:6px 10px">${name}${ccy}${qtyLabel}</td>
+    <td style="font-size:12px;padding:6px 10px">${nameCellInner}</td>
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
     <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
       <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
@@ -3235,7 +3268,11 @@ function saveShipment(){
     q20: _ctnRows.filter(r=>r.type==='20GP').reduce((s,r)=>s+r.qty,0),
     q40: _ctnRows.filter(r=>r.type==='40GP').reduce((s,r)=>s+r.qty,0),
     q40hc: _ctnRows.filter(r=>['40HC','45HC'].includes(r.type)).reduce((s,r)=>s+r.qty,0),
-    chargeNames: [...document.querySelectorAll('#charge_body tr td:first-child')].map(e=>e.textContent.trim()),
+    chargeNames: [...document.querySelectorAll('#charge_body tr')].map(r=>{
+      const inp=r.querySelector('.charge-name-inp');
+      if(inp) return (inp.value.trim() || 'Others'); // editable "Others" row
+      return r.querySelector('td:first-child')?.textContent.trim() || '';
+    }),
     thbFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.dataset?.thb==='true'),
     aprFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1'),
     totalSell: ts, totalCost: tc,
@@ -3333,6 +3370,12 @@ loadLCTemplates();
         if(btn && j.aprFlags[i]===true && btn.dataset.apr!=='1') window.toggleAPR(btn);
       });
     }
+    // Restore editable "Others" item name + its THB/USD currency.
+    chargeRows.forEach((row,i)=>{
+      const nameInp=row.querySelector('.charge-name-inp');
+      if(nameInp && j.chargeNames?.[i]) nameInp.value=j.chargeNames[i];
+      if(row.querySelector('.ccy-toggle') && j.thbFlags) setChargeCcy(row, !!j.thbFlags[i]);
+    });
     recalc();
   }
   const btn=g('save_btn');if(btn){btn.textContent='💾 Update Shipment';btn.className='btn btn-gold';btn.style.background='';}
