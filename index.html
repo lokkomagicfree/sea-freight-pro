@@ -8064,10 +8064,14 @@ function buildSopPdfFromJob(j){
       // SELLING RATES section too.
       const apr = !!(j.aprFlags && j.aprFlags[idx]);
       const perType = arr?.[idx];
-      if(SPLIT_CHARGE_NAMES.includes(n) && perType && Object.keys(perType).length){
+      // Charge names are stored with a currency suffix and (for per-container
+      // charges) a ×N multiplier, e.g. "THC OriginTHB×2". Strip those to get the
+      // base name so split charges are detected and broken out per container type.
+      const baseName = n.replace(/(THB|USD)(\s*×\s*\d+)?\s*$/,'').trim();
+      if(SPLIT_CHARGE_NAMES.includes(baseName) && perType && Object.keys(perType).length){
         let pushedAny=false;
         Object.entries(perType).forEach(([ctnType,val])=>{
-          if(val){ out.push({name:`${n} (${ctnTypeLabel(ctnType)})`, val, thb:isThb(n,idx), apr:false}); pushedAny=true; }
+          if(val){ out.push({name:`${baseName} (${ctnTypeLabel(ctnType)})`, val, thb:isThb(n,idx), apr:false}); pushedAny=true; }
         });
         // Fallback: the per-container breakdown was empty/all-zero (e.g. THC was
         // entered as a combined amount, or the container type changed after the
@@ -8075,7 +8079,7 @@ function buildSopPdfFromJob(j){
         // charge — like THC — still appears instead of silently vanishing.
         if(!pushedAny){
           const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
-          if(val||apr) out.push({name:n, val, thb:isThb(n,idx), apr});
+          if(val||apr) out.push({name:baseName, val, thb:isThb(n,idx), apr});
         }
       } else {
         const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
