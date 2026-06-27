@@ -1203,15 +1203,49 @@ function buildSopPdfFromJob(j){
 
   const names=j.chargeNames||[];
   const sells=j.sells||[], costs=j.costs||[];
-  const oceanSell=sells[0]||0, oceanCost=costs[0]||0;
-  const localSell=names.slice(1).map((n,i)=>{
-    const apr = !!(j.aprFlags && j.aprFlags[i+1]);
-    return {name:n, val:sells[i+1]||0, thb:isThb(n,i+1), apr};
-  }).filter(x=>x.val||x.apr);
-  const localCost=names.slice(1).map((n,i)=>{
-    const apr = !!(j.aprFlags && j.aprFlags[i+1]);
-    return {name:n, val:costs[i+1]||0, thb:isThb(n,i+1), apr};
-  }).filter(x=>x.val||x.apr);
+  // sells[0]/costs[0] are the COMBINED total across all container types
+  // (e.g. 20GP rate + 40HC rate summed) — for per-type display we need the
+  // individual breakdown, which is saved separately in sellsPerType/costsPerType.
+  const oceanSellByType = j.sellsPerType?.[0] || null;
+  const oceanCostByType = j.costsPerType?.[0] || null;
+  const oceanSell=sells[0]||0, oceanCost=costs[0]||0; // fallback combined total, used only if no per-type data exists
+  const SPLIT_CHARGE_NAMES = ['Ocean Freight','THC Origin','THC Dest'];
+  const ctnTypeLabel = t => ({'20GP':'20GP','40GP':'40GP','40HC':'40HC','45HC':'45HC'}[t]||t);
+
+  // For local charges (index 1+), expand any split charge (THC Origin/Dest)
+  // into one row per container type instead of showing the combined total.
+  function expandLocalCharges(arr, aprCheck){
+    const out=[];
+    names.slice(1).forEach((n,i)=>{
+      const idx=i+1;
+      // APR ("As per receipt") is a property of the charge row, so it applies to
+      // BOTH the selling and cost sides — not only the cost call. Compute it
+      // unconditionally so an APR charge like THC shows "As per receipt" in the
+      // SELLING RATES section too.
+      const apr = !!(j.aprFlags && j.aprFlags[idx]);
+      const perType = arr?.[idx];
+      if(SPLIT_CHARGE_NAMES.includes(n) && perType && Object.keys(perType).length){
+        let pushedAny=false;
+        Object.entries(perType).forEach(([ctnType,val])=>{
+          if(val){ out.push({name:`${n} (${ctnTypeLabel(ctnType)})`, val, thb:isThb(n,idx), apr:false}); pushedAny=true; }
+        });
+        // Fallback: the per-container breakdown was empty/all-zero (e.g. THC was
+        // entered as a combined amount, or the container type changed after the
+        // per-type values were saved). Use the combined sells/costs value so the
+        // charge — like THC — still appears instead of silently vanishing.
+        if(!pushedAny){
+          const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
+          if(val||apr) out.push({name:n, val, thb:isThb(n,idx), apr});
+        }
+      } else {
+        const val=(idx<(j.sells||[]).length ? (aprCheck?costs:sells)[idx] : 0)||0;
+        if(val||apr) out.push({name:n, val, thb:isThb(n,idx), apr});
+      }
+    });
+    return out;
+  }
+  const localSell=expandLocalCharges(j.sellsPerType, false);
+  const localCost=expandLocalCharges(j.costsPerType, true);
 
   /* ── HEADER ── */
   fillR(LM,y,TW,13,RED);
@@ -1222,9 +1256,8 @@ function buildSopPdfFromJob(j){
 
   /* ── GREETING ── */
   needY(12);
-  // In CS App: use current logged-in agent name
-  const pdfCsName = j.csAssigned || (typeof AGENT !== 'undefined' ? AGENT : '');
-  const pdfDear = pdfCsName ? `Dear Khun ${pdfCsName},` : "Dear CS,";
+  const pdfCsName = j.csAssigned || '';
+  const pdfDear = pdfCsName ? `Dear Khun ${pdfCsName},` : "Dear P'Aut,";
   Tsz(pdfDear,LM,y,9,false,BLK); y+=6;
   Tsz('Please find detail as below, thanks',LM,y,8.5,false,DGRAY); y+=9;
 
@@ -1303,9 +1336,9 @@ function buildSopPdfFromJob(j){
   fillR(LM,y,TW,7,[235,248,235]); stkR(LM,y,TW,7,[155,210,155]);
   Tb('SELLING RATES — Charge to '+(j.customer||'Customer'),LM+3,y,7,true,GREEN);
   y+=9;
-  if(j.q20   && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 20 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
-  if(j.q40   && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 40 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
-  if(j.q40hc && oceanSell){ needY(6); Tsz('USD '+oceanSell.toLocaleString()+' / 40 HC',LM+6,y,9,true,[30,120,60]); y+=6.5; }
+  if(j.q20   && (oceanSellByType?.['20GP']||oceanSell)){ needY(6); Tsz('USD '+(oceanSellByType?.['20GP']??oceanSell).toLocaleString()+' / 20 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
+  if(j.q40   && (oceanSellByType?.['40GP']||oceanSell)){ needY(6); Tsz('USD '+(oceanSellByType?.['40GP']??oceanSell).toLocaleString()+' / 40 GP',LM+6,y,9,true,[30,120,60]); y+=6.5; }
+  if(j.q40hc && (oceanSellByType?.['40HC']||oceanSellByType?.['45HC']||oceanSell)){ needY(6); Tsz('USD '+(oceanSellByType?.['40HC']??oceanSellByType?.['45HC']??oceanSell).toLocaleString()+' / 40 HC',LM+6,y,9,true,[30,120,60]); y+=6.5; }
   chargeTable(localSell);
   y+=5;
 
@@ -1314,9 +1347,9 @@ function buildSopPdfFromJob(j){
   fillR(LM,y,TW,7,[255,240,240]); stkR(LM,y,TW,7,[225,165,165]);
   Tb((j.carrier||j.selCarrier||'CARRIER')+' COST',LM+3,y,7,true,RED);
   y+=9;
-  if(j.q20   && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 20 GP',LM+6,y,9,true,RED); y+=6.5; }
-  if(j.q40   && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 40 GP',LM+6,y,9,true,RED); y+=6.5; }
-  if(j.q40hc && oceanCost){ needY(6); Tsz('USD '+oceanCost.toLocaleString()+' / 40 HC',LM+6,y,9,true,RED); y+=6.5; }
+  if(j.q20   && (oceanCostByType?.['20GP']||oceanCost)){ needY(6); Tsz('USD '+(oceanCostByType?.['20GP']??oceanCost).toLocaleString()+' / 20 GP',LM+6,y,9,true,RED); y+=6.5; }
+  if(j.q40   && (oceanCostByType?.['40GP']||oceanCost)){ needY(6); Tsz('USD '+(oceanCostByType?.['40GP']??oceanCost).toLocaleString()+' / 40 GP',LM+6,y,9,true,RED); y+=6.5; }
+  if(j.q40hc && (oceanCostByType?.['40HC']||oceanCostByType?.['45HC']||oceanCost)){ needY(6); Tsz('USD '+(oceanCostByType?.['40HC']??oceanCostByType?.['45HC']??oceanCost).toLocaleString()+' / 40 HC',LM+6,y,9,true,RED); y+=6.5; }
   chargeTable(localCost);
   y+=5;
 
