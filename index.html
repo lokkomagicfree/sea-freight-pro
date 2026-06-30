@@ -502,6 +502,13 @@ body{font-size:14px;font-weight:450}
         <option value="completed">✔ Completed</option>
         <option value="cancelled">❌ Cancelled</option>
       </select>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(0,180,216,.08);border:1px solid rgba(0,180,216,.3);border-radius:6px;padding:3px 8px">
+        <span style="font-size:10px;color:var(--cyan);white-space:nowrap">ETD</span>
+        <input type="date" id="etd_from_filter" oninput="renderShipments();saveFilterPrefs()" title="ETD ตั้งแต่" style="background:transparent;border:none;color:var(--cyan);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:108px">
+        <span style="font-size:10px;color:var(--muted)">→</span>
+        <input type="date" id="etd_to_filter" oninput="renderShipments();saveFilterPrefs()" title="ETD ถึง" style="background:transparent;border:none;color:var(--cyan);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:108px">
+        <button onclick="clearEtdFilter()" title="ล้าง ETD" class="btn btn-ghost" style="font-size:10px;padding:2px 7px;margin-left:2px">✕</button>
+      </div>
       <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
       <button onclick="showGroupEmail()" class="btn btn-cyan" style="font-size:11px">✉️ Group Email</button>
       <div style="display:flex;align-items:center;gap:4px;background:rgba(245,197,66,.08);border:1px solid rgba(245,197,66,.3);border-radius:6px;padding:3px 8px">
@@ -3428,6 +3435,8 @@ function renderShipments(){
   }
   // Read mthFilt AFTER dropdown is updated
   const mthFilt=v('month_filter')||'';
+  const etdFrom=v('etd_from_filter')||'';
+  const etdTo=v('etd_to_filter')||'';
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
     if(bkg&&!(j.no||'').toLowerCase().includes(bkg))return false;
@@ -3436,6 +3445,7 @@ function renderShipments(){
     if(cust&&!(j.customer||j.shipper||'').toLowerCase().includes(cust))return false;
     if(stFilt&&j.status!==stFilt)return false;
     if(mthFilt){const jm=j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'');if(jm!==mthFilt)return false;}
+    if(etdFrom||etdTo){const d=j.etd||'';if(!d)return false;if(etdFrom&&d<etdFrom)return false;if(etdTo&&d>etdTo)return false;}
     return true;
   });
   // Group by month
@@ -3490,7 +3500,7 @@ function renderShipments(){
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
           <button onclick="showShipmentDetail(${j._idx})" title="Detail" style="border:none;background:rgba(192,57,43,.1);color:var(--red);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">Detail</button>
           <button onclick="openBookingPdfModal(${j._idx})" title="Booking PDF" style="border:none;background:rgba(41,128,185,.1);color:var(--cyan);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">📄 PDF</button>
-          ${j.csAssigned?`<button onclick="copyCSLink(this.dataset.cs)" data-cs="${j.csAssigned}" title="Copy CS Link — ${j.csAssigned}" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">🔗 ${j.csAssigned}</button>`:''}
+          ${j.csAssigned?`<button onclick="csChip(${j._idx})" data-cs="${j.csAssigned}" title="แก้ไข CS / เปิด CS App — ${j.csAssigned}" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">🔗 ${j.csAssigned}</button>`:''}
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
           <button onclick="duplicateShipment(${j._idx})" title="Duplicate" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-right:2px">📋</button>
           <button onclick="savedJobs.splice(${j._idx},1);renderShipments();updateAlertCount()" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:12px">✕</button>
@@ -4363,6 +4373,53 @@ function copyCSLink(csName){
   });
 }
 window.copyCSLink = copyCSLink;
+
+// Green CS chip in the Shipments table → small menu to rename the assigned CS
+// and/or jump to the CS app, without opening the full edit form.
+function csChip(idx){
+  const j = savedJobs[idx];
+  if(!j) return;
+  document.getElementById('cs_chip_modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cs_chip_modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = (e)=>{ if(e.target===modal) modal.remove(); };
+  const cur = (j.csAssigned||'').replace(/"/g,'&quot;');
+  modal.innerHTML = `<div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:min(420px,96vw);padding:22px">
+    <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--green);margin-bottom:4px">🔗 CS — ${j.no||'—'}</div>
+    <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:14px">${j.customer||''}</div>
+    <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px">ชื่อ CS ที่ดูแล</div>
+    <div style="display:flex;gap:6px">
+      <input id="cs_chip_inp" class="inp" value="${cur}" placeholder="ชื่อ CS…" style="flex:1"
+        onkeydown="if(event.key==='Enter')csChipSave(${idx})">
+      <button onclick="csChipSave(${idx})" class="btn btn-cyan" style="font-size:12px">💾 บันทึก</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <button onclick="const n=document.getElementById('cs_chip_inp').value.trim();if(!n){toast('⚠ กรอกชื่อ CS ก่อน');return;}document.getElementById('cs_chip_modal').remove();openCSPortalFor(n);" class="btn btn-cyan" style="flex:1;font-size:12px">🔗 เปิด CS App</button>
+      <button onclick="copyCSLink(document.getElementById('cs_chip_inp').value.trim())" class="btn btn-ghost" style="flex:1;font-size:12px">📋 คัดลอกลิงก์</button>
+    </div>
+    <div style="text-align:right;margin-top:12px"><button onclick="document.getElementById('cs_chip_modal').remove()" class="btn btn-ghost" style="font-size:11px">ปิด</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  setTimeout(()=>{ const el=document.getElementById('cs_chip_inp'); if(el){ el.focus(); el.select(); } },50);
+}
+window.csChip = csChip;
+
+function csChipSave(idx){
+  const j = savedJobs[idx];
+  if(!j) return;
+  const val = (document.getElementById('cs_chip_inp')?.value||'').trim();
+  const prev = j.csAssigned||'';
+  if(val===prev){ document.getElementById('cs_chip_modal')?.remove(); return; }
+  j.csAssigned = val;
+  // Stamp assignedAt the first time a CS is assigned (matches the edit form).
+  if(val && !prev) j.assignedAt = new Date().toISOString();
+  storageSave();
+  renderShipments();
+  toast(val ? '✅ อัปเดต CS: '+val : '✅ ล้างชื่อ CS แล้ว');
+  document.getElementById('cs_chip_modal')?.remove();
+}
+window.csChipSave = csChipSave;
 
 // ── PDF Booking Auto-Extract (AI) ──────────────────────────
 function extractExcelBooking(input){
@@ -8237,6 +8294,8 @@ window.saveFilterPrefs = function(){
     const prefs = {
       month_filter:  document.getElementById('month_filter')?.value  || '',
       status_filter: document.getElementById('status_filter')?.value || '',
+      etd_from:      document.getElementById('etd_from_filter')?.value || '',
+      etd_to:        document.getElementById('etd_to_filter')?.value   || '',
     };
     localStorage.setItem('sfp_filter_prefs', JSON.stringify(prefs));
   }catch(e){}
@@ -8259,8 +8318,18 @@ window.applyFilterPrefs = function(){
   if(!prefs) return;
   const sf = document.getElementById('status_filter');
   if(sf && prefs.status_filter !== undefined) sf.value = prefs.status_filter;
+  const ef = document.getElementById('etd_from_filter');
+  const et = document.getElementById('etd_to_filter');
+  if(ef && prefs.etd_from !== undefined) ef.value = prefs.etd_from;
+  if(et && prefs.etd_to !== undefined) et.value = prefs.etd_to;
   if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
   window.renderShipments?.();
+};
+
+window.clearEtdFilter = function(){
+  const a=document.getElementById('etd_from_filter'), b=document.getElementById('etd_to_filter');
+  if(a)a.value=''; if(b)b.value='';
+  window.renderShipments?.(); window.saveFilterPrefs?.();
 };
 
 // ── Default Special Remark ──────────────────────────────────

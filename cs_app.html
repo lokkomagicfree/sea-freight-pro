@@ -132,7 +132,8 @@ select.inp{cursor:pointer}
 
   <!-- Filter -->
   <div class="filter-bar">
-    <input class="fi" id="search_inp" placeholder="🔍 Booking / Customer…" oninput="renderTable()" style="width:200px">
+    <input class="fi" id="search_inp" placeholder="🔍 Booking / Job…" oninput="renderTable()" style="width:180px">
+    <input class="fi" id="cust_search" placeholder="🔍 Customer…" oninput="renderTable()" style="width:170px">
     <select class="fi" id="status_fil"
       onfocus="window._filterFocused=true"
       onblur="window._filterFocused=false"
@@ -150,6 +151,13 @@ select.inp{cursor:pointer}
       onchange="window._filterFocused=false;renderTable()">
       <option value="">All Months</option>
     </select>
+    <div style="display:flex;align-items:center;gap:4px;background:rgba(0,180,216,.08);border:1px solid rgba(0,180,216,.3);border-radius:6px;padding:3px 8px">
+      <span style="font-size:10px;color:var(--cyan)">ETD</span>
+      <input type="date" id="etd_from_fil" oninput="renderTable()" title="ETD ตั้งแต่" style="background:transparent;border:none;color:var(--cyan);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:104px">
+      <span style="font-size:10px;color:var(--muted)">→</span>
+      <input type="date" id="etd_to_fil" oninput="renderTable()" title="ETD ถึง" style="background:transparent;border:none;color:var(--cyan);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:104px">
+      <button onclick="document.getElementById('etd_from_fil').value='';document.getElementById('etd_to_fil').value='';renderTable()" title="ล้าง ETD" style="background:transparent;border:1px solid var(--border2);color:var(--muted);border-radius:5px;font-size:10px;padding:2px 7px;cursor:pointer">✕</button>
+    </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;font-family:var(--mono)">
       <input type="checkbox" id="tasks_only" onchange="renderTable()" style="accent-color:var(--cyan)">
       มีงานค้าง
@@ -744,6 +752,9 @@ window.inlineUpdate = async function(idx, field, value, el){
 let _renderPending = false;
 function renderTable(){
   const search = (document.getElementById('search_inp').value||'').toLowerCase();
+  const custQ  = (document.getElementById('cust_search')?.value||'').toLowerCase();
+  const etdFrom= document.getElementById('etd_from_fil')?.value||'';
+  const etdTo  = document.getElementById('etd_to_fil')?.value||'';
   const stFil  = document.getElementById('status_fil').value;
   const mFil   = document.getElementById('month_fil').value;
   const tasksOnly = document.getElementById('tasks_only').checked;
@@ -754,8 +765,10 @@ function renderTable(){
   const jobs = allJobs.filter((j,i)=>{
     j._idx = i;
     if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
+    if(custQ && !(j.customer||j.shipper||'').toLowerCase().includes(custQ)) return false;
     if(stFil && j.status !== stFil) return false;
     if(mFil && (j.etdMonth||j.etaMonth||'') !== mFil) return false;
+    if(etdFrom||etdTo){const d=j.etd||'';if(!d)return false;if(etdFrom&&d<etdFrom)return false;if(etdTo&&d>etdTo)return false;}
     if(tasksOnly){
       const tasks = parseTasks(j.csTasks||'');
       if(!tasks.length || tasks.every(t=>t.done)) return false;
