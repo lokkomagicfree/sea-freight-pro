@@ -130,6 +130,26 @@ select.inp{cursor:pointer}
     </div>
   </div>
 
+  <!-- Pre-Booking (read-only — synced live from Sea Freight Pro) -->
+  <div id="pbkg_wrap" style="margin-bottom:14px;display:none">
+    <div class="card" style="padding:12px 16px;border-color:rgba(0,180,216,.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em">📋 PRE-BOOKING</div>
+        <div id="pbkg_summary" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="text-align:left;color:var(--muted);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">
+            <th style="padding:5px 8px">BKG No</th><th style="padding:5px 8px">Customer</th><th style="padding:5px 8px">Carrier</th>
+            <th style="padding:5px 8px">POL → POD</th><th style="padding:5px 8px">ETD</th><th style="padding:5px 8px">Free Time</th>
+            <th style="padding:5px 8px">เหลือ</th><th style="padding:5px 8px">Note</th><th style="padding:5px 8px;text-align:center">Status</th>
+          </tr></thead>
+          <tbody id="pbkg_tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- Filter -->
   <div class="filter-bar">
     <input class="fi" id="search_inp" placeholder="🔍 Booking / Job…" oninput="renderTable()" style="width:180px">
@@ -487,6 +507,13 @@ function startLiveSync(){
     _csDone = snap.exists() ? (snap.data() || {}) : {};
     renderCutoffAlerts();
   }, ()=>{ _csDone = {}; });
+
+  // Listen to Pre-Booking list — read-only view synced live from Sea Freight Pro
+  const pbkgRef = doc(db, 'users', ownerUid, 'data', 'preBkgList');
+  onSnapshot(pbkgRef, (snap) => {
+    const data = snap.exists() ? snap.data() : null;
+    renderPreBkg(data?.list || []);
+  }, ()=>{ renderPreBkg([]); });
 }
 
 async function loadData(){ startLiveSync(); }
@@ -574,6 +601,53 @@ function renderCutoffAlerts(){
     (undone.sort((a,b)=>a.diff-b.diff).map(a=>card(a,false)).join('')) +
     (done.length ? `<div style="width:1px;background:var(--border2);margin:0 4px;flex-shrink:0"></div>` : '') +
     (done.map(a=>card(a,true)).join(''));
+}
+
+// ── Pre-Booking (read-only — synced live from Sea Freight Pro) ──
+let _pbkgList = [];
+function renderPreBkg(list){
+  _pbkgList = Array.isArray(list) ? list : [];
+  const wrap = document.getElementById('pbkg_wrap');
+  const tbody = document.getElementById('pbkg_tbody');
+  const summary = document.getElementById('pbkg_summary');
+  if(!wrap || !tbody) return;
+  // Show only items still relevant to CS (pending / released); hide cancelled
+  const items = _pbkgList.filter(p=>p && p.status!=='cancelled');
+  if(!items.length){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  const now = new Date();
+  const fmtD = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+  const fmtDT = d=>{ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})+' '+dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}); };
+  const statusBadge = s=>({pending:'<span style="color:var(--gold);font-size:10px">⏳ Pending</span>',released:'<span style="color:var(--green);font-size:10px">✅ Released</span>'}[s||'pending']||'—');
+  const countdown = ft=>{
+    if(!ft) return '—';
+    const diff = new Date(ft)-now;
+    if(diff<0) return '<span style="color:var(--red);font-size:10px">⚠️ หมดเวลา</span>';
+    const days=Math.floor(diff/86400000), h=Math.floor(diff/3600000), m2=Math.floor((diff%3600000)/60000);
+    const color=days<1?'var(--red)':days<3?'var(--gold)':'var(--green)';
+    const txt=days>0?`${days}d ${h%24}h`:h>0?`${h}h ${m2}m`:`${m2}m`;
+    return `<span style="color:${color};font-family:var(--mono);font-size:11px;font-weight:700">⏱ ${txt}</span>`;
+  };
+  tbody.innerHTML = items.map(p=>{
+    const rbg = p.status==='released'?';background:rgba(39,174,96,.04)':'';
+    return `<tr style="border-bottom:1px solid var(--border)${rbg}">
+      <td style="padding:6px 8px;font-family:var(--mono);font-weight:700;color:var(--cyan)">${p.bkgno||'—'}</td>
+      <td style="padding:6px 8px">${p.customer||'—'}</td>
+      <td style="padding:6px 8px;color:var(--orange)">${p.carrier||'—'}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${p.pol||''}${p.pol&&p.pod?' → ':''}${p.pod||''}</td>
+      <td style="padding:6px 8px;font-family:var(--mono)">${fmtD(p.etd)}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:10px">${p.freeTime?fmtDT(p.freeTime):'—'}</td>
+      <td style="padding:6px 8px">${p.status==='pending'?countdown(p.freeTime):'—'}</td>
+      <td style="padding:6px 8px;color:var(--muted);max-width:160px;word-wrap:break-word">${p.note||'—'}</td>
+      <td style="padding:6px 8px;text-align:center">${statusBadge(p.status)}</td>
+    </tr>`;
+  }).join('');
+  const pending = items.filter(p=>p.status==='pending').length;
+  const expired = items.filter(p=>p.status==='pending'&&p.freeTime&&new Date(p.freeTime)<now).length;
+  if(summary) summary.innerHTML = `${items.length} รายการ · <span style="color:var(--gold)">${pending} Pending</span>${expired?` · <span style="color:var(--red)">⚠️ ${expired} หมดเวลา</span>`:''}`;
+  // Refresh countdown every 60s while items are visible
+  clearTimeout(window._pbkgTimer);
+  window._pbkgTimer = setTimeout(()=>renderPreBkg(_pbkgList), 60000);
 }
 
 // ── In-Transit Invoice Alerts ──────────────────────────────
