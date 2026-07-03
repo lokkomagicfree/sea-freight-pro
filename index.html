@@ -78,7 +78,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tbl th:hover{color:var(--red)}
 .tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden;max-height:48px}
 .tbl tr:hover td{background:var(--s2)}
-#pbkg_tbody tr:hover td{background:transparent}
+#pbkg_tbody tr:hover td{background:transparent !important}
+#pbkg_tbody tr:hover{background:inherit}
 .pager{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .pager-btns{display:flex;gap:4px}
 .pb{padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;font-size:11px;font-family:var(--mono)}
@@ -3853,12 +3854,12 @@ let _preBkgEditIdx = null;
 // ── Pre-Booking status model (shared shape with CS app) ──
 const PBKG_STATUSES = [
   {v:'pending',   label:'⏳ Pending',           rowBg:'transparent',          txt:'var(--muted)'},
-  {v:'received',  label:'📥 Booking Received',  rowBg:'rgba(39,174,96,.30)',  txt:'var(--green)'},
-  {v:'revising',  label:'📝 Revising',          rowBg:'rgba(243,201,66,.42)', txt:'var(--gold)'},
-  {v:'booked',    label:'📦 Booked',            rowBg:'rgba(140,140,140,.35)',txt:'var(--muted)'},
-  {v:'released',  label:'✅ Released',           rowBg:'rgba(0,180,216,.28)',  txt:'var(--cyan)'},
-  {v:'rejected',  label:'🚫 Rejected',          rowBg:'rgba(231,76,60,.32)',  txt:'var(--red)'},
-  {v:'cancelled', label:'✕ Cancelled',          rowBg:'rgba(231,76,60,.32)',  txt:'var(--red)'},
+  {v:'received',  label:'📥 Booking Received',  rowBg:'rgba(39,174,96,.60)',  txt:'var(--green)'},
+  {v:'revising',  label:'📝 Revising',          rowBg:'rgba(243,201,66,.70)', txt:'#7a5b00'},
+  {v:'booked',    label:'📦 Booked',            rowBg:'rgba(120,120,120,.55)',txt:'#333'},
+  {v:'released',  label:'✅ Released',           rowBg:'rgba(0,180,216,.55)',  txt:'var(--cyan)'},
+  {v:'rejected',  label:'🚫 Rejected',          rowBg:'rgba(231,76,60,.60)',  txt:'#fff'},
+  {v:'cancelled', label:'✕ Cancelled',          rowBg:'rgba(231,76,60,.60)',  txt:'#fff'},
 ];
 const pbkgStatusMeta = s => PBKG_STATUSES.find(x=>x.v===(s||'pending')) || PBKG_STATUSES[0];
 
