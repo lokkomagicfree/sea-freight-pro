@@ -562,6 +562,8 @@ function startLiveSync(){
   const pbkgRef = doc(db, 'users', ownerUid, 'data', 'preBkgList');
   onSnapshot(pbkgRef, (snap) => {
     const data = snap.exists() ? snap.data() : null;
+    let remote=''; try{ remote = JSON.stringify(data?.list||[]); }catch(e){}
+    if(remote && remote === window._csPbkgSelfHash){ if(Array.isArray(data?.log)) _pbkgLog=data.log; return; }
     renderPreBkg(data?.list || [], data?.log || []);
   }, ()=>{ renderPreBkg([]); });
 }
@@ -689,7 +691,7 @@ function pbkgLog(action, bkgno){
   if(_pbkgLog.length>300) _pbkgLog.length=300;
 }
 async function savePbkg(){
-  try{ await fbSet('data/preBkgList', {list:_pbkgList, log:_pbkgLog, updatedAt:new Date().toISOString()}); }
+  try{ try{ window._csPbkgSelfHash = JSON.stringify(_pbkgList); }catch(e){} await fbSet('data/preBkgList', {list:_pbkgList, log:_pbkgLog, updatedAt:new Date().toISOString()}); }
   catch(e){ toast('❌ '+e.message); }
 }
 
@@ -1402,9 +1404,18 @@ window.renderCSSOPDocs = function(){
 
   const stCol = {pending:'var(--gold)',confirmed:'var(--green)',loaded:'var(--cyan)',completed:'#888',cancelled:'var(--red)'};
 
+  // SOP visibility: only the CS assigned to a shipment can generate its SOP.
+  // "PAE" is a supervisor and can see/generate every SOP.
+  const AG = (AGENT||'').toLowerCase().trim();
+  const isPae = AG === 'pae';
+
   list.innerHTML = jobs.map((j,i) => {
     const etd = j.etd ? new Date(j.etd+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) : '—';
     const vessel = [j.vessel, j.voyage].filter(Boolean).join(' / ') || '—';
+    const canSop = isPae || (j.csAssigned||'').toLowerCase().trim() === AG;
+    const sopBtn = canSop
+      ? `<button onclick="csGenerateSopPDF(${i})" style="width:100%;background:var(--red);color:#fff;border:none;border-radius:6px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans)">📄 Generate SOP PDF</button>`
+      : `<div style="width:100%;text-align:center;background:var(--s3);color:var(--muted);border:1px dashed var(--border2);border-radius:6px;padding:7px;font-size:10px;font-family:var(--mono)">🔒 SOP เฉพาะ CS: ${j.csAssigned||'—'}</div>`;
     return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px">
         <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${j.no||'—'}</span>
@@ -1412,11 +1423,8 @@ window.renderCSSOPDocs = function(){
       </div>
       ${j.jobno ? `<div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-bottom:4px">Job No: ${j.jobno}</div>` : ''}
       <div style="font-size:11px;font-weight:600;margin-bottom:2px">${j.customer||j.shipper||'—'}</div>
-      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px">${j.carrier||'—'} · ETD ${etd} · ${vessel}</div>
-      <button onclick="csGenerateSopPDF(${i})"
-        style="width:100%;background:var(--red);color:#fff;border:none;border-radius:6px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans)">
-        📄 Generate SOP PDF
-      </button>
+      <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:8px">${j.carrier||'—'} · ETD ${etd} · ${vessel}${j.csAssigned?` · CS: ${j.csAssigned}`:''}</div>
+      ${sopBtn}
     </div>`;
   }).join('');
   // Store ref for PDF generation
@@ -1728,6 +1736,10 @@ window.csGenerateSopPDF = async function(idx){
   }
   const j=(window._csSopJobs||[])[idx];
   if(!j){ toast('❌ Shipment not found'); return; }
+  const _ag=(AGENT||'').toLowerCase().trim();
+  if(_ag!=='pae' && (j.csAssigned||'').toLowerCase().trim()!==_ag){
+    toast('🔒 SOP นี้เฉพาะ CS: '+(j.csAssigned||'—')); return;
+  }
   toast('⏳ Generating SOP PDF…');
   try{ await window.ensureThaiFont(); }catch(e){}   // ensure Thai renders
   const doc=buildSopPdfFromJob(j);

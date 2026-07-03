@@ -3957,9 +3957,28 @@ async function loadPreBkgList(){
   }catch(e){ _preBkgList = []; _preBkgLog = []; }
 }
 async function savePreBkgList(){
-  try{ await window.fbSet('data/preBkgList',{list:_preBkgList,log:_preBkgLog,updatedAt:new Date().toISOString()}); }
+  try{
+    try{ window._preBkgSelfHash = JSON.stringify(_preBkgList); }catch(e){}
+    await window.fbSet('data/preBkgList',{list:_preBkgList,log:_preBkgLog,updatedAt:new Date().toISOString()});
+  }
   catch(e){ console.warn('savePreBkgList',e); }
 }
+// Real-time apply of Pre-Booking changes coming from Firestore (e.g. edits made
+// in the CS app). Called by the module's onSnapshot listener. Keeps the local
+// list fresh so a later save from here never overwrites CS additions.
+window._applyPreBkgRemote = function(list, log){
+  let remote=''; try{ remote = JSON.stringify(list||[]); }catch(e){}
+  if(remote && remote === window._preBkgSelfHash) return; // our own write echoing back
+  _preBkgList = Array.isArray(list) ? list : [];
+  if(Array.isArray(log)) _preBkgLog = log;
+  window._preBkgSelfHash = remote;
+  // Don't yank data out from under an open edit modal; refresh the table only
+  // when the Pre-Booking tab is visible.
+  const modalOpen = document.getElementById('pbkg_modal')?.style.display === 'flex';
+  if(!modalOpen && document.getElementById('page-prebooking')?.classList.contains('active')){
+    try{ renderPreBooking(); }catch(e){}
+  }
+};
 
 window.renderPreBooking = async function(){
   if(!_preBkgList.length) await loadPreBkgList();
@@ -7209,6 +7228,15 @@ onAuthStateChanged(auth, async user=>{
         window.renderNewBizList?.();
         console.log('🔄 Jobs updated by CS Portal');
       }
+    }, ()=>{});
+
+    // Real-time listener for Pre-Booking list — sync CS app edits/additions back
+    const _pbkgRef = doc(db,'users',uid(),'data','preBkgList');
+    onSnapshot(_pbkgRef, (snap)=>{
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(!data) return;
+      window._applyPreBkgRemote?.(data.list || [], data.log || []);
     }, ()=>{});
 
     // Real-time listener for Weekly Report draft — push to iframe live on other devices
