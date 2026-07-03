@@ -3856,6 +3856,7 @@ const PBKG_STATUSES = [
   {v:'revising',  label:'📝 Revising',          rowBg:'rgba(243,201,66,.22)', txt:'var(--gold)'},
   {v:'booked',    label:'📦 Booked',            rowBg:'rgba(140,140,140,.22)',txt:'var(--muted)'},
   {v:'released',  label:'✅ Released',           rowBg:'rgba(0,180,216,.12)',  txt:'var(--cyan)'},
+  {v:'rejected',  label:'🚫 Rejected',          rowBg:'rgba(231,76,60,.14)',  txt:'var(--red)'},
   {v:'cancelled', label:'✕ Cancelled',          rowBg:'rgba(231,76,60,.14)',  txt:'var(--red)'},
 ];
 const pbkgStatusMeta = s => PBKG_STATUSES.find(x=>x.v===(s||'pending')) || PBKG_STATUSES[0];
@@ -6902,6 +6903,7 @@ function clearImgExtract(){
         <option value="revising">📝 Revising</option>
         <option value="booked">📦 Booked</option>
         <option value="released">✅ Released</option>
+        <option value="rejected">🚫 Rejected</option>
         <option value="cancelled">✕ Cancelled</option>
       </select>
     </div>
@@ -6958,6 +6960,7 @@ function clearImgExtract(){
           <option value="revising">📝 Revising</option>
           <option value="booked">📦 Booked</option>
           <option value="released">✅ Released</option>
+          <option value="rejected">🚫 Rejected</option>
           <option value="cancelled">✕ Cancelled</option>
         </select>
       </div>
