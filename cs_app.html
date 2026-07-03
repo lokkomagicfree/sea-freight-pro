@@ -135,17 +135,44 @@ select.inp{cursor:pointer}
     <div class="card" style="padding:12px 16px;border-color:rgba(0,180,216,.3)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em">📋 PRE-BOOKING</div>
-        <div id="pbkg_summary" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div id="pbkg_summary" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></div>
+          <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">✍️ <span id="pbkg_editor_name" style="color:var(--cyan);font-weight:700">—</span> <a onclick="changePbkgEditor()" style="color:var(--cyan);cursor:pointer;text-decoration:underline">เปลี่ยน</a></span>
+          <button onclick="openPbkgLog()" style="background:transparent;border:1px solid var(--border2);color:var(--muted);border-radius:6px;font-size:10px;padding:3px 8px;cursor:pointer">📜 Log</button>
+          <button onclick="openAddPbkg()" style="background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.4);color:var(--cyan);border-radius:6px;font-size:10px;font-weight:700;padding:3px 10px;cursor:pointer">+ Add</button>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px">
           <thead><tr style="text-align:left;color:var(--muted);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">
-            <th style="padding:5px 8px">BKG No</th><th style="padding:5px 8px">Customer</th><th style="padding:5px 8px">Carrier</th>
+            <th style="padding:5px 8px">BKG No</th><th style="padding:5px 8px">Customer</th><th style="padding:5px 8px">Sale</th><th style="padding:5px 8px">Carrier</th>
             <th style="padding:5px 8px">POL → POD</th><th style="padding:5px 8px">ETD</th><th style="padding:5px 8px">Free Time</th>
-            <th style="padding:5px 8px">เหลือ</th><th style="padding:5px 8px">Note</th><th style="padding:5px 8px;text-align:center">Status</th>
+            <th style="padding:5px 8px">เหลือ</th><th style="padding:5px 8px">Note</th><th style="padding:5px 8px;text-align:center">Status</th><th style="padding:5px 8px"></th>
           </tr></thead>
           <tbody id="pbkg_tbody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pre-Booking Add Modal (CS) -->
+  <div id="cs_pbkg_modal" style="display:none;position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;padding:20px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--cyan);margin-bottom:14px">+ Add Pre-Booking</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:10px;color:var(--muted)">Booking No.</label><input id="cspb_bkgno" class="fi" style="width:100%" placeholder="e.g. COSCO12345"></div>
+        <div><label style="font-size:10px;color:var(--muted)">Customer</label><input id="cspb_customer" class="fi" style="width:100%" placeholder="e.g. DB GROUP"></div>
+        <div><label style="font-size:10px;color:var(--muted)">Sale (คนจอง)</label><input id="cspb_sale" class="fi" style="width:100%" placeholder="e.g. FILM"></div>
+        <div><label style="font-size:10px;color:var(--muted)">Carrier</label><input id="cspb_carrier" class="fi" style="width:100%" placeholder="e.g. COSCO"></div>
+        <div><label style="font-size:10px;color:var(--muted)">POL</label><input id="cspb_pol" class="fi" style="width:100%" placeholder="Laem Chabang"></div>
+        <div><label style="font-size:10px;color:var(--muted)">POD</label><input id="cspb_pod" class="fi" style="width:100%" placeholder="New York"></div>
+        <div><label style="font-size:10px;color:var(--muted)">ETD</label><input type="date" id="cspb_etd" class="fi" style="width:100%"></div>
+        <div><label style="font-size:10px;color:var(--muted)">Free Time</label><input type="datetime-local" id="cspb_freetime" class="fi" style="width:100%"></div>
+        <div style="grid-column:1/3"><label style="font-size:10px;color:var(--muted)">Note</label><input id="cspb_note" class="fi" style="width:100%" placeholder="หมายเหตุ…"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="saveAddPbkg()" style="flex:1;background:var(--cyan);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;padding:9px;cursor:pointer">💾 Save (Pending)</button>
+        <button onclick="document.getElementById('cs_pbkg_modal').style.display='none'" style="background:transparent;border:1px solid var(--border2);color:var(--text);border-radius:8px;font-size:12px;padding:9px 16px;cursor:pointer">ยกเลิก</button>
       </div>
     </div>
   </div>
@@ -512,7 +539,7 @@ function startLiveSync(){
   const pbkgRef = doc(db, 'users', ownerUid, 'data', 'preBkgList');
   onSnapshot(pbkgRef, (snap) => {
     const data = snap.exists() ? snap.data() : null;
-    renderPreBkg(data?.list || []);
+    renderPreBkg(data?.list || [], data?.log || []);
   }, ()=>{ renderPreBkg([]); });
 }
 
@@ -605,20 +632,119 @@ function renderCutoffAlerts(){
 
 // ── Pre-Booking (read-only — synced live from Sea Freight Pro) ──
 let _pbkgList = [];
-function renderPreBkg(list){
+let _pbkgLog = [];
+
+// ── Pre-Booking status model (shared shape with Sea Freight Pro) ──
+const PBKG_STATUSES = [
+  {v:'pending',   label:'⏳ Pending',   rowBg:'rgba(39,174,96,.12)',   txt:'var(--green)'},
+  {v:'revising',  label:'📝 Revising',  rowBg:'rgba(243,201,66,.22)',  txt:'var(--gold)'},
+  {v:'booked',    label:'📦 Booked',    rowBg:'rgba(140,140,140,.22)', txt:'var(--muted)'},
+  {v:'released',  label:'✅ Released',  rowBg:'rgba(0,180,216,.12)',   txt:'var(--cyan)'},
+  {v:'cancelled', label:'✕ Cancelled', rowBg:'rgba(231,76,60,.14)',   txt:'var(--red)'},
+];
+const pbkgStatusMeta = s => PBKG_STATUSES.find(x=>x.v===(s||'pending')) || PBKG_STATUSES[0];
+
+function pbkgEditor(){ try{ return localStorage.getItem('sfp_pbkg_editor')||''; }catch(e){ return ''; } }
+function ensurePbkgEditor(){
+  let n = pbkgEditor();
+  if(!n){
+    n = (window.prompt('👤 ใส่ชื่อคุณก่อนแก้ไข Pre-Booking (บันทึกลง Log):', (typeof AGENT!=='undefined'?AGENT:'')||'')||'').trim();
+    if(!n) return null;
+    try{ localStorage.setItem('sfp_pbkg_editor', n); }catch(e){}
+    const el=document.getElementById('pbkg_editor_name'); if(el) el.textContent=n;
+  }
+  return n;
+}
+window.changePbkgEditor = function(){
+  const n=(window.prompt('👤 เปลี่ยนชื่อผู้แก้ไข Pre-Booking:', pbkgEditor())||'').trim();
+  if(n){ try{ localStorage.setItem('sfp_pbkg_editor',n); }catch(e){} const el=document.getElementById('pbkg_editor_name'); if(el) el.textContent=n; toast('👤 ผู้แก้ไข: '+n); }
+};
+function pbkgLog(action, bkgno){
+  _pbkgLog.unshift({ ts:new Date().toISOString(), editor:pbkgEditor()||'?', bkgno:bkgno||'', action });
+  if(_pbkgLog.length>300) _pbkgLog.length=300;
+}
+async function savePbkg(){
+  try{ await fbSet('data/preBkgList', {list:_pbkgList, log:_pbkgLog, updatedAt:new Date().toISOString()}); }
+  catch(e){ toast('❌ '+e.message); }
+}
+
+window.pbkgSetStatus = async function(idx, val){
+  const p=_pbkgList[idx]; if(!p) return;
+  if(!ensurePbkgEditor()){ renderPreBkg(_pbkgList,_pbkgLog); return; }
+  const old=p.status||'pending'; if(old===val) return;
+  p.status=val; p.updatedAt=new Date().toISOString();
+  if(val==='released' && !p.releasedAt) p.releasedAt=new Date().toISOString();
+  pbkgLog(`สถานะ ${old} → ${val}`, p.bkgno);
+  renderPreBkg(_pbkgList,_pbkgLog); await savePbkg();
+  toast('✅ '+p.bkgno+' → '+pbkgStatusMeta(val).label);
+};
+window.pbkgSetSale = async function(idx, val){
+  const p=_pbkgList[idx]; if(!p) return;
+  val=(val||'').trim().toUpperCase(); const old=(p.sale||''); if(old===val) return;
+  if(!ensurePbkgEditor()){ renderPreBkg(_pbkgList,_pbkgLog); return; }
+  p.sale=val; p.updatedAt=new Date().toISOString();
+  pbkgLog(`Sale "${old}" → "${val}"`, p.bkgno);
+  renderPreBkg(_pbkgList,_pbkgLog); await savePbkg();
+};
+window.pbkgSetNote = async function(idx, val){
+  const p=_pbkgList[idx]; if(!p) return;
+  val=(val||'').trim(); const old=(p.note||''); if(old===val) return;
+  if(!ensurePbkgEditor()){ renderPreBkg(_pbkgList,_pbkgLog); return; }
+  p.note=val; p.updatedAt=new Date().toISOString();
+  let extra='';
+  if(val && (p.status==='pending' || !p.status)){ p.status='revising'; extra=' → auto Revising'; }
+  pbkgLog(`Remark "${val||'(ลบ)'}"${extra}`, p.bkgno);
+  renderPreBkg(_pbkgList,_pbkgLog); await savePbkg();
+};
+
+window.openAddPbkg = function(){
+  if(!ensurePbkgEditor()) return;
+  ['bkgno','customer','sale','carrier','pol','pod','etd','freetime','note'].forEach(f=>{ const e=document.getElementById('cspb_'+f); if(e) e.value=''; });
+  document.getElementById('cs_pbkg_modal').style.display='flex';
+};
+window.saveAddPbkg = async function(){
+  if(!ensurePbkgEditor()) return;
+  const g=id=>(document.getElementById('cspb_'+id)?.value||'').trim();
+  const bkgno=g('bkgno');
+  if(!bkgno){ toast('กรอก Booking No. ก่อน'); return; }
+  const p={ bkgno, customer:g('customer').toUpperCase(), sale:g('sale').toUpperCase(), carrier:g('carrier').toUpperCase(),
+    pol:g('pol'), pod:g('pod'), etd:g('etd'), freeTime:g('freetime'), note:g('note'),
+    status:'pending', updatedAt:new Date().toISOString() };
+  _pbkgList.unshift(p);
+  pbkgLog('เพิ่ม Pre-Booking ใหม่ (CS)', bkgno);
+  document.getElementById('cs_pbkg_modal').style.display='none';
+  renderPreBkg(_pbkgList,_pbkgLog); await savePbkg();
+  toast('✅ เพิ่มแล้ว: '+bkgno);
+};
+
+window.openPbkgLog = function(){
+  const rows = _pbkgLog.length ? _pbkgLog.map(l=>{
+    const t=new Date(l.ts).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    return `<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap">${t}</td><td style="padding:5px 8px;font-size:11px;font-weight:700;color:var(--cyan)">${l.editor||'?'}</td><td style="padding:5px 8px;font-family:var(--mono);font-size:10px;color:var(--gold)">${l.bkgno||'—'}</td><td style="padding:5px 8px;font-size:11px">${l.action||''}</td></tr>`;
+  }).join('') : '<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--muted)">ยังไม่มีประวัติการแก้ไข</td></tr>';
+  let m=document.getElementById('pbkg_log_modal'); if(m) m.remove();
+  m=document.createElement('div'); m.id='pbkg_log_modal';
+  m.style.cssText='position:fixed;inset:0;z-index:960;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick=e=>{ if(e.target===m) m.remove(); };
+  m.innerHTML=`<div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:620px;max-height:82vh;overflow-y:auto;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--cyan)">📜 Pre-Booking — Activity Log</div><button onclick="document.getElementById('pbkg_log_modal').remove()" style="border:none;background:rgba(255,255,255,.08);color:var(--text);cursor:pointer;font-size:14px;width:26px;height:26px;border-radius:50%">✕</button></div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted);font-family:var(--mono);font-size:9px;text-transform:uppercase;border-bottom:1px solid var(--border2)"><th style="padding:5px 8px">เวลา</th><th style="padding:5px 8px">ใคร</th><th style="padding:5px 8px">Booking</th><th style="padding:5px 8px">ทำอะไร</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.body.appendChild(m);
+};
+
+function renderPreBkg(list, log){
   _pbkgList = Array.isArray(list) ? list : [];
+  if(Array.isArray(log)) _pbkgLog = log;
   const wrap = document.getElementById('pbkg_wrap');
   const tbody = document.getElementById('pbkg_tbody');
   const summary = document.getElementById('pbkg_summary');
   if(!wrap || !tbody) return;
-  // Show only items still relevant to CS (pending / released); hide cancelled
-  const items = _pbkgList.filter(p=>p && p.status!=='cancelled');
-  if(!items.length){ wrap.style.display='none'; return; }
+  if(!_pbkgList.length){ wrap.style.display='none'; return; }
   wrap.style.display='block';
   const now = new Date();
   const fmtD = d=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}):'—';
   const fmtDT = d=>{ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})+' '+dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}); };
-  const statusBadge = s=>({pending:'<span style="color:var(--gold);font-size:10px">⏳ Pending</span>',released:'<span style="color:var(--green);font-size:10px">✅ Released</span>'}[s||'pending']||'—');
+  const esc = v => String(v||'').replace(/"/g,'&quot;');
   const countdown = ft=>{
     if(!ft) return '—';
     const diff = new Date(ft)-now;
@@ -628,26 +754,30 @@ function renderPreBkg(list){
     const txt=days>0?`${days}d ${h%24}h`:h>0?`${h}h ${m2}m`:`${m2}m`;
     return `<span style="color:${color};font-family:var(--mono);font-size:11px;font-weight:700">⏱ ${txt}</span>`;
   };
-  tbody.innerHTML = items.map(p=>{
-    const rbg = p.status==='released'?';background:rgba(39,174,96,.04)':'';
-    return `<tr style="border-bottom:1px solid var(--border)${rbg}">
+  tbody.innerHTML = _pbkgList.map((p,idx)=>{
+    const meta = pbkgStatusMeta(p.status);
+    const dim = p.status==='cancelled' ? ';opacity:.75' : '';
+    const opts = PBKG_STATUSES.map(s=>`<option value="${s.v}" ${((p.status||'pending')===s.v)?'selected':''}>${s.label}</option>`).join('');
+    return `<tr style="border-bottom:1px solid var(--border);background:${meta.rowBg}${dim}">
       <td style="padding:6px 8px;font-family:var(--mono);font-weight:700;color:var(--cyan)">${p.bkgno||'—'}</td>
       <td style="padding:6px 8px">${p.customer||'—'}</td>
+      <td style="padding:4px 6px"><input value="${esc(p.sale)}" onchange="pbkgSetSale(${idx},this.value)" placeholder="Sale…" style="width:70px;background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:11px;font-weight:700;padding:2px 3px;outline:none"></td>
       <td style="padding:6px 8px;color:var(--orange)">${p.carrier||'—'}</td>
       <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${p.pol||''}${p.pol&&p.pod?' → ':''}${p.pod||''}</td>
       <td style="padding:6px 8px;font-family:var(--mono)">${fmtD(p.etd)}</td>
       <td style="padding:6px 8px;font-family:var(--mono);font-size:10px">${p.freeTime?fmtDT(p.freeTime):'—'}</td>
       <td style="padding:6px 8px">${p.status==='pending'?countdown(p.freeTime):'—'}</td>
-      <td style="padding:6px 8px;color:var(--muted);max-width:160px;word-wrap:break-word">${p.note||'—'}</td>
-      <td style="padding:6px 8px;text-align:center">${statusBadge(p.status)}</td>
+      <td style="padding:4px 6px"><input value="${esc(p.note)}" onchange="pbkgSetNote(${idx},this.value)" placeholder="remark…" style="width:150px;background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:11px;padding:2px 3px;outline:none"></td>
+      <td style="padding:4px 6px;text-align:center"><select onchange="pbkgSetStatus(${idx},this.value)" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:${meta.txt};font-size:10px;font-weight:700;padding:3px 4px;cursor:pointer;outline:none">${opts}</select></td>
+      <td style="padding:4px 6px;text-align:center"><span style="font-size:9px;color:var(--muted)">${p.sale?'':''}</span></td>
     </tr>`;
   }).join('');
-  const pending = items.filter(p=>p.status==='pending').length;
-  const expired = items.filter(p=>p.status==='pending'&&p.freeTime&&new Date(p.freeTime)<now).length;
-  if(summary) summary.innerHTML = `${items.length} รายการ · <span style="color:var(--gold)">${pending} Pending</span>${expired?` · <span style="color:var(--red)">⚠️ ${expired} หมดเวลา</span>`:''}`;
-  // Refresh countdown every 60s while items are visible
+  const pending = _pbkgList.filter(p=>p.status==='pending').length;
+  const expired = _pbkgList.filter(p=>p.status==='pending'&&p.freeTime&&new Date(p.freeTime)<now).length;
+  if(summary) summary.innerHTML = `${_pbkgList.length} รายการ · <span style="color:var(--gold)">${pending} Pending</span>${expired?` · <span style="color:var(--red)">⚠️ ${expired} หมดเวลา</span>`:''}`;
+  const enm=document.getElementById('pbkg_editor_name'); if(enm) enm.textContent = pbkgEditor()||'—';
   clearTimeout(window._pbkgTimer);
-  window._pbkgTimer = setTimeout(()=>renderPreBkg(_pbkgList), 60000);
+  window._pbkgTimer = setTimeout(()=>renderPreBkg(_pbkgList,_pbkgLog), 60000);
 }
 
 // ── In-Transit Invoice Alerts ──────────────────────────────
