@@ -3851,11 +3851,12 @@ let _preBkgEditIdx = null;
 
 // ── Pre-Booking status model (shared shape with CS app) ──
 const PBKG_STATUSES = [
-  {v:'pending',   label:'⏳ Pending',   rowBg:'rgba(39,174,96,.12)',   txt:'var(--green)'},
-  {v:'revising',  label:'📝 Revising',  rowBg:'rgba(243,201,66,.22)',  txt:'var(--gold)'},
-  {v:'booked',    label:'📦 Booked',    rowBg:'rgba(140,140,140,.22)', txt:'var(--muted)'},
-  {v:'released',  label:'✅ Released',  rowBg:'rgba(0,180,216,.12)',   txt:'var(--cyan)'},
-  {v:'cancelled', label:'✕ Cancelled', rowBg:'rgba(231,76,60,.14)',   txt:'var(--red)'},
+  {v:'pending',   label:'⏳ Pending',           rowBg:'transparent',          txt:'var(--muted)'},
+  {v:'received',  label:'📥 Booking Received',  rowBg:'rgba(39,174,96,.15)',  txt:'var(--green)'},
+  {v:'revising',  label:'📝 Revising',          rowBg:'rgba(243,201,66,.22)', txt:'var(--gold)'},
+  {v:'booked',    label:'📦 Booked',            rowBg:'rgba(140,140,140,.22)',txt:'var(--muted)'},
+  {v:'released',  label:'✅ Released',           rowBg:'rgba(0,180,216,.12)',  txt:'var(--cyan)'},
+  {v:'cancelled', label:'✕ Cancelled',          rowBg:'rgba(231,76,60,.14)',  txt:'var(--red)'},
 ];
 const pbkgStatusMeta = s => PBKG_STATUSES.find(x=>x.v===(s||'pending')) || PBKG_STATUSES[0];
 
@@ -6897,6 +6898,7 @@ function clearImgExtract(){
       <select id="pbkg_status_filter" class="fi" onchange="renderPreBooking()" style="font-size:12px;padding:6px 10px">
         <option value="">All Status</option>
         <option value="pending">⏳ Pending</option>
+        <option value="received">📥 Booking Received</option>
         <option value="revising">📝 Revising</option>
         <option value="booked">📦 Booked</option>
         <option value="released">✅ Released</option>
@@ -6952,6 +6954,7 @@ function clearImgExtract(){
         <label class="inp-lbl">Status</label>
         <select id="pbkg_m_status" class="inp">
           <option value="pending">⏳ Pending</option>
+          <option value="received">📥 Booking Received</option>
           <option value="revising">📝 Revising</option>
           <option value="booked">📦 Booked</option>
           <option value="released">✅ Released</option>

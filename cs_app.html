@@ -636,11 +636,12 @@ let _pbkgLog = [];
 
 // ── Pre-Booking status model (shared shape with Sea Freight Pro) ──
 const PBKG_STATUSES = [
-  {v:'pending',   label:'⏳ Pending',   rowBg:'rgba(39,174,96,.12)',   txt:'var(--green)'},
-  {v:'revising',  label:'📝 Revising',  rowBg:'rgba(243,201,66,.22)',  txt:'var(--gold)'},
-  {v:'booked',    label:'📦 Booked',    rowBg:'rgba(140,140,140,.22)', txt:'var(--muted)'},
-  {v:'released',  label:'✅ Released',  rowBg:'rgba(0,180,216,.12)',   txt:'var(--cyan)'},
-  {v:'cancelled', label:'✕ Cancelled', rowBg:'rgba(231,76,60,.14)',   txt:'var(--red)'},
+  {v:'pending',   label:'⏳ Pending',           rowBg:'transparent',          txt:'var(--muted)'},
+  {v:'received',  label:'📥 Booking Received',  rowBg:'rgba(39,174,96,.15)',  txt:'var(--green)'},
+  {v:'revising',  label:'📝 Revising',          rowBg:'rgba(243,201,66,.22)', txt:'var(--gold)'},
+  {v:'booked',    label:'📦 Booked',            rowBg:'rgba(140,140,140,.22)',txt:'var(--muted)'},
+  {v:'released',  label:'✅ Released',           rowBg:'rgba(0,180,216,.12)',  txt:'var(--cyan)'},
+  {v:'cancelled', label:'✕ Cancelled',          rowBg:'rgba(231,76,60,.14)',  txt:'var(--red)'},
 ];
 const pbkgStatusMeta = s => PBKG_STATUSES.find(x=>x.v===(s||'pending')) || PBKG_STATUSES[0];
 
