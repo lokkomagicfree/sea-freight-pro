@@ -3238,14 +3238,21 @@ function saveShipment(){
     if(row.dataset.split!=='true') return null;
     const obj={}; row.querySelectorAll('.cost-inp').forEach(inp=>{ obj[inp.dataset.ctn]=parseFloat(inp.value)||0; }); return obj;
   });
+  // Grand total — mirror the live Shipment Summary (recalc): ONLY per-container
+  // charges scale with the container count; flat fees (B/L, Surrender, Seal,
+  // Docs…) are counted once. Split rows are already weighted per type inside
+  // sells/costs, so they must not be multiplied again.
   let ts=0,tc=0;
-  sells.forEach((s,i)=>{
-    const c=costs[i]||0;
-    const isTHB=chargeRows[i]?.dataset?.thb==='true';
-    const rate=isTHB?(exRate||35):1;
-    ts+=s/rate; tc+=c/rate;
+  chargeRows.forEach((row,i)=>{
+    const isTHB   = row.dataset?.thb==='true';
+    const isSplit = row.dataset?.split==='true';
+    const chargeName = row.dataset?.charge || '';
+    const rate = isTHB?(exRate||35):1;
+    const isPerCtn = [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
+    const qty = (isSplit || !isPerCtn) ? 1 : totalQty;
+    ts += ((sells[i]||0)*qty)/rate;
+    tc += ((costs[i]||0)*qty)/rate;
   });
-  ts*=totalQty; tc*=totalQty;
   const status=v('s_status')||'pending';
   const _active = (status==='confirmed'||status==='loaded'||status==='completed')&&status!=='cancelled';
   const profit = _active ? ts-tc : 0;
@@ -8039,6 +8046,18 @@ function buildSopPdfFromJob(j){
   const { jsPDF } = window.jspdf;
 
   const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+  // Register the Thai font (Sarabun) if it has been loaded, so Thai text
+  // (remarks, commodity, shipper…) renders correctly instead of blank glyphs.
+  let THAI_OK=false;
+  try{
+    if(window._thaiFontB64){
+      doc.addFileToVFS('Sarabun-Regular.ttf', window._thaiFontB64);
+      doc.addFont('Sarabun-Regular.ttf','Sarabun','normal');
+      doc.addFont('Sarabun-Regular.ttf','Sarabun','bold');
+      THAI_OK=true;
+    }
+  }catch(e){ THAI_OK=false; }
+  const fontFor = s=>(THAI_OK && /[\u0E00-\u0E7F]/.test(String(s||'')))?'Sarabun':'helvetica';
   const LM=15, RM=195, TW=RM-LM;
   const PAGE_H=297, MARGIN_BOT=285;
 
@@ -8064,14 +8083,14 @@ function buildSopPdfFromJob(j){
     // baseline = boxTop + boxH*0.65  (empirical for helvetica in jsPDF)
     const baseline = boxTop + boxH*0.65;
     doc.setFontSize(8.5);
-    doc.setFont('helvetica',bold?'bold':'normal');
+    doc.setFont(fontFor(text),bold?'bold':'normal');
     doc.setTextColor(...(col||BLK));
     doc.text(String(text||''),x,baseline,{align:align||'left'});
   }
   function Tsz(text,x,boxTop,sz,bold,col,align){
     const baseline = boxTop + sz*0.35;
     doc.setFontSize(sz);
-    doc.setFont('helvetica',bold?'bold':'normal');
+    doc.setFont(fontFor(text),bold?'bold':'normal');
     doc.setTextColor(...(col||BLK));
     doc.text(String(text||''),x,baseline,{align:align||'left'});
   }
@@ -8181,7 +8200,8 @@ function buildSopPdfFromJob(j){
   }
 
   infoRow('Customer name :',j.customer||'—','Booking No. :',j.no||'—');
-  if(j.jobno) infoRow('Job No. :',j.jobno,'','');
+  if(j.jobno) infoRow('Job No. :',j.jobno, j.refno?'Customer Ref :':'', j.refno||'');
+  else if(j.refno) infoRow('Customer Ref :',j.refno,'','');
   infoRow('Shipper :',j.shipper||'—','Consignee :',j.consignee||'—');
   infoRow('Incoterm :',j.incoterm||'—','Ship Mode :','Ocean');
   infoRow('Carrier :',j.carrier||j.selCarrier||'—','BL Type :',j.bltype||'—');
@@ -8195,7 +8215,21 @@ function buildSopPdfFromJob(j){
   stkR(LM,secY1,TW,y-secY1,MGRAY);
   y+=5;
 
-  /* ── COMMODITY ── */
+  /* ── REMARK / หมายเหตุ ── */
+  if(j.remarks && String(j.remarks).trim()){
+    const HL=[255,240,130]; // highlighter yellow
+    needY(11);
+    Tsz('Remark / หมายเหตุ :',LM,y,8,true,DGRAY); y+=5;
+    doc.setFont(fontFor(j.remarks),'normal'); doc.setFontSize(8.5);
+    const rmLines = doc.splitTextToSize(String(j.remarks).trim(), TW-4);
+    rmLines.forEach(line=>{
+      needY(5.4);
+      fillR(LM, y-0.8, TW, 5.4, HL);        // yellow highlight behind the line
+      Tsz(line, LM+2, y+0.3, 8.5, false, BLK);
+      y+=5;
+    });
+    y+=4;
+  }
   if(j.commodity||j.hscode){
     needY(14);
     if(j.commodity){ Tsz('Commodity : '+j.commodity,LM,y,8.5,false,BLK); y+=6; }
@@ -8276,11 +8310,31 @@ function buildSopPdfFromJob(j){
 }
 
 
-window.generateSopPDF = function(idx){
+// ── Thai font loader for PDF (Sarabun, fetched once at runtime) ──
+window._thaiFontB64 = null;
+window._thaiFontPromise = null;
+window.ensureThaiFont = function(){
+  if(window._thaiFontB64) return Promise.resolve(window._thaiFontB64);
+  if(window._thaiFontPromise) return window._thaiFontPromise;
+  window._thaiFontPromise = fetch('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf')
+    .then(r=>{ if(!r.ok) throw new Error('font '+r.status); return r.arrayBuffer(); })
+    .then(buf=>{
+      let bin=''; const bytes=new Uint8Array(buf);
+      for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+      window._thaiFontB64 = btoa(bin);
+      return window._thaiFontB64;
+    })
+    .catch(e=>{ console.warn('Thai font load failed', e); window._thaiFontPromise=null; return null; });
+  return window._thaiFontPromise;
+};
+try{ window.ensureThaiFont(); }catch(e){}   // preload (non-blocking)
+
+window.generateSopPDF = async function(idx){
   if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
   const j = (window.savedJobs||[])[idx];
   if(!j){ toast('❌ Shipment not found'); return; }
   toast('⏳ Generating SOP PDF…');
+  try{ await window.ensureThaiFont(); }catch(e){}   // ensure Thai renders
   const doc = buildSopPdfFromJob(j);
   if(!doc){ toast('❌ PDF error'); return; }
   doc.save('SOP_'+(j.no||'DRAFT').replace(/[^A-Za-z0-9]/g,'_')+'.pdf');
