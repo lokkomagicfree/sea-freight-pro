@@ -7732,14 +7732,28 @@ function closeBookingPdfModal(){
 
 function gv(id){ return (document.getElementById(id)?.value||'').trim(); }
 
-function generateBookingPDF(){
+async function generateBookingPDF(){
   saveBpdfData();
   if(!window.jspdf){ toast('⏳ jsPDF loading... please try again'); return; }
   const { jsPDF } = window.jspdf;
   if(!jsPDF){ toast('❌ jsPDF not loaded'); return; }
   toast('⏳ Generating PDF...');
+  try{ await window.ensureThaiFont?.(); }catch(e){}
   const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
   const W=210, H=297, LM=12, RM=198, TW=RM-LM;
+
+  // Thai font (Sarabun) so Thai remarks / place names render instead of blank glyphs
+  let THAI_OK=false;
+  try{
+    if(window._thaiFontB64){
+      doc.addFileToVFS('Sarabun-Regular.ttf', window._thaiFontB64);
+      doc.addFont('Sarabun-Regular.ttf','Sarabun','normal');
+      doc.addFont('Sarabun-Regular.ttf','Sarabun','bold');
+      THAI_OK=true;
+    }
+  }catch(e){ THAI_OK=false; }
+  const fontFor = s=>(THAI_OK && /[\u0E00-\u0E7F]/.test(String(s||'')))?'Sarabun':'helvetica';
+  const _bpdfJob = (typeof savedJobs!=='undefined' && _bpdfIdx!=null) ? savedJobs[_bpdfIdx] : null;
 
   const BLK=[0,0,0], RED=[192,0,0], BLUE=[0,90,192], DKBLUE=[0,51,153];
   const LGRAY=[224,224,224], LBLUE=[191,222,242], YELLOW=[255,255,153];
@@ -7751,7 +7765,7 @@ function generateBookingPDF(){
     if(stroke){ doc.setDrawColor(...BLK); doc.setLineWidth(lw); doc.rect(x,y,w,h,'S'); }
   }
   function t(text, x, y, sz=8, bold=false, col=BLK, align='left'){
-    doc.setFontSize(sz); doc.setFont('helvetica', bold?'bold':'normal');
+    doc.setFontSize(sz); doc.setFont(fontFor(text), bold?'bold':'normal');
     doc.setTextColor(...col);
     if(align==='center') doc.text(String(text||''), x, y, {align:'center'});
     else if(align==='right') doc.text(String(text||''), x, y, {align:'right'});
@@ -7854,7 +7868,7 @@ function generateBookingPDF(){
     const rh2 = Math.max(RH, lines.length*4.5);
     const vy = y+rh2/2-1;
     t(lbl, C1, vy, 8, true);
-    lines.forEach((ln,i)=>{ doc.setFont('helvetica',bv?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(...BLK); doc.text(ln,C2,y+4+i*4.5); });
+    lines.forEach((ln,i)=>{ doc.setFont(fontFor(ln),bv?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(...BLK); doc.text(ln,C2,y+4+i*4.5); });
     y+=rh2;
   });
   y+=1;
@@ -7895,11 +7909,27 @@ function generateBookingPDF(){
   // yellow bg
   doc.setFillColor(...YELLOW);
   doc.rect(LM, y, TW, srH, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(...RED);
-  srLines.forEach((ln,i)=>doc.text(ln, C1, y+4+i*4.5));
+  doc.setFontSize(7.5); doc.setTextColor(...RED);
+  srLines.forEach((ln,i)=>{ doc.setFont(fontFor(ln),'bold'); doc.text(ln, C1, y+4+i*4.5); });
   y+=srH;
   rect(LM, srTop, TW, y-srTop, null, true, 0.3);
   y+=2;
+
+  // Shipment internal Remark / หมายเหตุ (from the Shipments Remarks column)
+  if(_bpdfJob && _bpdfJob.remarks && String(_bpdfJob.remarks).trim()){
+    const rmTop=y;
+    hline(y);
+    t('Remark / หมายเหตุ', LM+3, y+3.8, 8, true);
+    y+=SH;
+    const rmLines = wrapLines(String(_bpdfJob.remarks).trim(), TW-6, 8);
+    const rmH = Math.max(10, rmLines.length*4.5+6);
+    doc.setFillColor(...YELLOW); doc.rect(LM, y, TW, rmH, 'F');
+    doc.setFontSize(8); doc.setTextColor(...BLK);
+    rmLines.forEach((ln,i)=>{ doc.setFont(fontFor(ln),'normal'); doc.text(ln, C1, y+4.5+i*4.5); });
+    y+=rmH;
+    rect(LM, rmTop, TW, y-rmTop, null, true, 0.3);
+    y+=2;
+  }
 
   // Remarks
   const remarks=[
