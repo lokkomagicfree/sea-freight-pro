@@ -4172,10 +4172,9 @@ window.releaseToShipment = async function(){
   // Update status to released
   p.status='released';
   p.releasedAt=new Date().toISOString();
-  await savePreBkgList();
-  document.getElementById('pbkg_modal').style.display='none';
 
-  // Switch to Shipments tab and pre-fill form
+  // ── Navigate + pre-fill FIRST so a slow/failed cloud save can't block the UI ──
+  const modal=document.getElementById('pbkg_modal'); if(modal) modal.style.display='none';
   showPage('shipments');
   window._editIdx = null; // ensure new shipment
 
@@ -4195,13 +4194,14 @@ window.releaseToShipment = async function(){
     set('s_vgm_cutoff',  p.vgmCutoff || '');
     set('s_doc_cutoff',  p.docCutoff || '');
     set('s_gate_closing',p.gateClosing || '');
-    // Scroll to form
     const card=document.getElementById('shipment_form_card');
     if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
     toast('🚢 Pre-fill เรียบร้อย — ตรวจสอบข้อมูลแล้วกด 💾 Save Shipment ได้เลยครับ');
   }, 300);
 
   renderPreBooking();
+  // Persist the released status in the background (never blocks navigation)
+  savePreBkgList().catch(e=>console.warn('release save', e));
 };
 
 window.deletePreBkg = async function(idx){
