@@ -7379,9 +7379,16 @@ async function initFirestoreSync(){
   if(settSnap){
     if(settSnap.commRate!==undefined) window.commRate = settSnap.commRate;
     if(settSnap.exRate!==undefined)   window.exRate   = settSnap.exRate;
+    if(settSnap.commMode!==undefined) commMode = settSnap.commMode;
+    if(settSnap.commSalary!==undefined) commSalary = settSnap.commSalary;
+    if(settSnap.commAllowance!==undefined) commAllowance = settSnap.commAllowance;
     const ci=document.getElementById('comm_rate_inp'), ei=document.getElementById('exrate_inp');
     if(ci) ci.value=(window.commRate*100).toFixed(1);
     if(ei) ei.value=(window.exRate).toFixed(2);
+    const ms=document.getElementById('comm_mode_sel'); if(ms) ms.value=commMode;
+    const sal=document.getElementById('comm_salary_inp'); if(sal&&commSalary) sal.value=commSalary;
+    const alw=document.getElementById('comm_allow_inp'); if(alw) alw.value=commAllowance;
+    if(typeof onCommModeChange==='function') onCommModeChange();
   }
   if(srSnap)             try{ localStorage.setItem('seafreight_salereport_v1',  JSON.stringify(srSnap)); }catch(e){}
   if(srRepSnap?.reports) try{ localStorage.setItem('seafreight_sr_reports_v1', JSON.stringify(srRepSnap.reports)); }catch(e){}
@@ -7391,7 +7398,7 @@ async function initFirestoreSync(){
   // changed locally. This is the core of the quota fix.
   window._sfpSyncHash.jobs       = _sfpHash(window.savedJobs||[]);
   window._sfpSyncHash.todos      = _sfpHash(window.todos||[]);
-  window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+  window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate, commMode, commSalary, commAllowance});
   window._sfpSyncHash.quotations = _sfpHash(window.savedQuotations||[]);
   window._sfpSyncHash.rates      = _sfpHash(window.ALL_RATES||[]); // re-seeded after chunk load below
   window._sfpSyncHash.dbIntransit= _sfpHash(window.__getDbRows?.()||[]);
@@ -7492,9 +7499,9 @@ async function initFirestoreSync(){
       writes.push(fbSet('data/todos', {todos: window.todos||[], updatedAt: now()}));
       newHash.todos = todosH;
     }
-    const settH = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+    const settH = _sfpHash({commRate: window.commRate, exRate: window.exRate, commMode, commSalary, commAllowance});
     if(settH !== window._sfpSyncHash.settings){
-      writes.push(fbSet('data/settings', {commRate: window.commRate, exRate: window.exRate}));
+      writes.push(fbSet('data/settings', {commRate: window.commRate, exRate: window.exRate, commMode, commSalary, commAllowance}));
       newHash.settings = settH;
     }
     const quotH = _sfpHash(window.savedQuotations||[]);
@@ -7549,7 +7556,7 @@ async function initFirestoreSync(){
       const promises = [
         fbSet('data/jobs',      {jobs: window.savedJobs||[], updatedAt: new Date().toISOString()}),
         fbSet('data/todos',     {todos: window.todos||[], updatedAt: new Date().toISOString()}),
-        fbSet('data/settings',  {commRate: window.commRate, exRate: window.exRate}),
+        fbSet('data/settings',  {commRate: window.commRate, exRate: window.exRate, commMode, commSalary, commAllowance}),
         fbSet('data/quotations',{quotations: window.savedQuotations||[], updatedAt: new Date().toISOString()}),
       ];
       if(rates.length){
@@ -7560,7 +7567,7 @@ async function initFirestoreSync(){
       // Record hashes — cloud is now in sync, so the next debounced flush is a no-op.
       window._sfpSyncHash.jobs       = _sfpHash(window.savedJobs||[]);
       window._sfpSyncHash.todos      = _sfpHash(window.todos||[]);
-      window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate});
+      window._sfpSyncHash.settings   = _sfpHash({commRate: window.commRate, exRate: window.exRate, commMode, commSalary, commAllowance});
       window._sfpSyncHash.quotations = _sfpHash(window.savedQuotations||[]);
       window._sfpSyncHash.rates      = _sfpHash(rates);
       showSyncBadge(true);
