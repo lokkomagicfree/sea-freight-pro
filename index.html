@@ -1301,6 +1301,10 @@ function tieredCommRate(monthProfitThb){
   if(monthProfitThb >= base(3)) return 0.16;
   return 0;                                     // ต่ำกว่า 3 เดือน → 0%
 }
+// Commission rate for a given month's profit (THB): tiered per-month, or flat.
+function monthlyCommRateFor(profitThb){
+  return commMode==='tiered' ? tieredCommRate(profitThb||0) : (window.commRate||0.25);
+}
 // Total THB profit of active shipments in the current calendar month.
 function currentMonthProfitThb(){
   const ym = new Date().toISOString().slice(0,7);
@@ -1328,12 +1332,12 @@ window.onCommModeChange = function(){
   if(tw) tw.style.display = commMode==='tiered' ? 'flex' : 'none';
   if(commMode==='tiered') applyTieredRate();
   else { commRate=(parseFloat(v('comm_rate_inp'))||25)/100; const p=document.getElementById('comm_pct_display'); if(p)p.textContent=(commRate*100).toFixed(0); }
-  storageSave(); recalc();
+  storageSave(); recalc(); if(typeof renderShipments==='function') renderShipments();
 };
 window.onCommSalaryChange = function(){
   commSalary = parseFloat(v('comm_salary_inp'))||0;
   const a = parseFloat(v('comm_allow_inp')); commAllowance = isNaN(a)?12000:a;
-  applyTieredRate(); storageSave(); recalc();
+  applyTieredRate(); storageSave(); recalc(); if(typeof renderShipments==='function') renderShipments();
 };
 let curPage    = 1;
 window._goPage = function(p){ curPage=p; applyFilter(false); };
@@ -4465,7 +4469,8 @@ function renderMonthlySummary(groups,sortedKeys){
     const srDataNow = srLoad();
     const savedThbProfit = srDataNow['manual_thb_profit_'+key];
     const commInputVal = savedThbProfit !== undefined ? savedThbProfit : (mDb>0 ? mDb : '');
-    const commInputDisplay = commInputVal>0 ? Math.round(commInputVal*(window.commRate||0.25)).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿' : '—';
+    const _mRate = monthlyCommRateFor(commInputVal||0);
+    const commInputDisplay = commInputVal>0 ? Math.round(commInputVal*_mRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(commMode==='tiered'?` (${(_mRate*100).toFixed(0)}%)`:'') : '—';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:9px 12px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan)">${label}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)" title="${jobs.length} Shipments + ${mDbCount} CB">
@@ -4888,10 +4893,11 @@ function recalcMonthlyComm(inp){
   const key=(inp.dataset.month||'').replace('-','_');
   const monthKey=(inp.dataset.month||''); // e.g. "2026-06"
   const raw=parseFloat(inp.value)||0;
-  const comm=Math.round(raw*(window.commRate||0.25));
+  const rate=monthlyCommRateFor(raw);
+  const comm=Math.round(raw*rate);
   const el=g('mcomm_'+key);
   if(el){
-    el.textContent=raw>0?comm.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—';
+    el.textContent=raw>0?comm.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(commMode==='tiered'?` (${(rate*100).toFixed(0)}%)`:''):'—';
     el.style.color=raw>0?'var(--gold)':'var(--muted)';
   }
   // Save to srData
