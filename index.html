@@ -459,10 +459,27 @@ body{font-size:14px;font-weight:450}
     <button onclick="fetchRate()" class="btn btn-ghost" style="font-size:10px;padding:3px 8px">🔄 Refresh</button>
     <div style="width:1px;background:var(--border);height:20px;margin:0 4px"></div>
     <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">COMMISSION</span>
-    <input type="number" id="comm_rate_inp" value="25" step="0.1" min="0" max="100"
-      style="width:55px;font-size:12px;padding:3px 8px;font-family:var(--mono);color:var(--gold)"
-      class="inp" oninput="onCommRateChange()" title="Commission %">
-    <span style="font-size:11px;color:var(--gold);font-family:var(--mono)">%</span>
+    <select id="comm_mode_sel" class="inp" style="font-size:11px;padding:3px 6px" onchange="onCommModeChange()" title="โหมดค่าคอม">
+      <option value="flat">25% (Flat)</option>
+      <option value="tiered">ขั้นบันได</option>
+    </select>
+    <span id="comm_flat_wrap" style="display:flex;align-items:center;gap:4px">
+      <input type="number" id="comm_rate_inp" value="25" step="0.1" min="0" max="100"
+        style="width:55px;font-size:12px;padding:3px 8px;font-family:var(--mono);color:var(--gold)"
+        class="inp" oninput="onCommRateChange()" title="Commission %">
+      <span style="font-size:11px;color:var(--gold);font-family:var(--mono)">%</span>
+    </span>
+    <span id="comm_tier_wrap" style="display:none;align-items:center;gap:4px">
+      <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">เงินเดือน</span>
+      <input type="number" id="comm_salary_inp" placeholder="0" min="0"
+        style="width:72px;font-size:12px;padding:3px 6px;font-family:var(--mono);color:var(--gold)"
+        class="inp" oninput="onCommSalaryChange()" title="เงินเดือน/เดือน (บาท)">
+      <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">+Allow</span>
+      <input type="number" id="comm_allow_inp" value="12000" min="0"
+        style="width:64px;font-size:12px;padding:3px 6px;font-family:var(--mono);color:var(--gold)"
+        class="inp" oninput="onCommSalaryChange()" title="Allowance (บาท) — บวกครั้งเดียว ไม่คูณเดือน">
+      <span id="comm_tier_info" style="font-size:10px;color:var(--muted);font-family:var(--mono)"></span>
+    </span>
     <span id="comm_rate_display" style="display:none"></span>
   </div>
   <div id="saved_wrap" style="display:none;margin-bottom:16px;width:100%">
@@ -1266,6 +1283,58 @@ let commRate   = 0.25;
 let exRate     = 35.50;
 Object.defineProperty(window, 'commRate', { get(){ return commRate; }, set(v){ commRate=v; } });
 Object.defineProperty(window, 'exRate',   { get(){ return exRate; },   set(v){ exRate=v; } });
+
+// ── Commission mode: flat % (default, "25% ของผม") or tiered "ขั้นบันได" ──
+let commMode = 'flat';        // 'flat' | 'tiered'
+let commSalary = 0;           // เงินเดือน/เดือน (THB)
+let commAllowance = 12000;    // Allowance (THB) — บวกครั้งเดียว ไม่คูณเดือน
+
+// Tiered rate: month's total profit vs (salary×N + allowance).
+function tieredCommRate(monthProfitThb){
+  const s = commSalary||0, a = commAllowance||0;
+  if(s<=0) return 0;
+  const base = n => s*n + a;
+  if(monthProfitThb >= base(7)) return 0.24;   // เกิน 7 เดือนขึ้นไป → เพดาน 24%
+  if(monthProfitThb >= base(6)) return 0.22;
+  if(monthProfitThb >= base(5)) return 0.20;
+  if(monthProfitThb >= base(4)) return 0.18;
+  if(monthProfitThb >= base(3)) return 0.16;
+  return 0;                                     // ต่ำกว่า 3 เดือน → 0%
+}
+// Total THB profit of active shipments in the current calendar month.
+function currentMonthProfitThb(){
+  const ym = new Date().toISOString().slice(0,7);
+  return (window.savedJobs||[]).reduce((sum,j)=>{
+    const active = (j.status==='confirmed'||j.status==='loaded'||j.status==='completed') && j.status!=='cancelled';
+    if(!active) return sum;
+    const m = j.etdMonth || j.etaMonth || (j.etd||'').slice(0,7) || (j.eta||'').slice(0,7);
+    if(m !== ym) return sum;
+    return sum + (j.profit||0) * (j.rate || exRate || 35);
+  }, 0);
+}
+// When tiered mode is on, derive commRate from this month's total profit.
+window.applyTieredRate = function(){
+  if(commMode !== 'tiered') return;
+  const thb = currentMonthProfitThb();
+  commRate = tieredCommRate(thb);
+  const info = document.getElementById('comm_tier_info');
+  if(info) info.innerHTML = `→ <b style="color:var(--gold)">${(commRate*100).toFixed(0)}%</b> · เดือนนี้ ${Math.round(thb).toLocaleString('th-TH')} ฿`;
+  const pctEl = document.getElementById('comm_pct_display'); if(pctEl) pctEl.textContent = (commRate*100).toFixed(0);
+};
+window.onCommModeChange = function(){
+  commMode = document.getElementById('comm_mode_sel')?.value || 'flat';
+  const fw=document.getElementById('comm_flat_wrap'), tw=document.getElementById('comm_tier_wrap');
+  if(fw) fw.style.display = commMode==='tiered' ? 'none' : 'flex';
+  if(tw) tw.style.display = commMode==='tiered' ? 'flex' : 'none';
+  if(commMode==='tiered') applyTieredRate();
+  else { commRate=(parseFloat(v('comm_rate_inp'))||25)/100; const p=document.getElementById('comm_pct_display'); if(p)p.textContent=(commRate*100).toFixed(0); }
+  storageSave(); recalc();
+};
+window.onCommSalaryChange = function(){
+  commSalary = parseFloat(v('comm_salary_inp'))||0;
+  const a = parseFloat(v('comm_allow_inp')); commAllowance = isNaN(a)?12000:a;
+  applyTieredRate(); storageSave(); recalc();
+};
 let curPage    = 1;
 window._goPage = function(p){ curPage=p; applyFilter(false); };
 const PER_PAGE = 20;
@@ -1321,7 +1390,7 @@ function storageSave(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedJobs));
     // Save settings
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({commRate, exRate}));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({commRate, exRate, commMode, commSalary, commAllowance}));
     // Save rates (always save — even empty — so clear() persists across refresh)
     try{
       if(ALL_RATES.length) localStorage.setItem(RATE_KEY, JSON.stringify(ALL_RATES));
@@ -1346,6 +1415,13 @@ function storageLoad(){
     if(cfg){
       const s = JSON.parse(cfg);
       if(s.commRate){ commRate=s.commRate; const ci=g('comm_rate_inp'); if(ci)ci.value=(commRate*100).toFixed(1); }
+      if(s.commMode){ commMode=s.commMode; }
+      if(s.commSalary!==undefined) commSalary=s.commSalary;
+      if(s.commAllowance!==undefined) commAllowance=s.commAllowance;
+      const ms=g('comm_mode_sel'); if(ms) ms.value=commMode;
+      const sal=g('comm_salary_inp'); if(sal&&commSalary) sal.value=commSalary;
+      const alw=g('comm_allow_inp'); if(alw) alw.value=commAllowance;
+      if(typeof onCommModeChange==='function') onCommModeChange();
       if(s.exRate){ exRate=s.exRate; const ei=g('exrate_inp'); if(ei)ei.value=exRate.toFixed(2); }
     }
     const rawTodos = localStorage.getItem(TODO_KEY);
@@ -2635,12 +2711,14 @@ function recalc(){
   const _rStatus=v('s_status')||'pending';
   const _rActive=(_rStatus==='confirmed'||_rStatus==='loaded'||_rStatus==='completed')&&_rStatus!=='cancelled';
   const profit=_rActive?ts-tc:0,margin=_rActive&&ts>0?(ts-tc)/ts*100:0;
+  if(commMode==='tiered' && typeof applyTieredRate==='function') applyTieredRate();
   const comm=_rActive?profit*commRate:0;
   const netProfit=profit-comm;
   const fmt=n=>'$'+n.toFixed(2),fmtT=n=>n.toLocaleString('th-TH',{maximumFractionDigits:0});
   const set=(id,val)=>{const e=g(id);if(e)e.textContent=val;};
   set('r_sell',fmt(ts));set('r_cost',fmt(tc));set('r_profit',fmt(profit));
   set('r_margin',margin.toFixed(1)+'%');set('r_net',fmt(netProfit));set('r_comm',fmt(comm));
+  set('comm_pct_display',(commRate*100).toFixed(0));
   set('r_rate',exRate.toFixed(2));
   const profitThb=profit*exRate,commThb=comm*exRate;
   set('r_profit_thb',profit!==0?fmtT(profitThb)+' ฿':'—');
@@ -3423,6 +3501,7 @@ function clearForm(){
 
 // ── Render Shipments ───────────────────────────────────────
 function renderShipments(){
+  if(commMode==='tiered' && typeof applyTieredRate==='function') applyTieredRate();
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
   const jobnoQ=(v('jobno_search')||'').toLowerCase().trim();
   const ref=(v('ref_search')||'').toLowerCase().trim();
