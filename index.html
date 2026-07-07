@@ -2638,6 +2638,12 @@ function buildCharges(){
            style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(41,128,185,.1);color:var(--cyan);border:1px solid rgba(41,128,185,.25);border-radius:4px;padding:1px 5px;margin-left:5px;cursor:pointer;user-select:none">USD</span>`
       : `${name}${ccy}${qtyLabel}`;
 
+    // ×ctn toggle: only on the editable "Others" row (custom rows get it in addCustomCharge)
+    const perCtnBtn = isEditableName
+      ? `<button type="button" onclick="toggleChargePerCtn(this)" data-perctn="0" title="คลิกให้คูณตามจำนวนตู้"
+           style="font-size:9px;padding:1px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;font-family:var(--mono);white-space:nowrap">×1</button>`
+      : '';
+
     if(doSplit){
       // Per-ctn-type sell/cost inputs, ordered 20GP first then 40GP/40HC.
       // IMPORTANT: stays as ONE <tr> per charge (not one per container type) —
@@ -2681,7 +2687,7 @@ function buildCharges(){
     <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
     <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
       <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
-      ${aprBtn}
+      ${aprBtn}${perCtnBtn}
     </td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
@@ -2703,12 +2709,28 @@ window.addCustomCharge = function(){
     <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
       <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
       <button type="button" onclick="toggleAPR(this)" style="font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;white-space:nowrap;font-family:var(--mono)" data-apr="0" title="Toggle As per receipt">APR</button>
+      <button type="button" onclick="toggleChargePerCtn(this)" data-perctn="0" title="คลิกให้คูณตามจำนวนตู้" style="font-size:9px;padding:1px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;font-family:var(--mono);white-space:nowrap">×1</button>
       <button type="button" onclick="this.closest('tr').remove();recalc()" title="ลบ charge นี้" style="font-size:11px;padding:1px 5px;border:1px solid rgba(192,57,43,.3);border-radius:4px;background:transparent;color:var(--red);cursor:pointer">✕</button>
     </td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
   </tr>`;
   tbody.insertAdjacentHTML('beforeend', html);
+  recalc();
+};
+
+// Toggle whether a (custom/Others) charge is multiplied by the number of containers.
+window.toggleChargePerCtn = function(btn){
+  const tr=btn.closest('tr'); if(!tr) return;
+  const on = tr.dataset.perctn === '1';
+  tr.dataset.perctn = on ? '0' : '1';
+  if(on){
+    btn.style.background='var(--s2)'; btn.style.color='var(--muted)'; btn.style.borderColor='var(--border2)';
+    btn.textContent='×1'; btn.title='คลิกให้คูณตามจำนวนตู้';
+  } else {
+    btn.style.background='rgba(41,128,185,.15)'; btn.style.color='var(--cyan)'; btn.style.borderColor='rgba(41,128,185,.45)';
+    btn.textContent='×ctn'; btn.title='คูณตามจำนวนตู้อยู่ (คลิกเพื่อปิด)';
+  }
   recalc();
 };
 
@@ -2729,7 +2751,7 @@ function recalc(){
     const rate = isTHB?(exRate||35):1;
 
     // Only multiply by container qty for designated per-CTN charges
-    const isPerCtn = [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
+    const isPerCtn = row.dataset?.perctn==='1' || [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
     const qty = isPerCtn ? totalQty : 1;
 
     let rowSell=0, rowCost=0;
@@ -3388,7 +3410,7 @@ function saveShipment(){
     const isSplit = row.dataset?.split==='true';
     const chargeName = row.dataset?.charge || '';
     const rate = isTHB?(exRate||35):1;
-    const isPerCtn = [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
+    const isPerCtn = row.dataset?.perctn==='1' || [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
     const qty = (isSplit || !isPerCtn) ? 1 : totalQty;
     ts += ((sells[i]||0)*qty)/rate;
     tc += ((costs[i]||0)*qty)/rate;
