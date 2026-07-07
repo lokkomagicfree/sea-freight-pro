@@ -759,6 +759,8 @@ body{font-size:14px;font-weight:450}
           <tbody id="charge_body"></tbody>
         </table>
 
+        <button type="button" onclick="addCustomCharge()" class="btn btn-ghost" style="font-size:11px;margin-top:8px;width:100%;color:var(--green);border-color:rgba(39,174,96,.3)">+ Add Charge (เพิ่มเอง)</button>
+
         <!-- Local Charges Template Toolbar -->
         <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">LOCAL CHARGE TEMPLATE:</span>
@@ -2666,6 +2668,28 @@ function buildCharges(){
   }).join('');
   recalc();
 }
+
+// Add a user-defined ("custom") charge row — same structure as the editable
+// "Others" row, so recalc()/save handle it automatically. THB/USD toggle + APR + remove.
+window.addCustomCharge = function(){
+  const tbody=g('charge_body'); if(!tbody) return;
+  const html=`<tr style="border-bottom:1px solid rgba(30,48,80,.3)" data-charge="custom" data-thb="false">
+    <td style="font-size:12px;padding:6px 10px">
+      <input class="charge-name-inp inp" value="" placeholder="ชื่อ charge" oninput="recalc()" style="font-size:12px;padding:3px 6px;width:120px;border:1px solid var(--border2);border-radius:5px;background:var(--s1)">
+      <span class="ccy-toggle" onclick="toggleChargeCcy(this)" title="คลิกเพื่อสลับ THB / USD" style="font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(41,128,185,.1);color:var(--cyan);border:1px solid rgba(41,128,185,.25);border-radius:4px;padding:1px 5px;margin-left:5px;cursor:pointer;user-select:none">USD</span>
+    </td>
+    <td style="padding:4px 6px"><input type="number" class="sell-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--green);text-align:right;padding:4px 8px"></td>
+    <td style="padding:4px 6px;display:flex;align-items:center;gap:3px">
+      <input type="number" class="cost-inp inp" value="0" min="0" step="0.01" oninput="recalc()" style="color:var(--red);text-align:right;padding:4px 8px;flex:1">
+      <button type="button" onclick="toggleAPR(this)" style="font-size:9px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--s2);color:var(--muted);cursor:pointer;white-space:nowrap;font-family:var(--mono)" data-apr="0" title="Toggle As per receipt">APR</button>
+      <button type="button" onclick="this.closest('tr').remove();recalc()" title="ลบ charge นี้" style="font-size:11px;padding:1px 5px;border:1px solid rgba(192,57,43,.3);border-radius:4px;background:transparent;color:var(--red);cursor:pointer">✕</button>
+    </td>
+    <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-profit">—</td>
+    <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
+  </tr>`;
+  tbody.insertAdjacentHTML('beforeend', html);
+  recalc();
+};
 
 function recalc(){
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
