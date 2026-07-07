@@ -4455,10 +4455,20 @@ function renderMonthlySummary(groups,sortedKeys){
     const mCo=activeJobs.reduce((s,j)=>s+j.comm,0),mT=activeJobs.reduce((s,j)=>s+j.commThb,0);
     const mDb=dbByMonth[key]||0;  // Transit profit in THB
     const mDbCount=dbCountByMonth[key]||0;
-    const mDbComm = mDb * (window.commRate||0.25); // Transit comm = profit × commRate
     const totalJobs = jobs.length + mDbCount;
     const mM=mS>0?mP/mS*100:0;
-    const mTTotal = mT + mDbComm;
+    // Month's total profit in THB (shipments converted + transit) → basis for tiered commission
+    const mPThb = activeJobs.reduce((s,j)=>s + (j.profit||0)*(j.rate||exRate), 0);
+    const monthProfitThb = mPThb + mDb;
+    let mDbComm, mTTotal, mTierRate = null;
+    if(commMode==='tiered'){
+      mTierRate = tieredCommRate(monthProfitThb);
+      mTTotal  = monthProfitThb * mTierRate;   // ทั้งเดือนคิดเป็น tier% เดียว
+      mDbComm  = mDb * mTierRate;               // ส่วน transit ในอัตราเดียวกัน
+    } else {
+      mDbComm  = mDb * (window.commRate||0.25); // Transit comm = profit × commRate
+      mTTotal  = mT + mDbComm;
+    }
     gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mTTotal;gJ+=totalJobs;gDb+=mDb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
@@ -4482,7 +4492,7 @@ function renderMonthlySummary(groups,sortedKeys){
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?mM.toFixed(1)+'%':'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mCo<0?'var(--red)':'var(--gold)'}">${mCo?'$'+mCo.toFixed(2):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mTTotal<0?'var(--red)':'var(--gold)'}">
-        ${mTTotal?(mTTotal<0?'-':'')+Math.abs(mTTotal).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}
+        ${mTTotal?(mTTotal<0?'-':'')+Math.abs(mTTotal).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(mTierRate!==null?` (${(mTierRate*100).toFixed(0)}%)`:''):'—'}
         ${mDbComm>0?`<div style="font-size:9px;color:var(--cyan);margin-top:1px">+${mDbComm.toLocaleString('th-TH',{maximumFractionDigits:0})} (Transit)</div>`:''}
       </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${dbCol}">${mDb?mDb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
