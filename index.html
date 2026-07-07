@@ -4119,6 +4119,12 @@ window.renderPreBooking = async function(){
     const opts = PBKG_STATUSES.map(s=>`<option value="${s.v}" ${((p.status||'pending')===s.v)?'selected':''}>${s.label}</option>`).join('');
     const esc = v => String(v||'').replace(/"/g,'&quot;');
     return `<tr style="border-bottom:1px solid var(--border);background:${meta.rowBg}${dim}">
+      <td style="text-align:center;white-space:nowrap;padding:4px 6px">
+        <button onclick="copyPreBkg(${idx})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px" title="Copy">📋</button>
+        <button onclick="openEditPreBkgModal(${idx})" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px" title="Edit">✏️</button>
+        ${p.status==='pending'?`<button onclick="quickRelease(${idx})" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:13px" title="Release to Shipment">🚢</button>`:''}
+        <button onclick="deletePreBkg(${idx})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">✕</button>
+      </td>
       <td style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${p.bkgno||'—'}</td>
       <td style="font-size:11px">${p.customer||'—'}</td>
       <td style="padding:4px 6px"><input value="${esc(p.sale)}" onchange="pbkgSetSale(${idx},this.value)" placeholder="Sale…" style="width:78px;background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:11px;font-weight:700;padding:2px 3px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border2)'"></td>
@@ -4129,12 +4135,6 @@ window.renderPreBooking = async function(){
       <td style="padding:6px 8px">${p.status==='pending'?countdown(p.freeTime):'—'}</td>
       <td style="padding:4px 6px"><input value="${esc(p.note)}" onchange="pbkgSetNote(${idx},this.value)" placeholder="พิมพ์ remark…" style="width:150px;background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:11px;padding:2px 3px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border2)'"></td>
       <td style="text-align:center;padding:4px 6px"><select onchange="pbkgSetStatus(${idx},this.value)" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:${meta.txt};font-size:10px;font-weight:700;padding:3px 4px;cursor:pointer;outline:none">${opts}</select></td>
-      <td style="text-align:center;white-space:nowrap">
-        <button onclick="copyPreBkg(${idx})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px" title="Copy">📋</button>
-        <button onclick="openEditPreBkgModal(${idx})" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px" title="Edit">✏️</button>
-        ${p.status==='pending'?`<button onclick="quickRelease(${idx})" style="border:none;background:none;color:var(--green);cursor:pointer;font-size:13px" title="Release to Shipment">🚢</button>`:''}
-        <button onclick="deletePreBkg(${idx})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px" title="Delete">✕</button>
-      </td>
     </tr>`;
   }).join('') : `<tr><td colspan="11" style="padding:32px;text-align:center;color:var(--muted)">ไม่พบ Pre-Booking — กด "+ Add Pre-Booking" เพื่อเพิ่ม</td></tr>`;
 
@@ -7055,6 +7055,7 @@ function clearImgExtract(){
     <div class="tbl-wrap" id="pbkg_tblwrap">
       <table class="tbl" style="min-width:800px">
         <thead><tr>
+          <th style="width:90px"></th>
           <th>Booking No.</th>
           <th>Customer</th>
           <th>Sale</th>
@@ -7065,7 +7066,6 @@ function clearImgExtract(){
           <th style="color:var(--red)">⏰ หมดเวลา</th>
           <th>หมายเหตุ</th>
           <th style="text-align:center">Status</th>
-          <th style="width:80px"></th>
         </tr></thead>
         <tbody id="pbkg_tbody"></tbody>
       </table>
