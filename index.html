@@ -72,6 +72,10 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 /* Tables */
 .tbl-wrap{overflow-x:auto;overflow-y:hidden;background:var(--s1);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 4px rgba(192,57,43,.06);position:relative}
+#pbkg_topscroll,#pbkg_tblwrap{scrollbar-width:thin}
+#pbkg_topscroll::-webkit-scrollbar,#pbkg_tblwrap::-webkit-scrollbar{height:12px;-webkit-appearance:none}
+#pbkg_topscroll::-webkit-scrollbar-thumb,#pbkg_tblwrap::-webkit-scrollbar-thumb{background:var(--border2,#c99);border-radius:6px}
+#pbkg_topscroll::-webkit-scrollbar-track,#pbkg_tblwrap::-webkit-scrollbar-track{background:var(--s2,#f7e9e9);border-radius:6px}
 #page-rates .tbl-wrap{max-height:calc(100vh - 280px);overflow-y:auto}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{background:var(--s2);color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;cursor:pointer}
@@ -4139,9 +4143,28 @@ window.renderPreBooking = async function(){
   if(summary) summary.innerHTML = `${_preBkgList.length} รายการ · <span style="color:var(--gold)">${pending} Pending</span>${expired?` · <span style="color:var(--red)">⚠️ ${expired} หมดเวลา</span>`:''}`;
   const enm=document.getElementById('pbkg_editor_name'); if(enm) enm.textContent = pbkgEditor()||'—';
 
+  // Sync top & bottom horizontal scrollbars for the wide Pre-Booking table
+  setTimeout(()=>{ try{ syncPbkgScrollbars(); }catch(e){} }, 0);
+
   // Auto-refresh countdown every 60s
   clearTimeout(window._pbkgRefreshTimer);
   window._pbkgRefreshTimer = setTimeout(()=>{ if(document.getElementById('page-prebooking')?.classList.contains('active')) renderPreBooking(); }, 60000);
+};
+
+// Top scrollbar (synced with the bottom one) for the wide Pre-Booking table.
+window.syncPbkgScrollbars = function(){
+  const top=document.getElementById('pbkg_topscroll'), inner=document.getElementById('pbkg_topscroll_inner'), wrap=document.getElementById('pbkg_tblwrap');
+  if(!top||!inner||!wrap) return;
+  const table=wrap.querySelector('table'); if(!table) return;
+  inner.style.width = table.scrollWidth + 'px';               // match table width
+  top.style.display = table.scrollWidth > wrap.clientWidth ? 'block' : 'none';  // only when scroll needed
+  if(!top._synced){
+    top._synced = true;
+    let lock=false;
+    top.addEventListener('scroll', ()=>{ if(lock)return; lock=true; wrap.scrollLeft=top.scrollLeft; lock=false; });
+    wrap.addEventListener('scroll', ()=>{ if(lock)return; lock=true; top.scrollLeft=wrap.scrollLeft; lock=false; });
+    window.addEventListener('resize', ()=>{ try{ syncPbkgScrollbars(); }catch(e){} });
+  }
 };
 
 window.copyPreBkg = function(idx){
@@ -7026,7 +7049,10 @@ function clearImgExtract(){
     </div>
 
     <!-- Table -->
-    <div class="tbl-wrap">
+    <div id="pbkg_topscroll" style="overflow-x:auto;overflow-y:hidden;margin-bottom:3px">
+      <div id="pbkg_topscroll_inner" style="height:1px"></div>
+    </div>
+    <div class="tbl-wrap" id="pbkg_tblwrap">
       <table class="tbl" style="min-width:800px">
         <thead><tr>
           <th>Booking No.</th>
