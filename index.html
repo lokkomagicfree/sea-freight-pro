@@ -4144,7 +4144,8 @@ window.renderPreBooking = async function(){
   const enm=document.getElementById('pbkg_editor_name'); if(enm) enm.textContent = pbkgEditor()||'—';
 
   // Sync top & bottom horizontal scrollbars for the wide Pre-Booking table
-  setTimeout(()=>{ try{ syncPbkgScrollbars(); }catch(e){} }, 0);
+  requestAnimationFrame(()=>{ try{ syncPbkgScrollbars(); }catch(e){} });
+  setTimeout(()=>{ try{ syncPbkgScrollbars(); }catch(e){} }, 150);
 
   // Auto-refresh countdown every 60s
   clearTimeout(window._pbkgRefreshTimer);
@@ -4156,8 +4157,10 @@ window.syncPbkgScrollbars = function(){
   const top=document.getElementById('pbkg_topscroll'), inner=document.getElementById('pbkg_topscroll_inner'), wrap=document.getElementById('pbkg_tblwrap');
   if(!top||!inner||!wrap) return;
   const table=wrap.querySelector('table'); if(!table) return;
-  inner.style.width = table.scrollWidth + 'px';               // match table width
-  top.style.display = table.scrollWidth > wrap.clientWidth ? 'block' : 'none';  // only when scroll needed
+  const fullW = table.scrollWidth || table.offsetWidth;
+  if(!fullW){ setTimeout(()=>{ try{ syncPbkgScrollbars(); }catch(e){} }, 200); return; } // not laid out yet → retry
+  inner.style.width = fullW + 'px';                                   // match table width
+  top.style.display = (fullW > wrap.clientWidth + 2) ? 'block' : 'none'; // show only when scroll needed
   if(!top._synced){
     top._synced = true;
     let lock=false;
@@ -7049,7 +7052,7 @@ function clearImgExtract(){
     </div>
 
     <!-- Table -->
-    <div id="pbkg_topscroll" style="overflow-x:auto;overflow-y:hidden;margin-bottom:3px">
+    <div id="pbkg_topscroll" style="overflow-x:auto;overflow-y:hidden;height:15px;margin-bottom:2px">
       <div id="pbkg_topscroll_inner" style="height:1px"></div>
     </div>
     <div class="tbl-wrap" id="pbkg_tblwrap">
