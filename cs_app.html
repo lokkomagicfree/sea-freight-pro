@@ -498,6 +498,7 @@ function startLiveSync(){
       allJobs = data.jobs.filter(j=>
         (j.csAssigned||'').toLowerCase().trim() === AGENT.toLowerCase().trim()
       );
+      _allShipmentsForSOP = data.jobs.slice(); // ALL shipments for SOP panel (button gated per-CS)
       console.log('👤 Filtered for agent "'+AGENT+'":', allJobs.length, 'jobs');
       // Debug: show all unique csAssigned values
       const assigned = [...new Set(data.jobs.map(j=>j.csAssigned||'(none)'))];
@@ -1377,8 +1378,8 @@ window.toggleSOPPanel = async function(){
   if(_sopPanelOpen){
     try{
       const snap = await fbGet('data/jobs');
-      _allShipmentsForSOP = snap?.jobs || [];
-    }catch(e){ _allShipmentsForSOP = allJobs; }
+      if(snap?.jobs?.length) _allShipmentsForSOP = snap.jobs;   // refresh with ALL shipments
+    }catch(e){ /* keep the live-synced _allShipmentsForSOP (all shipments) */ }
     renderCSSOPDocs();
   }
 };
