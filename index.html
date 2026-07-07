@@ -782,6 +782,7 @@ body{font-size:14px;font-weight:450}
         <div class="result-row"><span>Total Cost</span><span class="result-val" style="color:var(--red)" id="r_cost">$0.00</span></div>
         <div class="result-row"><span style="font-weight:600">Gross Profit</span><span class="result-val" style="font-size:20px;font-weight:700" id="r_profit">$0.00</span></div>
         <div class="result-row"><span>Margin</span><span class="result-val" id="r_margin">0.0%</span></div>
+        <div id="gp_warning" style="display:none;margin:8px 0;padding:8px 10px;border-radius:8px;font-size:11px;font-weight:700;line-height:1.45;text-align:center"></div>
         <div class="result-row"><span>Net Profit</span><span class="result-val" id="r_net">$0.00</span></div>
         <div class="result-comm">
           <div><div style="font-size:11px;color:var(--gold);font-family:var(--mono)">COMMISSION (<span id="comm_pct_display">25</span>%)</div><div style="font-size:10px;color:var(--muted);margin-top:2px">of Gross Profit</div></div>
@@ -1310,6 +1311,26 @@ function tieredCommRate(monthProfitThb){
 // Commission rate for a given month's profit (THB): tiered per-month, or flat.
 function monthlyCommRateFor(profitThb){
   return commMode==='tiered' ? tieredCommRate(profitThb||0) : (window.commRate||0.25);
+}
+
+// GP (gross profit) warning based on profit as % of COST.
+//  < 3%  → critical  |  3–5% → credit warning  |  ≥ 5% → OK (no warning)
+function gpMarginWarning(gpPct){
+  if(gpPct == null || !isFinite(gpPct) || gpPct >= 5) return null;
+  if(gpPct < 3) return {
+    bg:'rgba(192,57,43,.12)', border:'rgba(192,57,43,.45)', color:'var(--red)',
+    html:`⚠️ GP ${gpPct.toFixed(1)}% — ต่ำกว่า 3% จาก cost!`
+  };
+  return {
+    bg:'rgba(183,128,10,.12)', border:'rgba(183,128,10,.45)', color:'var(--gold)',
+    html:`⚠️ GP ${gpPct.toFixed(1)}% — ควรไม่ต่ำกว่า 5% ถ้าลูกค้ามีเครดิต 15–30 วัน`
+  };
+}
+// GP% from sell & cost (profit ÷ cost × 100). No cost + profit>0 ⇒ treated as high.
+function gpPctFromCost(sell, cost){
+  const gp = (sell||0) - (cost||0);
+  if((cost||0) > 0) return gp/cost*100;
+  return gp > 0 ? 999 : 0;
 }
 // Total THB profit of active shipments in the current calendar month.
 function currentMonthProfitThb(){
@@ -2751,6 +2772,13 @@ function recalc(){
   set('r_sell',fmt(ts));set('r_cost',fmt(tc));set('r_profit',fmt(profit));
   set('r_margin',margin.toFixed(1)+'%');set('r_net',fmt(netProfit));set('r_comm',fmt(comm));
   set('comm_pct_display',(commRate*100).toFixed(0));
+  // GP warning (gross profit as % of cost) — shows after sell/cost are entered
+  const _gpw=g('gp_warning');
+  if(_gpw){
+    const w=(ts>0||tc>0)?gpMarginWarning(gpPctFromCost(ts,tc)):null;
+    if(w){ _gpw.style.display='block'; _gpw.style.background=w.bg; _gpw.style.border='1px solid '+w.border; _gpw.style.color=w.color; _gpw.innerHTML=w.html; }
+    else _gpw.style.display='none';
+  }
   set('r_rate',exRate.toFixed(2));
   const profitThb=profit*exRate,commThb=comm*exRate;
   set('r_profit_thb',profit!==0?fmtT(profitThb)+' ฿':'—');
@@ -5628,10 +5656,12 @@ function qRenderRateRows(){
           oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
           style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:55px">
         <div id="eff_${row.id}" style="font-size:9px;color:var(--green);font-family:var(--mono);text-align:right;margin-top:1px;white-space:nowrap">${(()=>{const p=parseFloat(row.profit)||0;const r20=parseFloat(row.r20)||0;const r4h=parseFloat(row.r4h)||0;return p&&(r20||r4h)?'→ '+(r20+p)+'/'+(r4h+p):'';})()}</div>
+        <div id="gpw_${row.id}" style="display:none;font-size:9px;font-weight:700;text-align:right;margin-top:2px;line-height:1.3;max-width:190px;margin-left:auto;white-space:normal"></div>
       </td>
       <td style="padding:3px 4px;text-align:center"><button onclick="qRemoveRate(${row.id})"
         style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
     </tr>`).join('');
+  qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
 }
 
 function qUpdateRate(id, field, val){
@@ -5654,6 +5684,17 @@ function qUpdateRateDisplay(id){
     if(r4h) parts.push('HC:'+(r4h+p));
     el.textContent = '→ '+parts.join(' / ');
   } else { el.textContent=''; }
+  // GP warning (profit as % of base rate) — worst case across sizes
+  const gpwEl = document.getElementById('gpw_'+id);
+  if(gpwEl){
+    const bases=[r20,r40,r4h].filter(x=>x>0);
+    if(p>0 && bases.length){
+      const minGp = Math.min(...bases.map(b=>p/b*100));
+      const w = gpMarginWarning(minGp);
+      if(w){ gpwEl.style.display='block'; gpwEl.style.color=w.color; gpwEl.innerHTML=w.html; }
+      else gpwEl.style.display='none';
+    } else gpwEl.style.display='none';
+  }
 }
 function qRemoveRate(id){
   qRateRows = qRateRows.filter(r=>r.id!==id);
@@ -5781,7 +5822,9 @@ function qBuildEmail(){
     lines.push('');
     rows.forEach(row=>{
       const parts=[];
-      const r20=parseFloat(row.r20)||0, r40=parseFloat(row.r40)||0, r4h=parseFloat(row.r4h)||0;
+      const _p=parseFloat(row.profit)||0;
+      const _b20=parseFloat(row.r20)||0, _b40=parseFloat(row.r40)||0, _b4h=parseFloat(row.r4h)||0;
+      const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
@@ -6060,7 +6103,9 @@ function qCopyLine(){
     if(car) lines.push(`${car}:\n`);
     rows.forEach(row=>{
       const pod=(row.pod||'').trim(); if(!pod) return;
-      const r20=parseFloat(row.r20)||0,r40=parseFloat(row.r40)||0,r4h=parseFloat(row.r4h)||0;
+      const _p=parseFloat(row.profit)||0;
+      const _b20=parseFloat(row.r20)||0,_b40=parseFloat(row.r40)||0,_b4h=parseFloat(row.r4h)||0;
+      const r20=_b20?_b20+_p:0,r40=_b40?_b40+_p:0,r4h=_b4h?_b4h+_p:0;
       const parts=[];
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
