@@ -3451,6 +3451,7 @@ function saveShipment(){
     }),
     thbFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.dataset?.thb==='true'),
     aprFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.querySelector('button[data-apr]')?.dataset?.apr==='1'),
+    perCtnFlags: [...document.querySelectorAll('#charge_body tr')].map(r=>r.dataset?.perctn==='1'),
     totalSell: ts, totalCost: tc,
   };
   // Override POL if LKB or BKK is ticked
@@ -3546,12 +3547,36 @@ loadLCTemplates();
         if(btn && j.aprFlags[i]===true && btn.dataset.apr!=='1') window.toggleAPR(btn);
       });
     }
+    // Restore ×ctn (per-container) flags on standard/Others rows
+    if(j.perCtnFlags && j.perCtnFlags.length){
+      chargeRows.forEach((r,i)=>{
+        const pb=r.querySelector('button[data-perctn]');
+        if(pb && j.perCtnFlags[i]===true && pb.dataset.perctn!=='1') window.toggleChargePerCtn(pb);
+      });
+    }
     // Restore editable "Others" item name + its THB/USD currency.
     chargeRows.forEach((row,i)=>{
       const nameInp=row.querySelector('.charge-name-inp');
       if(nameInp && j.chargeNames?.[i]) nameInp.value=j.chargeNames[i];
       if(row.querySelector('.ccy-toggle') && j.thbFlags) setChargeCcy(row, !!j.thbFlags[i]);
     });
+    // Reconstruct custom "+ Add Charge" rows saved beyond the standard charge set
+    const _stdItems = (v('s_type')==='FCL'?CHARGES_FCL:CHARGES_LCL);
+    const _stdCount = _stdItems.length;
+    if(j.chargeNames && j.chargeNames.length > _stdCount){
+      for(let i=_stdCount; i<j.chargeNames.length; i++){
+        addCustomCharge();
+        const _rows=[...document.querySelectorAll('#charge_body tr')];
+        const _row=_rows[_rows.length-1];
+        const _n=_row.querySelector('.charge-name-inp'); if(_n) _n.value=j.chargeNames[i]||'';
+        const _si=_row.querySelector('.sell-inp'), _ci=_row.querySelector('.cost-inp');
+        if(_si) _si.value=j.sells?.[i]||0;
+        if(_ci) _ci.value=j.costs?.[i]||0;
+        if(j.thbFlags && j.thbFlags[i]) setChargeCcy(_row, true);
+        if(j.aprFlags && j.aprFlags[i]===true){ const _b=_row.querySelector('button[data-apr]'); if(_b&&_b.dataset.apr!=='1') window.toggleAPR(_b); }
+        if(j.perCtnFlags && j.perCtnFlags[i]===true){ const _pb=_row.querySelector('button[data-perctn]'); if(_pb&&_pb.dataset.perctn!=='1') window.toggleChargePerCtn(_pb); }
+      }
+    }
     recalc();
   }
   const btn=g('save_btn');if(btn){btn.textContent='💾 Update Shipment';btn.className='btn btn-gold';btn.style.background='';}
