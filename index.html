@@ -7915,7 +7915,7 @@ window.closeShipmentDetail = closeShipmentDetail;
       <div class="two-col" style="gap:10px">
         <div class="inp-group"><label class="inp-lbl">Shipper Name</label><input class="inp" id="bpdf_shipper"></div>
         <div class="inp-group"><label class="inp-lbl">Shipper Ref (SBKK...)</label><input class="inp" id="bpdf_shipper_ref"></div>
-        <div class="inp-group"><label class="inp-lbl">Booking No.</label><input class="inp" id="bpdf_bkgno"></div>
+        <div class="inp-group"><label class="inp-lbl">Booking No.</label><input class="inp" id="bpdf_bkgno" oninput="const v=this.value;const p=document.getElementById('bpdf_pu_ref'),t=document.getElementById('bpdf_ti_ref');if(p)p.value=v;if(t)t.value=v;"></div>
         <div class="inp-group"><label class="inp-lbl">Shipping Line</label><input class="inp" id="bpdf_carrier"></div>
         <div class="inp-group"><label class="inp-lbl">VSL Name / Voy</label><input class="inp" id="bpdf_vsl"></div>
         <div class="inp-group"><label class="inp-lbl">Mother VSL Name</label><input class="inp" id="bpdf_mother_vsl"></div>
@@ -8019,11 +8019,11 @@ function openBookingPdfModal(idx){
   set('bpdf_vgm_cutoff',    j.vgmCutoff || '');
   set('bpdf_gate_closing',  j.gateClosing || '');
   set('bpdf_paperless',     j.paperlessCode || '');
-  set('bpdf_pu_ref',        '');
+  set('bpdf_pu_ref',        j.no || j.bookingNo || '');   // Pick up Ref = ยึดตาม Booking No.
   set('bpdf_pu_date',       fmtDate(j.cyDate) || j.pickupDate || '');
   set('bpdf_pu_place',      j.pickupPlace || '');
   set('bpdf_pu_pic',        j.pickupPic || '');
-  set('bpdf_ti_ref',        '');
+  set('bpdf_ti_ref',        j.no || j.bookingNo || '');   // Turn-In Ref = ยึดตาม Booking No.
   set('bpdf_ti_date',       fmtDate(j.rtnDate) || j.turninDate || '');
   set('bpdf_ti_at',         j.turninAt || '');
   set('bpdf_ti_pic',        j.turninPic || '');
@@ -8032,24 +8032,16 @@ function openBookingPdfModal(idx){
   set('bpdf_hs_code',       j.hsCode || 'Please advise');
   set('bpdf_special_remark',j.specialRemark || '');
 
-  // Load previously saved PDF fields — only restore fields that were actually saved with a value
-  // These are fields the user manually typed into the modal (not auto-filled from shipment)
+  // Only PDF-EXCLUSIVE fields are restored from saved bpdfData. Shared fields
+  // (booking/shipper/ref/vessel/etd/eta/ports/cutoffs/volume) always come from the
+  // live shipment record so editing the shipment updates the PDF, and vice-versa.
+  // Pick up / Turn-in Ref are NOT restored — they always follow the booking number.
   const saved = j.bpdfData || {};
   const BPDF_USER_FIELDS = [
-    // Cutoff times — user enters these manually
-    'bpdf_si_cutoff','bpdf_cfm_bl','bpdf_vgm_cutoff','bpdf_gate_closing',
-    // Vessel / carrier overrides
-    'bpdf_vsl','bpdf_mother_vsl','bpdf_carrier','bpdf_etd','bpdf_eta',
-    // Port overrides
-    'bpdf_port_receive','bpdf_port_discharge','bpdf_port_loading','bpdf_final_dest','bpdf_port_transit',
-    // Paperless & cutoffs
-    'bpdf_paperless',
-    // Pick up & Turn-in (user fills)
-    'bpdf_pu_ref','bpdf_pu_date','bpdf_pu_place','bpdf_pu_pic',
-    'bpdf_ti_ref','bpdf_ti_date','bpdf_ti_at','bpdf_ti_pic',
-    // Other
-    'bpdf_shipper','bpdf_shipper_ref','bpdf_bkgno',
-    'bpdf_volume','bpdf_commodity','bpdf_weight','bpdf_hs_code','bpdf_special_remark',
+    'bpdf_port_loading','bpdf_port_transit','bpdf_paperless',
+    'bpdf_pu_date','bpdf_pu_place','bpdf_pu_pic',
+    'bpdf_ti_date','bpdf_ti_at','bpdf_ti_pic',
+    'bpdf_commodity','bpdf_weight','bpdf_hs_code','bpdf_special_remark',
   ];
   BPDF_USER_FIELDS.forEach(id=>{
     if(saved[id] !== undefined && saved[id] !== ''){
@@ -8107,27 +8099,36 @@ function saveBpdfData(){
   BPDF_IDS.forEach(id=>{ const el=document.getElementById(id); if(el) data[id]=el.value; });
   savedJobs[_bpdfIdx].bpdfData = data;
 
-  // ── Sync key fields back to Shipment record so they appear in the form ──
+  // ── Sync ALL shared fields back to the Shipment record (two-way sync) ──
   const j = savedJobs[_bpdfIdx];
   const gv2 = id => (document.getElementById(id)?.value||'').trim();
-  j.siCutoff   = gv2('bpdf_si_cutoff');
-  j.vgmCutoff  = gv2('bpdf_vgm_cutoff');
-  j.docCutoff  = gv2('bpdf_cfm_bl');
-  j.gateClosing= gv2('bpdf_gate_closing');
-  // CY/RTN from bpdf_pu_date / bpdf_ti_date
+  const splitVV = s => { const p=(s||'').split('/'); return {v:(p[0]||'').trim(), voy:(p[1]||'').trim()}; };
+  if(gv2('bpdf_bkgno'))       j.no      = gv2('bpdf_bkgno');
+  if(gv2('bpdf_shipper'))     j.shipper = gv2('bpdf_shipper');
+  if(gv2('bpdf_shipper_ref')) j.refno   = gv2('bpdf_shipper_ref');
+  if(gv2('bpdf_carrier'))     j.carrier = gv2('bpdf_carrier');
+  if(gv2('bpdf_etd'))         j.etd     = gv2('bpdf_etd');
+  if(gv2('bpdf_eta'))         j.eta     = gv2('bpdf_eta');
+  if(gv2('bpdf_port_receive'))   j.pol  = gv2('bpdf_port_receive');
+  if(gv2('bpdf_port_discharge')) j.pod  = gv2('bpdf_port_discharge');
+  if(gv2('bpdf_port_transit'))   j.portTransit = gv2('bpdf_port_transit');
+  if(gv2('bpdf_vsl')){        const x=splitVV(gv2('bpdf_vsl'));        j.vessel=x.v||j.vessel; if(x.voy) j.voyage=x.voy; }
+  if(gv2('bpdf_mother_vsl')){ const x=splitVV(gv2('bpdf_mother_vsl')); j.motherVessel=x.v||j.motherVessel; if(x.voy) j.motherVoy=x.voy; }
+  j.siCutoff    = gv2('bpdf_si_cutoff');
+  j.vgmCutoff   = gv2('bpdf_vgm_cutoff');
+  j.docCutoff   = gv2('bpdf_cfm_bl');
+  j.gateClosing = gv2('bpdf_gate_closing');
   if(gv2('bpdf_pu_date')) j.pickupDate = gv2('bpdf_pu_date');
   if(gv2('bpdf_ti_date')) j.turninDate = gv2('bpdf_ti_date');
-  // Vessel info
-  if(gv2('bpdf_vsl'))        j.vessel        = gv2('bpdf_vsl').split('/')[0]?.trim() || j.vessel;
-  if(gv2('bpdf_mother_vsl')) j.motherVessel  = gv2('bpdf_mother_vsl').split('/')[0]?.trim() || j.motherVessel;
-  if(gv2('bpdf_carrier'))    j.carrier       = gv2('bpdf_carrier');
   j.paperlessCode = gv2('bpdf_paperless');
   j.pickupPlace   = gv2('bpdf_pu_place');
   j.pickupPic     = gv2('bpdf_pu_pic');
   j.turninAt      = gv2('bpdf_ti_at');
   j.turninPic     = gv2('bpdf_ti_pic');
+  if(gv2('bpdf_commodity')) j.commodity = gv2('bpdf_commodity');
 
   storageSave();
+  try{ if(typeof renderShipments==='function') renderShipments(); }catch(e){}
 }
 
 window.saveBpdfDataManual = function(){
