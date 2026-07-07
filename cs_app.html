@@ -136,7 +136,7 @@ select.inp{cursor:pointer}
   <div id="pbkg_wrap" style="margin-bottom:14px;display:none">
     <div class="card" style="padding:12px 16px;border-color:rgba(0,180,216,.3)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em">📋 PRE-BOOKING</div>
+        <div onclick="toggleCsPbkg()" style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em;cursor:pointer;user-select:none">📋 PRE-BOOKING <span id="cspb_arrow" style="font-size:8px">▶</span></div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div id="pbkg_summary" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></div>
           <span style="font-size:9px;color:var(--muted);font-family:var(--mono)">✍️ <span id="pbkg_editor_name" style="color:var(--cyan);font-weight:700">—</span> <a onclick="changePbkgEditor()" style="color:var(--cyan);cursor:pointer;text-decoration:underline">เปลี่ยน</a></span>
@@ -144,6 +144,7 @@ select.inp{cursor:pointer}
           <button onclick="openAddPbkg()" style="background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.4);color:var(--cyan);border-radius:6px;font-size:10px;font-weight:700;padding:3px 10px;cursor:pointer">+ Add</button>
         </div>
       </div>
+      <div id="cspb_body" style="display:none">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <input id="pbkg_f_bkg" oninput="applyPbkgFilter()" placeholder="🔍 Booking No." style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11px;padding:4px 8px;outline:none;width:130px">
         <input id="pbkg_f_sale" oninput="applyPbkgFilter()" placeholder="🔍 Sale" style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:11px;padding:4px 8px;outline:none;width:100px">
@@ -174,6 +175,7 @@ select.inp{cursor:pointer}
           </tr></thead>
           <tbody id="pbkg_tbody"></tbody>
         </table>
+      </div>
       </div>
     </div>
   </div>
@@ -657,6 +659,14 @@ function renderCutoffAlerts(){
 }
 
 // ── Pre-Booking (read-only — synced live from Sea Freight Pro) ──
+// Collapse/expand the Pre-Booking card body. Default on load = hidden.
+window.toggleCsPbkg = function(){
+  const b=document.getElementById('cspb_body'), a=document.getElementById('cspb_arrow');
+  if(!b) return;
+  const show = (b.style.display==='none' || !b.style.display);
+  b.style.display = show ? 'block' : 'none';
+  if(a) a.textContent = show ? '▼' : '▶';
+};
 let _pbkgList = [];
 let _pbkgLog = [];
 
