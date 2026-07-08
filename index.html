@@ -1534,7 +1534,7 @@ window.wbSetTarget=function(v){ const t=parseFloat(v)||0; try{ localStorage.setI
 
 // ── Calendar / Appointments (exportable to iPhone/Mac via .ics) ──
 function _wbLoadAppts(){ try{ return JSON.parse(localStorage.getItem('sfp_appointments')||'[]')||[]; }catch(e){ return []; } }
-function _wbSaveAppts(a){ try{ localStorage.setItem('sfp_appointments', JSON.stringify(a)); }catch(e){} }
+function _wbSaveAppts(a){ try{ localStorage.setItem('sfp_appointments', JSON.stringify(a)); }catch(e){} try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){} }
 function renderAppts(){
   const el=document.getElementById('wb_appts'); if(!el) return;
   const now=new Date().toISOString().slice(0,10);
@@ -6652,6 +6652,7 @@ function qEmailQuot(i){
 // ── To Do List ─────────────────────────────────────────────
 function saveTodos(){
   try{ localStorage.setItem(TODO_KEY, JSON.stringify(todos)); }catch(e){}
+  try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
 }
 
 function addTodo(){
@@ -7792,10 +7793,10 @@ onAuthStateChanged(auth, async user=>{
 });
 
 async function initFirestoreSync(){
-  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap,dbItSnap] = await Promise.all([
+  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap,dbItSnap,apptSnap] = await Promise.all([
     fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
     fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
-    fbGet('data/rateMeta'), fbGet('data/dbIntransit'),
+    fbGet('data/rateMeta'), fbGet('data/dbIntransit'), fbGet('data/appointments'),
   ]);
 
   // ── Set data from Firestore (override localStorage) ──
@@ -7809,6 +7810,7 @@ async function initFirestoreSync(){
   window._jobsSyncReady = true;
   if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
+  if(apptSnap?.appts)        { try{ localStorage.setItem('sfp_appointments', JSON.stringify(apptSnap.appts)); }catch(e){} window._sfpSyncHash.appts = _sfpHash(apptSnap.appts); }
   if(dbItSnap?.rows){
     window.__setDbRows?.(dbItSnap.rows);
     try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){}
@@ -7947,6 +7949,13 @@ async function initFirestoreSync(){
     if(quotH !== window._sfpSyncHash.quotations){
       writes.push(fbSet('data/quotations', {quotations: window.savedQuotations||[], updatedAt: now()}));
       newHash.quotations = quotH;
+    }
+    // Appointments (Work Bench calendar)
+    let apptsData=[]; try{ apptsData=JSON.parse(localStorage.getItem('sfp_appointments')||'[]')||[]; }catch(e){}
+    const apptsH = _sfpHash(apptsData);
+    if(apptsH !== window._sfpSyncHash.appts){
+      writes.push(fbSet('data/appointments', {appts: apptsData, updatedAt: now()}));
+      newHash.appts = apptsH;
     }
     // Rates — the expensive part. Write chunks ONLY when they changed.
     const rates = window.ALL_RATES||[];
