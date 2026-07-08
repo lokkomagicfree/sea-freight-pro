@@ -235,6 +235,7 @@ body{font-size:14px;font-weight:450}
 <div class="topbar">
   
   <div class="nav-tabs">
+    <button class="nav-tab" onclick="showPage('workbench');renderWorkBench()">🗂 Bench</button>
     <button class="nav-tab" onclick="showPage('rates')">📋 Rates</button>
     <button class="nav-tab" onclick="showPage('shipments')">🚢 Ships</button>
     <button class="nav-tab" onclick="showPage('quotation')">💰 Quote</button>
@@ -270,7 +271,106 @@ body{font-size:14px;font-weight:450}
 </div>
 
 <!-- ═══ RATES PAGE ═══ -->
-<div id="page-rates" class="page active">
+<div id="page-workbench" class="page active">
+  <div style="max-width:1280px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--text)">🗂 Work Bench</div>
+        <div id="wb_greeting" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <button onclick="renderWorkBench()" class="btn btn-ghost" style="font-size:11px;padding:6px 14px">🔄 Refresh</button>
+    </div>
+
+    <!-- Stat cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+      <div class="wb-stat" style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">🚢 Active Shipments</div>
+        <div id="wb_stat_ships" style="font-size:26px;font-weight:800;color:var(--cyan);font-family:var(--mono)">—</div>
+        <div id="wb_stat_ships_sub" style="font-size:10px;color:var(--muted)"></div>
+      </div>
+      <div class="wb-stat" style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">💰 กำไรเดือนนี้ (THB)</div>
+        <div id="wb_stat_profit" style="font-size:26px;font-weight:800;color:var(--green);font-family:var(--mono)">—</div>
+        <div id="wb_stat_profit_sub" style="font-size:10px;color:var(--muted)"></div>
+      </div>
+      <div class="wb-stat" style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer" onclick="showPage('prebooking');renderPreBooking()">
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">📋 Pre-Bkg รอ Release</div>
+        <div id="wb_stat_pbkg" style="font-size:26px;font-weight:800;color:var(--gold);font-family:var(--mono)">—</div>
+        <div style="font-size:10px;color:var(--muted)">คลิกไปหน้า Pre-Booking →</div>
+      </div>
+      <div class="wb-stat" style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer" onclick="showPage('todo')">
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono)">✅ To-Do ค้าง</div>
+        <div id="wb_stat_todo" style="font-size:26px;font-weight:800;color:var(--red);font-family:var(--mono)">—</div>
+        <div style="font-size:10px;color:var(--muted)">คลิกไปหน้า Todo →</div>
+      </div>
+    </div>
+
+    <!-- Target vs Actual -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green)">🎯 เป้ากำไรเดือนนี้ (Target vs Actual)</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;color:var(--muted)">เป้า (฿):</span>
+          <input type="number" id="wb_target_inp" min="0" step="1000" placeholder="ตั้งเป้า…" onchange="wbSetTarget(this.value)" oninput="wbSetTarget(this.value)"
+            style="width:120px;font-size:12px;padding:4px 8px;font-family:var(--mono);color:var(--green)" class="inp">
+        </div>
+      </div>
+      <div id="wb_target_bar_wrap" style="position:relative;height:22px;background:var(--s1);border-radius:11px;overflow:hidden">
+        <div id="wb_target_bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),#2ecc71);border-radius:11px;transition:width .4s"></div>
+        <div id="wb_target_bar_txt" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);color:var(--text)"></div>
+      </div>
+      <div id="wb_target_sub" style="font-size:10px;color:var(--muted);margin-top:5px;text-align:center"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start" id="wb_columns">
+      <!-- LEFT: Action center -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <!-- Alerts -->
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px">⚠️ แจ้งเตือน / ต้องทำ</div>
+          <div id="wb_alerts" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+        <!-- Quick To-Do -->
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan);margin-bottom:10px">✅ To-Do</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input id="wb_todo_inp" class="inp" placeholder="เพิ่มงานด่วน…" style="flex:1;font-size:12px;padding:6px 10px" onkeydown="if(event.key==='Enter')wbAddTodo()">
+            <button onclick="wbAddTodo()" class="btn btn-cyan" style="font-size:12px;padding:6px 14px">+ เพิ่ม</button>
+          </div>
+          <div id="wb_todos" style="display:flex;flex-direction:column;gap:5px"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Status board + Quote insights -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);margin-bottom:10px">🚢 สถานะ Shipment</div>
+          <div id="wb_status_board" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);margin-bottom:4px">💰 Rate / Quotation ล่าสุด</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">GP ต่ำ = ราคาแข่งขันได้ (competitive) · GP สูง = มาร์จิ้นดี</div>
+          <div id="wb_quotes" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cut-off & ETD this week -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:14px">
+      <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px">📅 Cut-off & ETD สัปดาห์นี้ (7 วัน)</div>
+      <div id="wb_calendar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
+    </div>
+
+    <!-- Free Time / Demurrage countdown -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:14px">
+      <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px">🕐 Free Time / คืนตู้ (Countdown)</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:10px">เรียงตามใกล้หมดสุด · แดง = เกินกำหนด (เสี่ยง demurrage)</div>
+      <div id="wb_freetime" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+</div>
+
+<div id="page-rates" class="page">
   <div id="upload_panel" style="display:none">
     <!-- Excel/JSON upload -->
     <div class="card" id="upload_zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)"
@@ -1332,6 +1432,106 @@ function gpPctFromCost(sell, cost){
   if((cost||0) > 0) return gp/cost*100;
   return gp > 0 ? 999 : 0;
 }
+
+// ══════════════════ WORK BENCH (home dashboard) ══════════════════
+function _wbSet(id,v){ const e=document.getElementById(id); if(e) e.innerHTML=v; }
+function _wbEsc(s){ return (s==null?'':String(s)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function _wbDaysUntil(d){ if(!d) return null; const dt=new Date(String(d).length<=10?d+'T00:00:00':d); if(isNaN(dt)) return null; const today=new Date(new Date().toISOString().slice(0,10)+'T00:00:00'); return Math.floor((dt-today)/86400000); }
+
+function renderWorkBench(){
+  try{
+    const jobs=(window.savedJobs||[]).filter(j=>j&&j.status!=='cancelled');
+    const now=new Date(), todayISO=now.toISOString().slice(0,10), ym=now.toISOString().slice(0,7);
+    const hr=now.getHours(), greet=hr<12?'สวัสดีตอนเช้า':hr<17?'สวัสดีตอนบ่าย':'สวัสดีตอนเย็น';
+    _wbSet('wb_greeting', greet+' · '+now.toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
+
+    // Stat cards
+    const activeShips=jobs.filter(j=>['confirmed','loaded'].includes(j.status));
+    _wbSet('wb_stat_ships',activeShips.length); _wbSet('wb_stat_ships_sub',jobs.length+' รวมทั้งหมด');
+    const profitThb=(typeof currentMonthProfitThb==='function')?currentMonthProfitThb():0;
+    _wbSet('wb_stat_profit','฿'+Math.round(profitThb).toLocaleString('th-TH'));
+    _wbSet('wb_stat_profit_sub',jobs.filter(j=>(j.etdMonth||(j.etd||'').slice(0,7))===ym).length+' งานเดือนนี้');
+    const pbkgPending=(window._preBkgList||[]).filter(p=>(p.status||'pending')==='pending').length;
+    _wbSet('wb_stat_pbkg',pbkgPending);
+    const openTodos=(window.todos||[]).filter(t=>t.status!=='done'&&!t.doneAt);
+    _wbSet('wb_stat_todo',openTodos.length);
+
+    // Alerts
+    const alerts=[];
+    jobs.forEach(j=>{ [['SI',j.siCutoff],['VGM',j.vgmCutoff],['Gate',j.gateClosing],['CFM BL',j.docCutoff]].forEach(([lbl,d])=>{ const du=_wbDaysUntil(d); if(du!==null&&du>=0&&du<=3) alerts.push({icon:'⏰',color:'var(--red)',text:`${lbl} cut-off <b>${_wbEsc(j.no||j.jobno||'')}</b> อีก ${du===0?'วันนี้!':du+' วัน'}`}); }); });
+    (window._preBkgList||[]).forEach(p=>{ const du=_wbDaysUntil(p.freeTime); if(du!==null&&du>=0&&du<=3) alerts.push({icon:'🕐',color:'var(--gold)',text:`Free Time <b>${_wbEsc(p.bkgno||'')}</b> (${_wbEsc(p.customer||'')}) อีก ${du===0?'วันนี้!':du+' วัน'}`}); });
+    if(pbkgPending>0) alerts.push({icon:'📋',color:'var(--gold)',text:`มี <b>${pbkgPending}</b> Pre-Booking รอ Release`});
+    const pendConf=jobs.filter(j=>j.status==='pending').length;
+    if(pendConf>0) alerts.push({icon:'🚢',color:'var(--cyan)',text:`มี <b>${pendConf}</b> Shipment รอยืนยัน (Pending)`});
+    jobs.forEach(j=>{ const gp=gpPctFromCost(j.sell||0,j.cost||0); if((j.cost||0)>0&&gp<3) alerts.push({icon:'📉',color:'var(--red)',text:`GP ต่ำ <b>${gp.toFixed(1)}%</b> — ${_wbEsc(j.no||j.jobno||'')} (${_wbEsc(j.customer||'')})`}); });
+    _wbSet('wb_alerts', alerts.length? alerts.slice(0,14).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:6px 8px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีแจ้งเตือน — เคลียร์หมดแล้ว</div>`);
+
+    // To-do list
+    _wbSet('wb_todos', openTodos.length? openTodos.slice(0,8).map(t=>{ const pc=t.priority==='high'?'var(--red)':t.priority==='low'?'var(--muted)':'var(--gold)'; return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:5px 8px;background:var(--s1);border-radius:7px"><input type="checkbox" onchange="wbDoneTodo(${t.id})" style="cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0"></span><span style="flex:1;color:var(--text)">${_wbEsc(t.text)}</span>${t.deadline?`<span style="font-size:9px;color:var(--muted);font-family:var(--mono)">${_wbEsc(t.deadline)}</span>`:''}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีงานค้าง 🎉</div>`);
+
+    // Status board
+    const stageOf=j=>{ if(j.status==='completed')return'completed'; const du=_wbDaysUntil(j.etd); if(du!==null&&du<0)return'departed'; const cy=_wbDaysUntil(j.cyDate); if(j.status==='loaded'||(cy!==null&&cy<=0))return'loaded'; if(j.status==='confirmed')return'confirmed'; return'pending'; };
+    const buckets={pending:[],confirmed:[],loaded:[],departed:[],completed:[]};
+    jobs.forEach(j=>{ const s=stageOf(j); if(buckets[s])buckets[s].push(j); });
+    const stages=[['pending','📋','Pending (รอยืนยัน)','var(--gold)'],['confirmed','✅','Confirmed (ยืนยันแล้ว)','var(--green)'],['loaded','📦','ลากตู้ / โหลดแล้ว','var(--cyan)'],['departed','⚓','เรือออกแล้ว','#a569bd'],['completed','🏁','Completed','var(--muted)']];
+    _wbSet('wb_status_board', stages.map(([k,ic,lb,cl])=>{ const list=buckets[k]||[]; const prev=list.slice(0,3).map(j=>`${_wbEsc(j.no||j.jobno||'—')} <span style="color:var(--muted)">${_wbEsc(j.customer||'')}</span>`).join(' · '); return `<div style="padding:8px 10px;background:var(--s1);border-radius:8px;border-left:3px solid ${cl}"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;color:var(--text)">${ic} ${lb}</span><span style="font-size:14px;font-weight:800;color:${cl};font-family:var(--mono)">${list.length}</span></div>${list.length?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);line-height:1.4">${prev}${list.length>3?` <span style="color:var(--muted)">+${list.length-3} more</span>`:''}</div>`:''}</div>`; }).join(''));
+
+    // Quote insights (GP low = competitive)
+    const quotes=(window.savedQuotations||[]).slice(0,6);
+    _wbSet('wb_quotes', quotes.length? quotes.map(q=>{ let gpTxt=''; const rr=(q.rateRows||[])[0]; if(rr){ const b=parseFloat(rr.r20)||parseFloat(rr.r4h)||0, p=parseFloat(rr.profit)||0; if(b>0&&p>0){ const gp=p/b*100, c=gp<3?'var(--red)':gp<5?'var(--gold)':'var(--green)', tag=gp<5?' 🔥':''; gpTxt=`<span style="color:${c};font-weight:700;font-family:var(--mono)">GP ${gp.toFixed(1)}%${tag}</span>`; } } return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:6px 8px;background:var(--s1);border-radius:7px"><span style="color:var(--text)">${_wbEsc(q.customer||'—')} <span style="color:var(--muted)">${_wbEsc((q.rateRows||[])[0]?.pod||'')}</span></span>${gpTxt}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ยังไม่มี quotation</div>`);
+
+    // ── Target vs Actual ──
+    const target=parseFloat(localStorage.getItem('sfp_profit_target')||'0')||0;
+    const ti=document.getElementById('wb_target_inp'); if(ti && document.activeElement!==ti) ti.value = target||'';
+    const pct = target>0 ? Math.min(100, profitThb/target*100) : 0;
+    const bar=document.getElementById('wb_target_bar'); if(bar){ bar.style.width=pct+'%'; bar.style.background = pct>=100?'linear-gradient(90deg,#27ae60,#2ecc71)':pct>=60?'linear-gradient(90deg,var(--gold),#f1c40f)':'linear-gradient(90deg,var(--red),#e74c3c)'; }
+    _wbSet('wb_target_bar_txt', target>0 ? `฿${Math.round(profitThb).toLocaleString('th-TH')} / ฿${Math.round(target).toLocaleString('th-TH')} (${pct.toFixed(0)}%)` : 'ตั้งเป้ากำไรเดือนนี้ →');
+    _wbSet('wb_target_sub', target>0 ? (profitThb>=target ? '🎉 ทะลุเป้าแล้ว!' : `เหลืออีก ฿${Math.round(target-profitThb).toLocaleString('th-TH')} จะถึงเป้า`) : '');
+
+    // ── Cut-off & ETD this week (7-day) ──
+    const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    const D=['อา','จ','อ','พ','พฤ','ศ','ส'];
+    let calHtml='';
+    for(let dd=0; dd<7; dd++){
+      const day=new Date(now.getTime()+dd*86400000); const dayISO=day.toISOString().slice(0,10);
+      const evs=[];
+      jobs.forEach(j=>{
+        const bk=j.no||j.jobno||'';
+        if((j.siCutoff||'').slice(0,10)===dayISO)   evs.push({c:'var(--red)',t:`SI ${_wbEsc(bk)}`});
+        if((j.vgmCutoff||'').slice(0,10)===dayISO)   evs.push({c:'var(--gold)',t:`VGM ${_wbEsc(bk)}`});
+        if((j.gateClosing||'').slice(0,10)===dayISO) evs.push({c:'#a569bd',t:`Gate ${_wbEsc(bk)}`});
+        if((j.docCutoff||'').slice(0,10)===dayISO)   evs.push({c:'var(--cyan)',t:`BL ${_wbEsc(bk)}`});
+        if((j.etd||'').slice(0,10)===dayISO)         evs.push({c:'var(--green)',t:`⚓ETD ${_wbEsc(bk)}`});
+      });
+      (window._preBkgList||[]).forEach(p=>{ if((p.etd||'').slice(0,10)===dayISO) evs.push({c:'var(--green)',t:`⚓${_wbEsc(p.bkgno||'')}`}); });
+      const isToday=dd===0;
+      calHtml+=`<div style="background:var(--s1);border-radius:8px;padding:6px 5px;min-height:70px;border:1px solid ${isToday?'var(--cyan)':'transparent'}">
+        <div style="font-size:9px;color:var(--muted);font-family:var(--mono);text-align:center;margin-bottom:4px">${D[day.getDay()]} ${day.getDate()} ${M[day.getMonth()]}${isToday?' •':''}</div>
+        ${evs.length? evs.slice(0,6).map(e=>`<div style="font-size:8.5px;font-family:var(--mono);color:${e.c};line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.t}</div>`).join('')+(evs.length>6?`<div style="font-size:8px;color:var(--muted)">+${evs.length-6}</div>`:'') : `<div style="font-size:9px;color:var(--muted);text-align:center;opacity:.5">—</div>`}
+      </div>`;
+    }
+    _wbSet('wb_calendar', calHtml);
+
+    // ── Free Time / return countdown ──
+    const ftItems=[];
+    (window._preBkgList||[]).forEach(p=>{ if(p.freeTime && (p.status||'pending')!=='cancelled'){ const du=_wbDaysUntil(p.freeTime); if(du!==null) ftItems.push({du,bk:p.bkgno||'',cust:p.customer||'',d:p.freeTime,src:'Free Time'}); } });
+    jobs.forEach(j=>{ if(j.rtnDate){ const du=_wbDaysUntil(j.rtnDate); if(du!==null && j.status!=='completed') ftItems.push({du,bk:j.no||j.jobno||'',cust:j.customer||'',d:j.rtnDate,src:'คืนตู้'}); } });
+    ftItems.sort((a,b)=>a.du-b.du);
+    _wbSet('wb_freetime', ftItems.length? ftItems.slice(0,10).map(it=>{
+      const over=it.du<0, soon=it.du>=0&&it.du<=2;
+      const col=over?'var(--red)':soon?'var(--gold)':'var(--green)';
+      const lbl=over?`เกิน ${Math.abs(it.du)} วัน!`:it.du===0?'วันนี้!':`อีก ${it.du} วัน`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:7px 10px;background:var(--s1);border-radius:7px;border-left:3px solid ${col}">
+        <span style="color:var(--text)"><b>${_wbEsc(it.bk)}</b> <span style="color:var(--muted)">${_wbEsc(it.cust)} · ${it.src}</span></span>
+        <span style="color:${col};font-weight:700;font-family:var(--mono);white-space:nowrap">${lbl}</span>
+      </div>`;
+    }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีรายการคืนตู้ค้าง</div>`);
+  }catch(e){ console.warn('renderWorkBench',e); }
+}
+window.renderWorkBench=renderWorkBench;
+window.wbSetTarget=function(v){ const t=parseFloat(v)||0; try{ localStorage.setItem('sfp_profit_target', String(t)); }catch(e){} renderWorkBench(); };
+window.wbAddTodo=function(){ const inp=document.getElementById('wb_todo_inp'); if(!inp)return; const text=inp.value.trim(); if(!text)return; (window.todos||[]).unshift({id:Date.now(),text,priority:'medium',category:'',status:'todo',deadline:'',reminder:'',assignee:'',note:'',createdAt:new Date().toISOString(),doneAt:null}); if(typeof saveTodos==='function')saveTodos(); inp.value=''; renderWorkBench(); if(typeof renderTodos==='function')renderTodos(); if(typeof toast==='function')toast('✅ เพิ่มงานแล้ว'); };
+window.wbDoneTodo=function(id){ const t=(window.todos||[]).find(t=>t.id===id); if(!t)return; t.status='done'; t.doneAt=new Date().toISOString(); if(typeof saveTodos==='function')saveTodos(); renderWorkBench(); if(typeof renderTodos==='function')renderTodos(); };
 // Total THB profit of active shipments in the current calendar month.
 function currentMonthProfitThb(){
   const ym = new Date().toISOString().slice(0,7);
@@ -5310,6 +5510,7 @@ renderShipments();
 renderTodos();
 renderCSTeam();
 renderCSDatalist();
+try{ renderWorkBench(); }catch(e){}
 fetchRate();
 setInterval(fetchRate,60000);
 setInterval(autoAdvanceOverdueETD,3600000); // re-check every hour in case the app stays open past midnight
@@ -7588,6 +7789,7 @@ async function initFirestoreSync(){
   window.renderShipments?.();
   window.renderTodos?.();
   window.renderDbIntransit?.();
+  window.renderWorkBench?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
   window.renderCSTeam?.();
