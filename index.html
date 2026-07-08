@@ -1534,7 +1534,7 @@ window.wbSetTarget=function(v){ const t=parseFloat(v)||0; try{ localStorage.setI
 
 // ── Calendar / Appointments (exportable to iPhone/Mac via .ics) ──
 function _wbLoadAppts(){ try{ return JSON.parse(localStorage.getItem('sfp_appointments')||'[]')||[]; }catch(e){ return []; } }
-function _wbSaveAppts(a){ try{ localStorage.setItem('sfp_appointments', JSON.stringify(a)); }catch(e){} try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){} }
+function _wbSaveAppts(a){ try{ localStorage.setItem('sfp_appointments', JSON.stringify(a)); localStorage.setItem('sfp_appts_savedAt', new Date().toISOString()); }catch(e){} try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){} }
 function renderAppts(){
   const el=document.getElementById('wb_appts'); if(!el) return;
   const now=new Date().toISOString().slice(0,10);
@@ -6651,7 +6651,7 @@ function qEmailQuot(i){
 
 // ── To Do List ─────────────────────────────────────────────
 function saveTodos(){
-  try{ localStorage.setItem(TODO_KEY, JSON.stringify(todos)); }catch(e){}
+  try{ localStorage.setItem(TODO_KEY, JSON.stringify(todos)); localStorage.setItem('sfp_todos_savedAt', new Date().toISOString()); }catch(e){}
   try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
 }
 
@@ -7808,9 +7808,33 @@ async function initFirestoreSync(){
   });
   if(jobsSnap?.jobs)         { window.savedJobs = jobsSnap.jobs; window.renderNewBizList?.(); }
   window._jobsSyncReady = true;
-  if(todosSnap?.todos)       { window.todos = todosSnap.todos; }
+  if(todosSnap?.todos)       {
+    let localTodos=null; try{ localTodos=JSON.parse(localStorage.getItem(window.TODO_KEY||'seafreight_todos_v1')||'null'); }catch(e){}
+    const lTs=localStorage.getItem('sfp_todos_savedAt')||'', cTs=todosSnap.updatedAt||'';
+    if(localTodos && Array.isArray(localTodos) && lTs && (!cTs || lTs > cTs)){
+      window.todos = localTodos;                             // local newer — keep it
+      window._sfpSyncHash.todos = _sfpHash(todosSnap.todos); // → next flush pushes local
+      setTimeout(()=>{ try{ window._sfpFlushToCloud&&window._sfpFlushToCloud(); }catch(e){} }, 800);
+    } else {
+      window.todos = todosSnap.todos;
+      try{ localStorage.setItem(window.TODO_KEY||'seafreight_todos_v1', JSON.stringify(todosSnap.todos)); }catch(e){}
+    }
+  }
   if(quotSnap?.quotations)   { window.savedQuotations = quotSnap.quotations; try{ localStorage.setItem('seafreight_quotations_v1', JSON.stringify(quotSnap.quotations)); }catch(e){} qRenderList?.(); }
-  if(apptSnap?.appts)        { try{ localStorage.setItem('sfp_appointments', JSON.stringify(apptSnap.appts)); }catch(e){} window._sfpSyncHash.appts = _sfpHash(apptSnap.appts); }
+  if(apptSnap && Array.isArray(apptSnap.appts)){
+    let localAppts=[]; try{ localAppts=JSON.parse(localStorage.getItem('sfp_appointments')||'[]')||[]; }catch(e){}
+    const localTs=localStorage.getItem('sfp_appts_savedAt')||'';
+    const cloudTs=apptSnap.updatedAt||'';
+    const localNewer = localTs && (!cloudTs || localTs > cloudTs) && localAppts.length>0;
+    if(localNewer){
+      // Local is newer (e.g. just added, cloud not updated yet) — keep local, push it up
+      window._sfpSyncHash.appts = _sfpHash(apptSnap.appts);   // mark different → next flush pushes local
+      setTimeout(()=>{ try{ window._sfpFlushToCloud&&window._sfpFlushToCloud(); }catch(e){} }, 800);
+    } else {
+      try{ localStorage.setItem('sfp_appointments', JSON.stringify(apptSnap.appts)); }catch(e){}
+      window._sfpSyncHash.appts = _sfpHash(apptSnap.appts);
+    }
+  }
   if(dbItSnap?.rows){
     window.__setDbRows?.(dbItSnap.rows);
     try{ localStorage.setItem('sfp_db_intransit',JSON.stringify(dbItSnap.rows)); }catch(e){}
