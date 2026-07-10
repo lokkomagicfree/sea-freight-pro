@@ -910,28 +910,40 @@ function renderCBAlerts(rows){
         <div style="font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:.1em;text-transform:uppercase;padding:4px 0 6px;border-bottom:1px solid var(--border2);margin-bottom:6px">
           📅 ${label} — ${monthRows.length} job${monthRows.length>1?'s':''}
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <div style="overflow-x:auto"><table style="min-width:920px;border-collapse:collapse;font-size:11px">
           <thead><tr>
-            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Booking</th>
-            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Shipper</th>
-            <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">INV From Vendor</th>
-            <th style="padding:6px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sent to Customer</th>
-            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
-            <th style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Cost (฿)</th>
-            <th style="padding:6px 10px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Sell (฿)</th>
+            <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:.08em">Cust Booking</th>
+            <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Booking No.</th>
+            <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Shipper</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Vol</th>
+            <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Container No.</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.08em">CY Date</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">ETD</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.08em">Load Date</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">INV From Vendor</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sent to Customer</th>
+            <th style="padding:6px 8px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Inv No.</th>
+            <th style="padding:6px 8px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Cost (฿)</th>
+            <th style="padding:6px 8px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:.08em;min-width:80px">Sell (฿)</th>
           </tr></thead>
           <tbody>
             ${monthRows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 10px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${r.customerBooking||r.bookingNo||'—'}</td>
-              <td style="padding:7px 10px;font-size:12px">${r.shipper||'—'}</td>
-              <td style="padding:5px 10px;text-align:center">${badge(r.invoice==='YES',r.id,'invoice','Received','Waiting')}</td>
-              <td style="padding:5px 10px;text-align:center">${badge(r.sentToDb==='YES',r.id,'sentToDb','Sent','Pending')}</td>
-              <td style="padding:7px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
-              <td style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--red)">${r.cost?Number(r.cost).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
-              <td style="padding:7px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--green)">${r.sell?Number(r.sell).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
+              <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)">${r.customerBooking||'—'}</td>
+              <td style="padding:7px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.bookingNo||'—'}</td>
+              <td style="padding:7px 8px;font-size:12px">${r.shipper||'—'}</td>
+              <td style="padding:7px 8px;text-align:center;font-family:var(--mono);font-size:10px">${r.volume||'—'}</td>
+              <td style="padding:7px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.containerNo||'—'}</td>
+              <td style="padding:7px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">${r.cyDate||'—'}</td>
+              <td style="padding:7px 8px;text-align:center;font-family:var(--mono);font-size:10px">${r.etd||'—'}</td>
+              <td style="padding:7px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--gold)">${r.loadDate||'—'}</td>
+              <td style="padding:5px 8px;text-align:center">${badge(r.invoice==='YES',r.id,'invoice','Received','Waiting')}</td>
+              <td style="padding:5px 8px;text-align:center">${badge(r.sentToDb==='YES',r.id,'sentToDb','Sent','Pending')}</td>
+              <td style="padding:7px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">${r.invNo||'—'}</td>
+              <td style="padding:7px 8px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--red)">${r.cost?Number(r.cost).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--green)">${r.sell?Number(r.sell).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
             </tr>`).join('')}
           </tbody>
-        </table>
+        </table></div>
       </div>`;
   }).join('');
 }
