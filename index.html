@@ -327,7 +327,8 @@ body{font-size:14px;font-weight:450}
       <div style="display:flex;flex-direction:column;gap:14px">
         <!-- Alerts -->
         <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
-          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px">⚠️ แจ้งเตือน / ต้องทำ</div>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);margin-bottom:4px">⚠️ Pre-Booking ใกล้วัน Cancel</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">🟡 ใกล้ถึง · 🔴 ถึง/เกินแล้ว (เสี่ยงเสียค่า Cancel)</div>
           <div id="wb_alerts" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
         <!-- Quick To-Do -->
@@ -1471,13 +1472,24 @@ function renderWorkBench(){
 
     // Alerts
     const alerts=[];
-    jobs.forEach(j=>{ [['SI',j.siCutoff],['VGM',j.vgmCutoff],['Gate',j.gateClosing],['CFM BL',j.docCutoff]].forEach(([lbl,d])=>{ const du=_wbDaysUntil(d); if(du!==null&&du>=0&&du<=3) alerts.push({icon:'⏰',color:'var(--red)',text:`${lbl} cut-off <b>${_wbEsc(j.no||j.jobno||'')}</b> อีก ${du===0?'วันนี้!':du+' วัน'}`}); }); });
-    (window._preBkgList||[]).forEach(p=>{ const du=_wbDaysUntil(p.freeTime); if(du!==null&&du>=0&&du<=3) alerts.push({icon:'🕐',color:'var(--gold)',text:`Free Time <b>${_wbEsc(p.bkgno||'')}</b> (${_wbEsc(p.customer||'')}) อีก ${du===0?'วันนี้!':du+' วัน'}`}); });
-    if(pbkgPending>0) alerts.push({icon:'📋',color:'var(--gold)',text:`มี <b>${pbkgPending}</b> Pre-Booking รอ Release`});
-    const pendConf=jobs.filter(j=>j.status==='pending').length;
-    if(pendConf>0) alerts.push({icon:'🚢',color:'var(--cyan)',text:`มี <b>${pendConf}</b> Shipment รอยืนยัน (Pending)`});
-    jobs.forEach(j=>{ const gp=gpPctFromCost(j.sell||0,j.cost||0); if((j.cost||0)>0&&gp<3) alerts.push({icon:'📉',color:'var(--red)',text:`GP ต่ำ <b>${gp.toFixed(1)}%</b> — ${_wbEsc(j.no||j.jobno||'')} (${_wbEsc(j.customer||'')})`}); });
-    _wbSet('wb_alerts', alerts.length? alerts.slice(0,14).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:6px 8px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีแจ้งเตือน — เคลียร์หมดแล้ว</div>`);
+    (window._preBkgList||[]).forEach(p=>{
+      const st=(p.status||'pending');
+      if(['cancelled','released','booked'].includes(st)) return;   // ตัดสินใจแล้ว ไม่ต้องเตือน
+      const du=_wbDaysUntil(p.freeTime);
+      if(du===null || du>7) return;                                 // แสดงเฉพาะที่ใกล้ (≤7 วัน) หรือเกิน
+      const reached = du<=0;
+      let dstr=''; try{ const dt=new Date(p.freeTime); if(!isNaN(dt)) dstr=dt.toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }catch(e){}
+      alerts.push({
+        _du:du,
+        icon: reached?'🚫':'⏰',
+        color: reached?'var(--red)':'var(--gold)',
+        text: reached
+          ? `<b>${_wbEsc(p.bkgno||'')}</b> <span style="color:var(--muted)">${_wbEsc(p.customer||'')}</span> — <b>ถึงวัน Cancel แล้ว!</b> ${du<0?`(เกิน ${Math.abs(du)} วัน)`:'(วันนี้)'}${dstr?` · ${dstr}`:''}`
+          : `<b>${_wbEsc(p.bkgno||'')}</b> <span style="color:var(--muted)">${_wbEsc(p.customer||'')}</span> — Cancel อีก <b>${du} วัน</b>${dstr?` · ${dstr}`:''}`
+      });
+    });
+    alerts.sort((a,b)=>a._du-b._du);
+    _wbSet('wb_alerts', alerts.length? alerts.slice(0,20).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:7px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มี Pre-Booking ใกล้วัน Cancel</div>`);
 
     // To-do list
     _wbSet('wb_todos', openTodos.length? openTodos.slice(0,8).map(t=>{ const pc=t.priority==='high'?'var(--red)':t.priority==='low'?'var(--muted)':'var(--gold)'; return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:5px 8px;background:var(--s1);border-radius:7px"><input type="checkbox" onchange="wbDoneTodo(${t.id})" style="cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0"></span><span style="flex:1;color:var(--text)">${_wbEsc(t.text)}</span>${t.deadline?`<span style="font-size:9px;color:var(--muted);font-family:var(--mono)">${_wbEsc(t.deadline)}</span>`:''}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีงานค้าง 🎉</div>`);
