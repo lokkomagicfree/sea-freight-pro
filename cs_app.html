@@ -856,7 +856,7 @@ function renderPreBkg(list, log){
       <td style="padding:6px 8px;font-family:var(--mono)">${fmtD(p.etd)}</td>
       <td style="padding:6px 8px;font-family:var(--mono);font-size:10px">${p.freeTime?fmtDT(p.freeTime):'—'}</td>
       <td style="padding:6px 8px">${p.status==='pending'?countdown(p.freeTime):'—'}</td>
-      <td style="padding:4px 6px"><input value="${esc(p.note)}" onchange="pbkgSetNote(${idx},this.value)" placeholder="remark…" style="width:150px;background:transparent;border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:11px;padding:2px 3px;outline:none"></td>
+      <td style="padding:4px 6px"><input value="${esc(p.note)}" onchange="pbkgSetNote(${idx},this.value)" oninput="this.style.background=this.value.trim()?'rgba(255,235,59,.5)':'transparent'" placeholder="remark…" style="width:160px;background:${(p.note||'').trim()?'rgba(255,235,59,.5)':'transparent'};border:none;border-bottom:1px dashed var(--border2);color:var(--text);font-size:13px;font-weight:700;padding:3px 5px;border-radius:4px;outline:none"></td>
       <td style="padding:4px 6px;text-align:center"><select onchange="pbkgSetStatus(${idx},this.value)" style="background:transparent;border:1px solid var(--border2);border-radius:6px;color:${meta.txt};font-size:10px;font-weight:700;padding:3px 4px;cursor:pointer;outline:none">${opts}</select></td>
       <td style="padding:4px 6px;text-align:center;white-space:nowrap"><button onclick="openEditPbkg(${idx})" title="แก้ไข" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:13px">✏️</button><button onclick="deletePbkg(${idx})" title="ลบ" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
     </tr>`;
@@ -1180,7 +1180,7 @@ function renderTable(){
       <td>${tasksHtml}</td>
       <td>
         <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
-          style="${isRecent?'border-color:var(--red);background:rgba(192,57,43,.05)':''}">
+          style="${remark?'background:rgba(255,235,59,.5);font-size:13px;font-weight:700;color:var(--text);':''}${isRecent?'border-color:var(--red);':''}">
           ${remark||'<span style="color:var(--muted)">—</span>'}
           ${remarkTime?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);font-weight:${isRecent?'700':'400'};color:${isRecent?'var(--red)':'var(--muted)'};">${isRecent?'● UPDATED ':''} ${remarkTime}</div>`:''}
         </div>
