@@ -245,6 +245,7 @@ select.inp{cursor:pointer}
       <table>
         <thead>
           <tr>
+            <th style="min-width:200px">REMARKS</th>
             <th>BOOKING NO.</th>
             <th>JOB NO.</th>
             <th>CUSTOMER</th>
@@ -259,7 +260,6 @@ select.inp{cursor:pointer}
             <th style="text-align:right;min-width:80px">COST (฿)</th>
             <th style="text-align:right;min-width:80px;color:var(--green)">SELL (฿)</th>
             <th style="min-width:180px">CS TASKS</th>
-            <th style="min-width:200px">REMARKS</th>
             <th style="text-align:center;min-width:160px">PRE-ALERT &amp; INV</th>
             <th style="text-align:center">ACTION</th>
           </tr>
@@ -1119,6 +1119,13 @@ function renderTable(){
     const isRecent = j.lastRemarked && (Date.now()-new Date(j.lastRemarked).getTime()) < 24*60*60*1000;
 
     return `<tr>
+      <td>
+        <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
+          style="${remark?'background:rgba(255,235,59,.5);font-size:13px;font-weight:700;color:var(--text);':''}${isRecent?'border-color:var(--red);':''}">
+          ${remark||'<span style="color:var(--muted)">—</span>'}
+          ${remarkTime?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);font-weight:${isRecent?'700':'400'};color:${isRecent?'var(--red)':'var(--muted)'};">${isRecent?'● UPDATED ':''} ${remarkTime}</div>`:''}
+        </div>
+      </td>
       <td><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--cyan)">${(j.status==='pending'||j.status==='confirmed')?'<span class="new-star" title="New Shipment">★</span>':''} ${j.no||'—'}</span></td>
       <td style="padding:6px 8px">
         <input value="${(j.jobno||'').replace(/"/g,'&quot;')}" placeholder="Job No…"
@@ -1178,13 +1185,6 @@ function renderTable(){
       <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:6px 10px;color:var(--red)">${j.cost?(j.cost*(j.rate||35)).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:6px 10px;color:var(--green)">${j.sell?(j.sell*(j.rate||35)).toLocaleString('th-TH',{maximumFractionDigits:0}):'—'}</td>
       <td>${tasksHtml}</td>
-      <td>
-        <div class="remark-box" onclick="openModal(${j._idx})" title="คลิกเพื่อแก้ไข"
-          style="${remark?'background:rgba(255,235,59,.5);font-size:13px;font-weight:700;color:var(--text);':''}${isRecent?'border-color:var(--red);':''}">
-          ${remark||'<span style="color:var(--muted)">—</span>'}
-          ${remarkTime?`<div style="font-size:10px;margin-top:3px;font-family:var(--mono);font-weight:${isRecent?'700':'400'};color:${isRecent?'var(--red)':'var(--muted)'};">${isRecent?'● UPDATED ':''} ${remarkTime}</div>`:''}
-        </div>
-      </td>
       <td style="text-align:center;padding:6px 10px">
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid ${j.preAlert?'rgba(34,197,94,.4)':'var(--border2)'};background:${j.preAlert?'rgba(34,197,94,.08)':'transparent'};transition:all .15s;width:100%">
