@@ -7764,6 +7764,41 @@ onAuthStateChanged(auth, async user=>{
       window._applyPreBkgRemote?.(data.list || [], data.log || []);
     }, ()=>{});
 
+    // Real-time listener for To-Do list — live sync across devices
+    const _todosRef = doc(db,'users',uid(),'data','todos');
+    onSnapshot(_todosRef, (snap)=>{
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(!Array.isArray(data?.todos)) return;
+      if(_sfpHash(data.todos) === window._sfpSyncHash.todos) return;   // our own echo
+      const lTs=localStorage.getItem('sfp_todos_savedAt')||'', cTs=data.updatedAt||'';
+      if(lTs && cTs && lTs > cTs){ // our local is newer → keep it, push up
+        window._sfpSyncHash.todos = _sfpHash(data.todos);
+        setTimeout(()=>{ try{ window._sfpFlushToCloud?.(); }catch(e){} }, 300); return;
+      }
+      window.todos = data.todos;
+      try{ localStorage.setItem(window.TODO_KEY||'seafreight_todos_v1', JSON.stringify(data.todos)); }catch(e){}
+      window._sfpSyncHash.todos = _sfpHash(data.todos);
+      window.renderTodos?.(); window.renderWorkBench?.();
+    }, ()=>{});
+
+    // Real-time listener for Appointments (Work Bench calendar) — live sync across devices
+    const _apptRef = doc(db,'users',uid(),'data','appointments');
+    onSnapshot(_apptRef, (snap)=>{
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(!Array.isArray(data?.appts)) return;
+      if(_sfpHash(data.appts) === window._sfpSyncHash.appts) return;   // our own echo
+      const lTs=localStorage.getItem('sfp_appts_savedAt')||'', cTs=data.updatedAt||'';
+      if(lTs && cTs && lTs > cTs){ // local newer → keep, push up
+        window._sfpSyncHash.appts = _sfpHash(data.appts);
+        setTimeout(()=>{ try{ window._sfpFlushToCloud?.(); }catch(e){} }, 300); return;
+      }
+      try{ localStorage.setItem('sfp_appointments', JSON.stringify(data.appts)); }catch(e){}
+      window._sfpSyncHash.appts = _sfpHash(data.appts);
+      window.renderWorkBench?.();
+    }, ()=>{});
+
     // Real-time listener for Weekly Report draft — push to iframe live on other devices
     const _wsrRef = doc(db,'users',uid(),'data','weeklyReportDraft');
     onSnapshot(_wsrRef, (snap)=>{
