@@ -2807,17 +2807,22 @@ async function loadLCTemplates(){
   try{
     const snap = await window.fbGet('data/lcTemplates');
     const templates = snap?.templates || {};
+    // Customers that have a saved template + all customers from existing shipments,
+    // so any customer can be picked directly (no need to Save first).
+    const custNames = [...new Set((window.savedJobs||[]).map(j=>(j.customer||j.shipper||'').trim()).filter(Boolean))];
+    const all = [...new Set([...Object.keys(templates), ...custNames])].sort((a,b)=>a.localeCompare(b));
     const cur = sel.value;
     sel.innerHTML = '<option value="">-- เลือก Customer --</option>' +
-      Object.keys(templates).sort().map(k =>
-        `<option value="${k}"${k===cur?' selected':''}>${k}</option>`
+      all.map(k =>
+        `<option value="${k.replace(/"/g,'&quot;')}"${k===cur?' selected':''}>${templates[k]?'📋 ':''}${k}</option>`
       ).join('');
   }catch(e){ console.warn('loadLCTemplates', e); }
 }
 
 window.saveLocalChargeTemplate = async function(){
-  const customer = v('s_customer') || v('s_shipper') || '';
-  const name = prompt('บันทึก Local Charges ชื่อ:', customer || 'Customer');
+  const selected = g('lc_template_sel')?.value || '';
+  const customer = selected || v('s_customer') || v('s_shipper') || '';
+  const name = prompt('บันทึก Local Charges สำหรับลูกค้า:', customer || 'Customer');
   if(!name) return;
 
   // Collect local charges (skip row 0 = Ocean Freight)
@@ -2856,7 +2861,7 @@ window.applyLocalChargeTemplate = async function(){
   try{
     const snap = await window.fbGet('data/lcTemplates');
     const tmpl = snap?.templates?.[name];
-    if(!tmpl){ toast('❌ ไม่พบ template'); return; }
+    if(!tmpl){ toast('ℹ️ '+name+' ยังไม่มี template — กรอก Local Charges แล้วกด 💾 Save เพื่อสร้าง'); return; }
 
     const rows  = [...document.querySelectorAll('#charge_body tr')];
     const sells = [...document.querySelectorAll('.sell-inp')];
@@ -7971,6 +7976,7 @@ async function initFirestoreSync(){
   window.renderTodos?.();
   window.renderDbIntransit?.();
   window.renderWorkBench?.();
+  window.loadLCTemplates?.();
   window.updateAlertCount?.();
   window.updateRateCacheBadge?.();
   window.renderCSTeam?.();
