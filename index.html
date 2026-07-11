@@ -1706,6 +1706,36 @@ function toast(msg){
 
 // ── LocalStorage persistence ───────────────────────────────
 const STORAGE_KEY = 'seafreight_jobs_v1';
+const DELETED_KEY = 'sfp_deleted_jobs';
+
+// ── Tombstones: remember deleted Booking Nos so cloud/other devices can't resurrect them ──
+window._loadDeletedJobs = function(){ try{ return JSON.parse(localStorage.getItem(DELETED_KEY)||'[]')||[]; }catch(e){ return []; } };
+window._saveDeletedJobs = function(list){
+  // keep last 180 days only, so the list never grows without bound
+  const cut = Date.now() - 180*86400000;
+  const keep = (list||[]).filter(d=>d && d.no!=null && (!d.at || new Date(d.at).getTime() > cut));
+  try{ localStorage.setItem(DELETED_KEY, JSON.stringify(keep)); }catch(e){}
+  return keep;
+};
+window._isJobDeleted = function(no){
+  if(no==null) return false;
+  return window._loadDeletedJobs().some(d=>String(d.no)===String(no));
+};
+window.deleteShipment = function(idx){
+  const j = savedJobs[idx];
+  if(!j) return;
+  if(!confirm('ลบ Shipment '+(j.no||'')+' ?\n(จะลบออกจากทุกเครื่องที่ใช้บัญชีเดียวกัน)')) return;
+  savedJobs.splice(idx,1);
+  if(j.no!=null){
+    const del = window._loadDeletedJobs();
+    if(!del.some(d=>String(d.no)===String(j.no))) del.push({no:String(j.no), at:new Date().toISOString()});
+    window._saveDeletedJobs(del);
+  }
+  renderShipments(); updateAlertCount();
+  storageSave();                    // persists locally AND pushes to cloud
+  window.renderWorkBench?.();
+  toast('🗑 ลบ '+(j.no||'')+' แล้ว');
+};
 const RATE_KEY    = 'seafreight_rates_v1';
 const SETTINGS_KEY= 'seafreight_settings_v1';
 const QUOT_KEY    = 'seafreight_quotations_v1';
@@ -4009,7 +4039,7 @@ function renderShipments(){
           ${j.csAssigned?`<button onclick="csChip(${j._idx})" data-cs="${j.csAssigned}" title="แก้ไข CS / เปิด CS App — ${j.csAssigned}" style="border:none;background:rgba(39,174,96,.12);color:var(--green);cursor:pointer;font-size:11px;border-radius:5px;padding:3px 8px;font-weight:700;margin-right:2px">🔗 ${j.csAssigned}</button>`:''}
           <button onclick="editShipment(${j._idx})" title="Edit" style="border:none;background:none;color:var(--cyan);cursor:pointer;font-size:12px;margin-right:2px">✏️</button>
           <button onclick="duplicateShipment(${j._idx})" title="Duplicate" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-right:2px">📋</button>
-          <button onclick="savedJobs.splice(${j._idx},1);renderShipments();updateAlertCount()" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:12px">✕</button>
+          <button onclick="deleteShipment(${j._idx})" title="Delete" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:12px">✕</button>
         </td>
       </tr>`;
     });
@@ -7770,8 +7800,8 @@ onAuthStateChanged(auth, async user=>{
       remoteJobs.forEach(rj=>{
         const lj = window.savedJobs?.find(x=>x.no===rj.no);
         if(!lj){
-          // Shipment created on another device — add it (never drop remote jobs)
-          if(rj && rj.no!=null){ window.savedJobs.push(rj); changed = true; }
+          // Shipment created on another device — add it, unless we deleted it on purpose
+          if(rj && rj.no!=null && !window._isJobDeleted?.(rj.no)){ window.savedJobs.push(rj); changed = true; }
           return;
         }
         const fields = ['etd','eta','vessel','voyage','motherVessel','motherVoy','status','remarks','csTasks','lastRemarked','preAlert','assignedAt',
@@ -7799,6 +7829,27 @@ onAuthStateChanged(auth, async user=>{
         window.renderNewBizList?.();
         window.renderWorkBench?.();
         console.log('🔄 Jobs updated by CS Portal');
+      }
+    }, ()=>{});
+
+    // Real-time listener for deleted shipments — a delete on one device removes it everywhere
+    const _delRef = doc(db,'users',uid(),'data','deletedJobs');
+    onSnapshot(_delRef, (snap)=>{
+      if(!snap.exists()) return;
+      const list = snap.data()?.list;
+      if(!Array.isArray(list)) return;
+      const local = window._loadDeletedJobs?.() || [];
+      const map = new Map();
+      [...list, ...local].forEach(d=>{ if(d && d.no!=null) map.set(String(d.no), d); });
+      const merged = [...map.values()];
+      window._saveDeletedJobs?.(merged);
+      // Drop any locally-held shipment that has been deleted elsewhere
+      const before = (window.savedJobs||[]).length;
+      window.savedJobs = (window.savedJobs||[]).filter(j=>!(j && j.no!=null && map.has(String(j.no))));
+      if(window.savedJobs.length !== before){
+        try{ localStorage.setItem('seafreight_jobs_v1', JSON.stringify(window.savedJobs)); }catch(e){}
+        window.renderShipments?.(); window.updateAlertCount?.(); window.renderWorkBench?.();
+        console.log('🗑 ลบ '+(before-window.savedJobs.length)+' shipment ตามที่ลบจากอีกเครื่อง');
       }
     }, ()=>{});
 
@@ -7875,11 +7926,23 @@ onAuthStateChanged(auth, async user=>{
 });
 
 async function initFirestoreSync(){
-  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap,dbItSnap,apptSnap] = await Promise.all([
+  const [jobsSnap,todosSnap,settSnap,srSnap,srRepSnap,quotSnap,rateMetaSnap,dbItSnap,apptSnap,delSnap] = await Promise.all([
     fbGet('data/jobs'), fbGet('data/todos'), fbGet('data/settings'),
     fbGet('data/saleReport'), fbGet('data/srReports'), fbGet('data/quotations'),
     fbGet('data/rateMeta'), fbGet('data/dbIntransit'), fbGet('data/appointments'),
+    fbGet('data/deletedJobs'),
   ]);
+
+  // Merge tombstones (local + cloud) BEFORE jobs, so deleted shipments stay deleted
+  {
+    const localDel = window._loadDeletedJobs?.() || [];
+    const cloudDel = Array.isArray(delSnap?.list) ? delSnap.list : [];
+    const map = new Map();
+    [...cloudDel, ...localDel].forEach(d=>{ if(d && d.no!=null) map.set(String(d.no), d); });
+    const merged = [...map.values()];
+    window._saveDeletedJobs?.(merged);
+    window._sfpSyncHash.deleted = _sfpHash(cloudDel);   // differs if we have new ones → pushes up
+  }
 
   // ── Set data from Firestore (override localStorage) ──
   console.log('🔥 Firestore data:', {
@@ -7889,8 +7952,10 @@ async function initFirestoreSync(){
     hasJobs: !!jobsSnap?.jobs,
   });
   if(jobsSnap?.jobs)         {
-    const cloud = jobsSnap.jobs;
+    const isDel = (n)=> window._isJobDeleted?.(n);
+    const cloud = jobsSnap.jobs.filter(j=>j && !isDel(j.no));   // don't resurrect deleted ones
     let local=[]; try{ local=JSON.parse(localStorage.getItem('seafreight_jobs_v1')||'[]')||[]; }catch(e){}
+    local = local.filter(j=>j && !isDel(j.no));
     const byNo=new Map();
     cloud.forEach(j=>{ if(j&&j.no!=null) byNo.set(String(j.no),j); });
     let addedLocal=0;
@@ -7898,8 +7963,11 @@ async function initFirestoreSync(){
     const merged=[...byNo.values()];
     window.savedJobs = merged;
     try{ localStorage.setItem('seafreight_jobs_v1', JSON.stringify(merged)); }catch(e){}
-    window._sfpSyncHash.jobs = _sfpHash(cloud);
-    if(addedLocal>0){ console.log('🛟 กู้ '+addedLocal+' shipment ที่มีเฉพาะในเครื่อง (ยัง sync ไม่ทัน) → push ขึ้น cloud'); setTimeout(()=>{ try{ window._sfpFlushToCloud?.(); }catch(e){} }, 800); }
+    window._sfpSyncHash.jobs = _sfpHash(jobsSnap.jobs);   // cloud copy — if we differ (new/deleted), we push up
+    const removedDeleted = jobsSnap.jobs.length - cloud.length;
+    if(addedLocal>0) console.log('🛟 กู้ '+addedLocal+' shipment ที่มีเฉพาะในเครื่อง (ยัง sync ไม่ทัน)');
+    if(removedDeleted>0) console.log('🗑 ตัด '+removedDeleted+' shipment ที่ถูกลบไปแล้วออกจาก cloud');
+    if(addedLocal>0 || removedDeleted>0) setTimeout(()=>{ try{ window._sfpFlushToCloud?.(); }catch(e){} }, 800);
     window.renderNewBizList?.();
   }
   window._jobsSyncReady = true;
@@ -8076,6 +8144,13 @@ async function initFirestoreSync(){
     if(apptsH !== window._sfpSyncHash.appts){
       writes.push(fbSet('data/appointments', {appts: apptsData, updatedAt: now()}));
       newHash.appts = apptsH;
+    }
+    // Deleted-shipment tombstones — so a delete propagates to every device
+    const delData = window._loadDeletedJobs?.() || [];
+    const delH = _sfpHash(delData);
+    if(delH !== window._sfpSyncHash.deleted){
+      writes.push(fbSet('data/deletedJobs', {list: delData, updatedAt: now()}));
+      newHash.deleted = delH;
     }
     // Rates — the expensive part. Write chunks ONLY when they changed.
     const rates = window.ALL_RATES||[];
