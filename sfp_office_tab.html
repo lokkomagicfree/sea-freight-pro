@@ -1,159 +1,144 @@
 <!-- =========================================================
-     SEA FREIGHT PRO — 🏢 OFFICE TAB (drop-in)
+     SEA FREIGHT PRO — 🏢 OFFICE TAB (drop-in, access-locked)
      วิธีใช้: ก็อปทั้งบล็อกนี้ไปวางก่อน </body> ใน index.html
+     - เห็น/ใช้ได้เฉพาะบัญชี  thmunpukdee@gmail.com  เท่านั้น
+       บัญชีอื่น: แท็บ Office จะไม่ขึ้น และถูกปิดอัตโนมัติ
      - ดึงข้อมูลสดจาก localStorage['sfp_jobs'] (อัปเดตทุก 4 วิ)
-     - เพิ่มปุ่มแท็บ 🏢 Office ใน .nav-tabs ให้อัตโนมัติ
-     - คลิกพนักงาน = เด้งไปหน้างานจริง (Pre-Bkg / Ships / Bench ...)
+     - คลิกพนักงาน = เด้งไปหน้างานจริง
+     * เปลี่ยนผู้มีสิทธิ์: แก้ค่า ALLOWED ด้านล่าง
      ========================================================= -->
 <script>
 (function(){
- if(document.getElementById('page-office')) return;
+ var ALLOWED='thmunpukdee@gmail.com';
  var OUT='#14101c';
 
- /* ---------- inject nav button ---------- */
- var nav=document.querySelector('.nav-tabs');
- if(nav){
-   var b=document.createElement('button');
-   b.className='nav-tab';
-   b.textContent='🏢 Office';
-   b.setAttribute('onclick',"showPage('office');SFPOffice.refresh()");
-   nav.appendChild(b);
+ function currentEmail(){
+   try{
+     var k=Object.keys(localStorage).find(function(x){return x.indexOf('firebase:authUser:')===0;});
+     if(!k)return null;
+     var u=JSON.parse(localStorage.getItem(k));
+     return (u&&u.email)?String(u.email).toLowerCase():null;
+   }catch(e){return null;}
  }
 
- /* ---------- inject page ---------- */
- var page=document.createElement('div');
- page.id='page-office'; page.className='page';
- page.innerHTML='<div style="max-width:720px;margin:0 auto;font-family:var(--mono,monospace)">'
-  +'<div style="background:#1c2338;border:3px solid #12172a;border-radius:12px;overflow:hidden">'
-  +'<div style="background:#12172a;padding:9px 16px;display:flex;justify-content:space-between;align-items:center">'
-  +'<span style="color:#f4d47c;font-size:14px;letter-spacing:1px">SEA FREIGHT PRO — OFFICE</span>'
-  +'<span id="sfpof_clk" style="color:#9fb3d8;font-size:12px">09:00</span></div>'
-  +'<div id="sfpof_stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px;background:#263150"></div>'
-  +'<svg id="sfpof_scene" width="100%" viewBox="0 0 680 470" style="display:block;image-rendering:pixelated"></svg>'
-  +'<div id="sfpof_panel" style="background:#12172a;padding:12px 16px;min-height:58px;color:#dbe4f5;font-size:13px;line-height:1.6">'
-  +'<span style="color:#9fb3d8">แตะพนักงาน แล้วกดปุ่มเพื่อไปหน้างานจริง</span></div>'
-  +'</div></div>';
- document.body.appendChild(page);
-
- /* ---------- live data ---------- */
- function getJobs(){try{return JSON.parse(localStorage.getItem('sfp_jobs')||'[]')}catch(e){return[]}}
- var MON={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
- function pdate(s){if(!s)return null;var m=/(\d{2})\/([A-Z]{3})\/(\d{4})/.exec(s);if(m)return new Date(+m[3],MON[m[2]]-1,+m[1]);var d=new Date((''+s).slice(0,10));return isNaN(d)?null:d;}
- function stats(){
-   var jobs=getJobs(),today=new Date();today.setHours(0,0,0,0);
-   var active=jobs.filter(function(j){return['confirmed','loaded','pending'].indexOf(j.status)>=0;});
-   var day=864e5;
-   var gateToday=active.filter(function(j){var d=pdate(j.gateClosing);return d&&(d-today)>=0&&(d-today)<2*day;}).length;
-   var gp0=active.filter(function(j){var d=pdate(j.etd);return typeof j.margin==='number'&&j.margin<3&&d&&d>=today;}).length;
-   var pending=jobs.filter(function(j){return j.status==='confirmed';}).length;
-   var soon=active.filter(function(j){var d=pdate(j.etd);return d&&(d-today)>=0&&(d-today)<7*day;}).length;
-   return{active:active.length,gateToday:gateToday,gp0:gp0,pending:pending,soon:soon};
+ function removeOffice(){
+   var p=document.getElementById('page-office');
+   if(p){ if(p.classList.contains('active')&&window.showPage){try{showPage('workbench');}catch(e){}} p.remove(); }
+   var btn=document.getElementById('sfpof_navbtn'); if(btn)btn.remove();
+   if(window.SFPOffice&&window.SFPOffice._timers){window.SFPOffice._timers.forEach(function(t){clearInterval(t);});}
+   window.SFPOffice=null;
  }
 
- /* ---------- staff ---------- */
- var staff=[
-  {name:'Reporter',th:'รายงานปัญหาประจำวัน',shirt:'#3f92e0',sh2:'#2b6fb8',hair:'#2b2b33',hh:'#454552',go:function(){showPage('workbench');renderWorkBench&&renderWorkBench();},badge:'gateToday'},
-  {name:'Watcher',th:'เฝ้าเรือ delay / เปลี่ยนเรือ',shirt:'#25a982',sh2:'#127a58',hair:'#5a3316',hh:'#7a4a24',go:function(){showPage('shipments');renderShipments&&renderShipments();},badge:'soon'},
-  {name:'Accountant',th:'สรุป GP / commission',shirt:'#c98420',sh2:'#8f590f',hair:'#20201f',hh:'#3a3a37',go:function(){showPage('shipments');renderShipments&&renderShipments();},badge:'gp0'},
-  {name:'Sender',th:'ส่ง Booking ให้ลูกค้า',shirt:'#d95c86',sh2:'#a83c60',hair:'#4a2e1c',hh:'#6a4526',go:function(){showPage('prebooking');renderPreBooking&&renderPreBooking();},badge:'pending'},
-  {name:'Negotiator',th:'ร่าง revise สายเรือ',shirt:'#8b83e0',sh2:'#5f57b8',hair:'#2b2b33',hh:'#474459',go:function(){showPage('prebooking');renderPreBooking&&renderPreBooking();},badge:null}
- ];
- var boss={name:'LOKKO · หัวหน้างาน',th:'ตรวจงานทีม / ภาพรวม',shirt:'#eef1f6',sh2:'#cdd6df',hair:'#20201f',hh:'#3a3a37',tie:'#b83227',go:function(){showPage('workbench');renderWorkBench&&renderWorkBench();},badge:null};
+ /* ================= builder ================= */
+ function buildOffice(){
+  if(document.getElementById('page-office')) return;
 
- var NS='http://www.w3.org/2000/svg';
- var scene=document.getElementById('sfpof_scene');
- var panel=document.getElementById('sfpof_panel');
- var statsEl=document.getElementById('sfpof_stats');
+  var nav=document.querySelector('.nav-tabs');
+  if(nav){
+    var b=document.createElement('button');
+    b.className='nav-tab'; b.id='sfpof_navbtn'; b.textContent='🏢 Office';
+    b.setAttribute('onclick',"showPage('office');SFPOffice&&SFPOffice.refresh()");
+    nav.appendChild(b);
+  }
 
- /* ---------- scene background ---------- */
- scene.innerHTML='<defs><clipPath id="sfpof_gl"><rect x="34" y="40" width="470" height="205"/></clipPath></defs>'
- +'<rect x="0" y="0" width="680" height="470" fill="#d8e2ee"/>'
- +'<g clip-path="url(#sfpof_gl)"><rect x="34" y="40" width="470" height="205" fill="#a6cdf0"/><rect x="34" y="40" width="470" height="60" fill="#b7d8f5"/>'
- +'<rect x="55" y="120" width="42" height="125" fill="#7ba6cf"/><rect x="108" y="88" width="34" height="157" fill="#8cb2d7"/><rect x="150" y="150" width="48" height="95" fill="#719cc4"/><rect x="210" y="70" width="30" height="175" fill="#84abd0"/><rect x="248" y="128" width="50" height="117" fill="#77a1c8"/><rect x="315" y="98" width="34" height="147" fill="#8cb2d7"/><rect x="360" y="58" width="42" height="187" fill="#6f97bf"/><rect x="416" y="140" width="44" height="105" fill="#86acd1"/><rect x="466" y="104" width="30" height="141" fill="#80a7cd"/></g>'
- +'<g stroke="#eef4fa" stroke-width="4" opacity="0.9"><line x1="34" y1="40" x2="504" y2="40"/><line x1="34" y1="143" x2="504" y2="143"/><line x1="112" y1="40" x2="112" y2="245"/><line x1="190" y1="40" x2="190" y2="245"/><line x1="268" y1="40" x2="268" y2="245"/><line x1="346" y1="40" x2="346" y2="245"/><line x1="424" y1="40" x2="424" y2="245"/></g>'
- +'<rect x="30" y="34" width="478" height="9" fill="#333f5c"/><rect x="30" y="34" width="9" height="212" fill="#333f5c"/><rect x="499" y="34" width="9" height="212" fill="#333f5c"/>'
- +'<rect x="508" y="18" width="172" height="228" fill="#d7c1a2"/><rect x="560" y="66" width="96" height="180" rx="4" fill="#8a5a34"/><rect x="560" y="66" width="96" height="180" rx="4" fill="none" stroke="#5c3a1e" stroke-width="4"/><rect x="574" y="114" width="68" height="28" rx="3" fill="#b83227"/><text x="608" y="134" text-anchor="middle" font-size="14" fill="#fff">CLAUDE</text><circle cx="646" cy="164" r="5" fill="#3a3a3a"/>'
- +'<rect x="120" y="0" width="10" height="116" fill="#2b3550"/><rect x="58" y="112" width="174" height="14" rx="3" fill="#eef1f6"/><rect x="58" y="120" width="174" height="6" fill="#f7d97a"/><rect x="430" y="0" width="10" height="96" fill="#2b3550"/><rect x="358" y="92" width="174" height="14" rx="3" fill="#eef1f6"/><rect x="358" y="100" width="174" height="6" fill="#f7d97a"/>'
- +'<polygon points="0,246 680,246 680,470 0,470" fill="#caa063"/>'
- +'<g fill="#c19758"><rect x="0" y="246" width="56" height="46"/><rect x="112" y="246" width="56" height="46"/><rect x="224" y="246" width="56" height="46"/><rect x="336" y="246" width="56" height="46"/><rect x="448" y="246" width="56" height="46"/><rect x="560" y="246" width="56" height="46"/><rect x="56" y="292" width="56" height="50"/><rect x="168" y="292" width="56" height="50"/><rect x="280" y="292" width="56" height="50"/><rect x="392" y="292" width="56" height="50"/><rect x="504" y="292" width="56" height="50"/><rect x="616" y="292" width="56" height="50"/><rect x="0" y="342" width="56" height="56"/><rect x="112" y="342" width="56" height="56"/><rect x="224" y="342" width="56" height="56"/><rect x="336" y="342" width="56" height="56"/><rect x="448" y="342" width="56" height="56"/><rect x="560" y="342" width="56" height="56"/><rect x="56" y="398" width="56" height="72"/><rect x="168" y="398" width="56" height="72"/><rect x="280" y="398" width="56" height="72"/><rect x="392" y="398" width="56" height="72"/><rect x="504" y="398" width="56" height="72"/><rect x="616" y="398" width="56" height="72"/></g>'
- +'<rect x="0" y="242" width="680" height="8" fill="#9c7538"/>'
- +'<g><ellipse cx="475" cy="236" rx="30" ry="10" fill="#00000018"/><rect x="453" y="148" width="42" height="78" rx="5" fill="#14101c"/><rect x="456" y="150" width="36" height="74" rx="4" fill="#e2eaf1"/><rect x="460" y="116" width="30" height="40" rx="5" fill="#14101c"/><rect x="462" y="118" width="26" height="36" rx="4" fill="#8fd0f2"/><rect x="456" y="198" width="36" height="10" fill="#c0392b"/></g>'
- +'<g id="sfpof_world"></g>';
- var world=document.getElementById('sfpof_world');
- function mkg(x,y,h){var g=document.createElementNS(NS,'g');g.setAttribute('transform','translate('+x+','+y+')');g.innerHTML=h;world.appendChild(g);return g;}
- function pick(a){return a[Math.floor(Math.random()*a.length)];}
+  var page=document.createElement('div');
+  page.id='page-office'; page.className='page';
+  page.innerHTML='<div style="max-width:720px;margin:0 auto;font-family:var(--mono,monospace)">'
+   +'<div style="background:#1c2338;border:3px solid #12172a;border-radius:12px;overflow:hidden">'
+   +'<div style="background:#12172a;padding:9px 16px;display:flex;justify-content:space-between;align-items:center">'
+   +'<span style="color:#f4d47c;font-size:14px;letter-spacing:1px">SEA FREIGHT PRO — OFFICE</span>'
+   +'<span id="sfpof_clk" style="color:#9fb3d8;font-size:12px">09:00</span></div>'
+   +'<div id="sfpof_stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px;background:#263150"></div>'
+   +'<svg id="sfpof_scene" width="100%" viewBox="0 0 680 470" style="display:block;image-rendering:pixelated"></svg>'
+   +'<div id="sfpof_panel" style="background:#12172a;padding:12px 16px;min-height:58px;color:#dbe4f5;font-size:13px;line-height:1.6">'
+   +'<span style="color:#9fb3d8">แตะพนักงาน แล้วกดปุ่มเพื่อไปหน้างานจริง</span></div>'
+   +'</div></div>';
+  document.body.appendChild(page);
 
- function deskSVG(){return '<ellipse cx="6" cy="34" rx="62" ry="18" fill="#00000012"/><rect x="-30" y="18" width="14" height="22" fill="#20283f"/><rect x="24" y="18" width="14" height="22" fill="#20283f"/><rect x="-54" y="0" width="116" height="18" rx="3" fill="'+OUT+'"/><rect x="-52" y="2" width="112" height="14" rx="2" fill="#f2f4f8"/><rect x="-52" y="12" width="112" height="4" fill="#c6cedb"/><rect x="-32" y="-22" width="38" height="30" rx="2" fill="'+OUT+'"/><rect x="-29" y="-19" width="32" height="24" fill="#0f2c44"/><rect x="-25" y="-4" width="5" height="7" fill="#5aa2e0"/><rect x="-18" y="-9" width="5" height="12" fill="#7fd0a0"/><rect x="-11" y="-6" width="5" height="9" fill="#f2c14e"/><rect x="-4" y="-13" width="5" height="16" fill="#e57e6a"/><rect x="16" y="-17" width="32" height="24" rx="2" fill="'+OUT+'"/><rect x="19" y="-14" width="26" height="18" fill="#0f2c44"/><ellipse cx="42" cy="8" rx="5" ry="3" fill="#8a2820"/><rect x="35" y="1" width="12" height="8" rx="1" fill="#c0392b"/>';}
- var deskDefs=[[150,286],[300,286],[150,338],[300,338],[150,392],[300,392]];
- var desks=deskDefs.map(function(d){var g=mkg(d[0],d[1],deskSVG());return{g:g,x:d[0],y:d[1],sortY:d[1]+30,seat:{x:d[0]+6,y:d[1]+42},occupant:null};});
- var bossDesk=(function(){var x=520,y=388;var g=mkg(x,y,'<ellipse cx="6" cy="46" rx="86" ry="24" fill="#00000018"/><rect x="-22" y="20" width="52" height="46" rx="10" fill="#2a2f45"/><rect x="-74" y="0" width="160" height="24" rx="3" fill="'+OUT+'"/><rect x="-72" y="2" width="156" height="20" rx="2" fill="#6b4a2b"/><rect x="-72" y="2" width="156" height="6" fill="#7d5a34"/><rect x="-40" y="-26" width="46" height="34" rx="2" fill="'+OUT+'"/><rect x="-36" y="-22" width="38" height="27" fill="#0f2c44"/><rect x="24" y="6" width="34" height="12" rx="2" fill="'+OUT+'"/><rect x="26" y="8" width="30" height="8" rx="1" fill="#e8c66a"/><text x="41" y="15" text-anchor="middle" font-size="7" fill="#5a4410">LOKKO</text>');return{g:g,x:x,y:y,sortY:y+34,seat:{x:x+4,y:y+50}};})();
- var cafe=mkg(92,258,'<ellipse cx="0" cy="34" rx="60" ry="16" fill="#00000012"/><rect x="24" y="-52" width="18" height="8" rx="2" fill="#b83227"/><text x="33" y="-45" text-anchor="middle" font-size="6" fill="#fff">CAFÉ</text><rect x="-50" y="0" width="98" height="34" rx="3" fill="'+OUT+'"/><rect x="-48" y="2" width="94" height="30" fill="#8a5a34"/><rect x="-52" y="-4" width="102" height="8" rx="2" fill="#d7dde5"/><rect x="-34" y="-30" width="28" height="26" rx="2" fill="'+OUT+'"/><rect x="-31" y="-27" width="22" height="20" fill="#3a4048"/><rect x="24" y="-16" width="22" height="14" rx="2" fill="'+OUT+'"/><rect x="26" y="-14" width="18" height="10" fill="#d98f4a"/>');
- var props=[{g:cafe,sortY:292}];
- var coffeeSpot={x:92,y:300};
- var lounge=mkg(250,438,'<ellipse cx="0" cy="16" rx="86" ry="30" fill="#b06a3a" opacity="0.32"/><rect x="-60" y="-22" width="120" height="20" rx="9" fill="#2e6f6e"/><rect x="-58" y="-8" width="116" height="18" rx="7" fill="#2a6564"/><rect x="-52" y="-20" width="48" height="16" rx="6" fill="#57a9a6"/><rect x="6" y="-20" width="48" height="16" rx="6" fill="#57a9a6"/><rect x="-66" y="-18" width="12" height="26" rx="5" fill="#255957"/><rect x="54" y="-18" width="12" height="26" rx="5" fill="#255957"/><rect x="-18" y="18" width="36" height="12" rx="3" fill="'+OUT+'"/><rect x="-16" y="20" width="32" height="8" rx="2" fill="#8a5a34"/>');
- props.push({g:lounge,sortY:452});
- var loungeSpots=[{x:215,y:448},{x:250,y:448},{x:285,y:448}];
+  function getJobs(){try{return JSON.parse(localStorage.getItem('sfp_jobs')||'[]')}catch(e){return[]}}
+  var MON={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+  function pdate(s){if(!s)return null;var m=/(\d{2})\/([A-Z]{3})\/(\d{4})/.exec(s);if(m)return new Date(+m[3],MON[m[2]]-1,+m[1]);var d=new Date((''+s).slice(0,10));return isNaN(d)?null:d;}
+  function stats(){var jobs=getJobs(),today=new Date();today.setHours(0,0,0,0);var active=jobs.filter(function(j){return['confirmed','loaded','pending'].indexOf(j.status)>=0;});var day=864e5;var gateToday=active.filter(function(j){var d=pdate(j.gateClosing);return d&&(d-today)>=0&&(d-today)<2*day;}).length;var gp0=active.filter(function(j){var d=pdate(j.etd);return typeof j.margin==='number'&&j.margin<3&&d&&d>=today;}).length;var pending=jobs.filter(function(j){return j.status==='confirmed';}).length;var soon=active.filter(function(j){var d=pdate(j.etd);return d&&(d-today)>=0&&(d-today)<7*day;}).length;return{active:active.length,gateToday:gateToday,gp0:gp0,pending:pending,soon:soon};}
 
- function head(s,back){return back?'<rect x="-9" y="-33" width="18" height="15" rx="2" fill="'+OUT+'"/><rect x="-7" y="-31" width="14" height="12" fill="'+s.hair+'"/><rect x="-5" y="-30" width="5" height="3" fill="'+s.hh+'"/><rect x="-3" y="-20" width="6" height="3" fill="#e8b98a"/>':'<rect x="-8" y="-34" width="16" height="16" rx="2" fill="'+OUT+'"/><rect x="-7" y="-33" width="14" height="6" fill="'+s.hair+'"/><rect x="-6" y="-32" width="5" height="2" fill="'+s.hh+'"/><rect x="-7" y="-28" width="14" height="9" fill="#f0c9a0"/><rect x="3" y="-28" width="4" height="9" fill="#e0b184"/><rect x="-4" y="-24" width="2" height="2" fill="#20283f"/><rect x="2" y="-24" width="2" height="2" fill="#20283f"/><rect x="-1" y="-21" width="3" height="1" fill="#b06a5a"/>';}
- function stand(s){return '<ellipse cx="0" cy="1" rx="12" ry="4" fill="#00000020"/><g class="lg"><rect x="-7" y="-11" width="14" height="11" fill="'+OUT+'"/><rect x="-6" y="-10" width="5" height="7" fill="#2f3b57"/><rect x="1" y="-10" width="5" height="7" fill="#2f3b57"/><rect x="-7" y="-3" width="6" height="3" fill="#1a1d2b"/><rect x="1" y="-3" width="6" height="3" fill="#1a1d2b"/></g><rect x="-12" y="-21" width="7" height="13" fill="'+OUT+'"/><rect x="5" y="-21" width="7" height="13" fill="'+OUT+'"/><rect x="-11" y="-20" width="4" height="8" fill="'+s.shirt+'"/><rect x="7" y="-20" width="4" height="8" fill="'+s.shirt+'"/><rect x="-11" y="-12" width="4" height="3" fill="#f0c9a0"/><rect x="7" y="-12" width="4" height="3" fill="#f0c9a0"/><rect x="-9" y="-22" width="18" height="16" rx="2" fill="'+OUT+'"/><rect x="-8" y="-21" width="16" height="14" fill="'+s.shirt+'"/><rect x="-8" y="-21" width="5" height="14" fill="'+s.sh2+'"/><rect x="-2" y="-21" width="4" height="3" fill="#eef1f6"/>'+(s.tie?'<rect x="-1" y="-19" width="3" height="10" fill="'+s.tie+'"/>':'')+head(s,false);}
- function work(s){return '<rect x="-9" y="-20" width="18" height="15" rx="2" fill="'+OUT+'"/><rect x="-8" y="-19" width="16" height="13" fill="'+s.shirt+'"/><rect x="-8" y="-19" width="5" height="13" fill="'+s.sh2+'"/><g class="hd"><rect x="-12" y="-15" width="6" height="9" fill="'+OUT+'"/><rect x="6" y="-15" width="6" height="9" fill="'+OUT+'"/><rect x="-11" y="-14" width="4" height="6" fill="'+s.shirt+'"/><rect x="7" y="-14" width="4" height="6" fill="'+s.shirt+'"/><rect x="-11" y="-9" width="4" height="3" fill="#f0c9a0"/><rect x="7" y="-9" width="4" height="3" fill="#f0c9a0"/></g>'+head(s,true);}
- function drink(s){return stand(s)+'<g class="cp"><rect x="6" y="-25" width="6" height="7" rx="1" fill="'+OUT+'"/><rect x="7" y="-24" width="4" height="5" fill="#eef4fa"/><rect x="7" y="-24" width="4" height="2" fill="#c98a3a"/></g>';}
+  var staff=[
+   {name:'Reporter',th:'รายงานปัญหาประจำวัน',shirt:'#3f92e0',sh2:'#2b6fb8',hair:'#2b2b33',hh:'#454552',go:function(){showPage('workbench');window.renderWorkBench&&renderWorkBench();},badge:'gateToday'},
+   {name:'Watcher',th:'เฝ้าเรือ delay / เปลี่ยนเรือ',shirt:'#25a982',sh2:'#127a58',hair:'#5a3316',hh:'#7a4a24',go:function(){showPage('shipments');window.renderShipments&&renderShipments();},badge:'soon'},
+   {name:'Accountant',th:'สรุป GP / commission',shirt:'#c98420',sh2:'#8f590f',hair:'#20201f',hh:'#3a3a37',go:function(){showPage('shipments');window.renderShipments&&renderShipments();},badge:'gp0'},
+   {name:'Sender',th:'ส่ง Booking ให้ลูกค้า',shirt:'#d95c86',sh2:'#a83c60',hair:'#4a2e1c',hh:'#6a4526',go:function(){showPage('prebooking');window.renderPreBooking&&renderPreBooking();},badge:'pending'},
+   {name:'Negotiator',th:'ร่าง revise สายเรือ',shirt:'#8b83e0',sh2:'#5f57b8',hair:'#2b2b33',hh:'#474459',go:function(){showPage('prebooking');window.renderPreBooking&&renderPreBooking();},badge:null}
+  ];
+  var boss={name:'LOKKO · หัวหน้างาน',th:'ตรวจงานทีม / ภาพรวม',shirt:'#eef1f6',sh2:'#cdd6df',hair:'#20201f',hh:'#3a3a37',tie:'#b83227',go:function(){showPage('workbench');window.renderWorkBench&&renderWorkBench();},badge:null};
 
- var selected=null;
- function makeChar(s,x,y,isBoss,idx){var g=document.createElementNS(NS,'g');g.style.cursor='pointer';
-  var plate=isBoss?'#7a5a10':'#12172ad9',txt=isBoss?'#ffdf8a':'#fff',w=isBoss?102:54;
-  g.innerHTML='<g class="nm"><rect x="'+(-w/2)+'" y="-50" width="'+w+'" height="13" rx="3" fill="'+plate+'"/><text x="0" y="-40" text-anchor="middle" font-size="9" fill="'+txt+'">'+s.name+'</text></g><g class="bd" transform="translate(0,-64)"><circle r="0" fill="#e24b4a"/></g><g class="ps">'+stand(s)+'</g>';
-  var c={g:g,s:s,idx:idx,x:x,y:y,tx:x,ty:y,dir:1,state:'walk',goal:'wander',timer:30+Math.random()*120,ph:Math.random()*6,desk:null,sortY:0,pose:'stand',boss:!!isBoss,mul:isBoss?1.12:1,big:false};
-  g.addEventListener('click',function(){select(c);});world.appendChild(g);return c;}
- var chars=staff.map(function(s,i){return makeChar(s,120+i*70,430-i*6,false,i);});
- chars.push(makeChar(boss,560,430,true,chars.length));
+  var NS='http://www.w3.org/2000/svg';
+  var scene=document.getElementById('sfpof_scene');
+  var panel=document.getElementById('sfpof_panel');
+  var statsEl=document.getElementById('sfpof_stats');
 
- function setPose(c,p){if(c.pose===p)return;c.pose=p;c.g.querySelector('.ps').innerHTML=p==='work'?work(c.s):p==='drink'?drink(c.s):stand(c.s);}
- function select(c){selected=c;var btn=c.s.go?'<button id="sfpof_go" style="font-family:var(--mono,monospace);background:#f4d47c;color:#1c2338;border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer">ไปหน้างาน ↗</button>':'';
-  panel.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><span style="color:#f4d47c;font-size:14px;font-weight:500">'+c.s.name+'</span><span style="color:#9fb3d8;font-size:12px"> · '+c.s.th+'</span></div>'+btn+'</div>';
-  var g=document.getElementById('sfpof_go');if(g)g.onclick=function(){goWork(c.idx);c.s.go&&c.s.go();};}
- function freeDesk(c){if(c.desk){c.desk.occupant=null;c.desk=null;}}
- function goWork(i){var c=chars[i];if(!c)return;selected=c;freeDesk(c);var d;if(c.boss)d=bossDesk;else{var open=desks.filter(function(x){return!x.occupant;});d=open.length?pick(open):pick(desks);d.occupant=c;}c.desk=d;c.goal='work';c.tx=d.seat.x;c.ty=d.seat.y;c.state='walk';c.big=true;setPose(c,'stand');}
- window.SFPOffice={refresh:function(){renderStats();}};
+  scene.innerHTML='<defs><clipPath id="sfpof_gl"><rect x="34" y="40" width="470" height="205"/></clipPath></defs>'
+  +'<rect x="0" y="0" width="680" height="470" fill="#d8e2ee"/>'
+  +'<g clip-path="url(#sfpof_gl)"><rect x="34" y="40" width="470" height="205" fill="#a6cdf0"/><rect x="34" y="40" width="470" height="60" fill="#b7d8f5"/><rect x="55" y="120" width="42" height="125" fill="#7ba6cf"/><rect x="108" y="88" width="34" height="157" fill="#8cb2d7"/><rect x="150" y="150" width="48" height="95" fill="#719cc4"/><rect x="210" y="70" width="30" height="175" fill="#84abd0"/><rect x="248" y="128" width="50" height="117" fill="#77a1c8"/><rect x="315" y="98" width="34" height="147" fill="#8cb2d7"/><rect x="360" y="58" width="42" height="187" fill="#6f97bf"/><rect x="416" y="140" width="44" height="105" fill="#86acd1"/><rect x="466" y="104" width="30" height="141" fill="#80a7cd"/></g>'
+  +'<g stroke="#eef4fa" stroke-width="4" opacity="0.9"><line x1="34" y1="40" x2="504" y2="40"/><line x1="34" y1="143" x2="504" y2="143"/><line x1="112" y1="40" x2="112" y2="245"/><line x1="190" y1="40" x2="190" y2="245"/><line x1="268" y1="40" x2="268" y2="245"/><line x1="346" y1="40" x2="346" y2="245"/><line x1="424" y1="40" x2="424" y2="245"/></g>'
+  +'<rect x="30" y="34" width="478" height="9" fill="#333f5c"/><rect x="30" y="34" width="9" height="212" fill="#333f5c"/><rect x="499" y="34" width="9" height="212" fill="#333f5c"/>'
+  +'<rect x="508" y="18" width="172" height="228" fill="#d7c1a2"/><rect x="560" y="66" width="96" height="180" rx="4" fill="#8a5a34"/><rect x="560" y="66" width="96" height="180" rx="4" fill="none" stroke="#5c3a1e" stroke-width="4"/><rect x="574" y="114" width="68" height="28" rx="3" fill="#b83227"/><text x="608" y="134" text-anchor="middle" font-size="14" fill="#fff">CLAUDE</text><circle cx="646" cy="164" r="5" fill="#3a3a3a"/>'
+  +'<rect x="120" y="0" width="10" height="116" fill="#2b3550"/><rect x="58" y="112" width="174" height="14" rx="3" fill="#eef1f6"/><rect x="58" y="120" width="174" height="6" fill="#f7d97a"/><rect x="430" y="0" width="10" height="96" fill="#2b3550"/><rect x="358" y="92" width="174" height="14" rx="3" fill="#eef1f6"/><rect x="358" y="100" width="174" height="6" fill="#f7d97a"/>'
+  +'<polygon points="0,246 680,246 680,470 0,470" fill="#caa063"/>'
+  +'<g fill="#c19758"><rect x="0" y="246" width="56" height="46"/><rect x="112" y="246" width="56" height="46"/><rect x="224" y="246" width="56" height="46"/><rect x="336" y="246" width="56" height="46"/><rect x="448" y="246" width="56" height="46"/><rect x="560" y="246" width="56" height="46"/><rect x="56" y="292" width="56" height="50"/><rect x="168" y="292" width="56" height="50"/><rect x="280" y="292" width="56" height="50"/><rect x="392" y="292" width="56" height="50"/><rect x="504" y="292" width="56" height="50"/><rect x="616" y="292" width="56" height="50"/><rect x="0" y="342" width="56" height="56"/><rect x="112" y="342" width="56" height="56"/><rect x="224" y="342" width="56" height="56"/><rect x="336" y="342" width="56" height="56"/><rect x="448" y="342" width="56" height="56"/><rect x="560" y="342" width="56" height="56"/><rect x="56" y="398" width="56" height="72"/><rect x="168" y="398" width="56" height="72"/><rect x="280" y="398" width="56" height="72"/><rect x="392" y="398" width="56" height="72"/><rect x="504" y="398" width="56" height="72"/><rect x="616" y="398" width="56" height="72"/></g>'
+  +'<rect x="0" y="242" width="680" height="8" fill="#9c7538"/>'
+  +'<g><ellipse cx="475" cy="236" rx="30" ry="10" fill="#00000018"/><rect x="453" y="148" width="42" height="78" rx="5" fill="#14101c"/><rect x="456" y="150" width="36" height="74" rx="4" fill="#e2eaf1"/><rect x="460" y="116" width="30" height="40" rx="5" fill="#14101c"/><rect x="462" y="118" width="26" height="36" rx="4" fill="#8fd0f2"/><rect x="456" y="198" width="36" height="10" fill="#c0392b"/></g>'
+  +'<g id="sfpof_world"></g>';
+  var world=document.getElementById('sfpof_world');
+  function mkg(x,y,h){var g=document.createElementNS(NS,'g');g.setAttribute('transform','translate('+x+','+y+')');g.innerHTML=h;world.appendChild(g);return g;}
+  function pick(a){return a[Math.floor(Math.random()*a.length)];}
 
- function chooseGoal(c){freeDesk(c);var r=Math.random();
-  if(c.boss){if(r<0.3){c.desk=bossDesk;c.goal='work';c.tx=bossDesk.seat.x;c.ty=bossDesk.seat.y;}else if(r<0.55){var d=pick(desks);c.goal='wander';c.tx=d.x+44;c.ty=d.y+34;}else if(r<0.7){c.goal='coffee';c.tx=coffeeSpot.x+8;c.ty=coffeeSpot.y;}else if(r<0.85){var p=pick(loungeSpots);c.goal='lounge';c.tx=p.x;c.ty=p.y;}else{c.goal='drink';c.tx=460;c.ty=262;}c.state='walk';return;}
-  var busy=c._busy||0;var wt=0.42+Math.min(busy,5)*0.06;
-  if(r<wt){var open=desks.filter(function(d){return!d.occupant;});if(open.length){var d=pick(open);d.occupant=c;c.desk=d;c.goal='work';c.tx=d.seat.x;c.ty=d.seat.y;c.state='walk';return;}}
-  if(r<0.6){c.goal='coffee';c.tx=coffeeSpot.x-8+Math.random()*20;c.ty=coffeeSpot.y;c.state='walk';return;}
-  if(r<0.75){var p=pick(loungeSpots);c.goal='lounge';c.tx=p.x;c.ty=p.y;c.state='walk';return;}
-  if(r<0.86){c.goal='drink';c.tx=459+Math.random()*8;c.ty=262;c.state='walk';return;}
-  c.goal='wander';c.tx=70+Math.random()*430;c.ty=286+Math.random()*150;c.state='walk';}
+  function deskSVG(){return '<ellipse cx="6" cy="34" rx="62" ry="18" fill="#00000012"/><rect x="-30" y="18" width="14" height="22" fill="#20283f"/><rect x="24" y="18" width="14" height="22" fill="#20283f"/><rect x="-54" y="0" width="116" height="18" rx="3" fill="'+OUT+'"/><rect x="-52" y="2" width="112" height="14" rx="2" fill="#f2f4f8"/><rect x="-52" y="12" width="112" height="4" fill="#c6cedb"/><rect x="-32" y="-22" width="38" height="30" rx="2" fill="'+OUT+'"/><rect x="-29" y="-19" width="32" height="24" fill="#0f2c44"/><rect x="-25" y="-4" width="5" height="7" fill="#5aa2e0"/><rect x="-18" y="-9" width="5" height="12" fill="#7fd0a0"/><rect x="-11" y="-6" width="5" height="9" fill="#f2c14e"/><rect x="-4" y="-13" width="5" height="16" fill="#e57e6a"/><rect x="16" y="-17" width="32" height="24" rx="2" fill="'+OUT+'"/><rect x="19" y="-14" width="26" height="18" fill="#0f2c44"/><ellipse cx="42" cy="8" rx="5" ry="3" fill="#8a2820"/><rect x="35" y="1" width="12" height="8" rx="1" fill="#c0392b"/>';}
+  var deskDefs=[[150,286],[300,286],[150,338],[300,338],[150,392],[300,392]];
+  var desks=deskDefs.map(function(d){var g=mkg(d[0],d[1],deskSVG());return{g:g,x:d[0],y:d[1],sortY:d[1]+30,seat:{x:d[0]+6,y:d[1]+42},occupant:null};});
+  var bossDesk=(function(){var x=520,y=388;var g=mkg(x,y,'<ellipse cx="6" cy="46" rx="86" ry="24" fill="#00000018"/><rect x="-22" y="20" width="52" height="46" rx="10" fill="#2a2f45"/><rect x="-74" y="0" width="160" height="24" rx="3" fill="'+OUT+'"/><rect x="-72" y="2" width="156" height="20" rx="2" fill="#6b4a2b"/><rect x="-72" y="2" width="156" height="6" fill="#7d5a34"/><rect x="-40" y="-26" width="46" height="34" rx="2" fill="'+OUT+'"/><rect x="-36" y="-22" width="38" height="27" fill="#0f2c44"/><rect x="24" y="6" width="34" height="12" rx="2" fill="'+OUT+'"/><rect x="26" y="8" width="30" height="8" rx="1" fill="#e8c66a"/><text x="41" y="15" text-anchor="middle" font-size="7" fill="#5a4410">LOKKO</text>');return{g:g,x:x,y:y,sortY:y+34,seat:{x:x+4,y:y+50}};})();
+  var cafe=mkg(92,258,'<ellipse cx="0" cy="34" rx="60" ry="16" fill="#00000012"/><rect x="24" y="-52" width="18" height="8" rx="2" fill="#b83227"/><text x="33" y="-45" text-anchor="middle" font-size="6" fill="#fff">CAFÉ</text><rect x="-50" y="0" width="98" height="34" rx="3" fill="'+OUT+'"/><rect x="-48" y="2" width="94" height="30" fill="#8a5a34"/><rect x="-52" y="-4" width="102" height="8" rx="2" fill="#d7dde5"/><rect x="-34" y="-30" width="28" height="26" rx="2" fill="'+OUT+'"/><rect x="-31" y="-27" width="22" height="20" fill="#3a4048"/><rect x="24" y="-16" width="22" height="14" rx="2" fill="'+OUT+'"/><rect x="26" y="-14" width="18" height="10" fill="#d98f4a"/>');
+  var props=[{g:cafe,sortY:292}];
+  var coffeeSpot={x:92,y:300};
+  var lounge=mkg(250,438,'<ellipse cx="0" cy="16" rx="86" ry="30" fill="#b06a3a" opacity="0.32"/><rect x="-60" y="-22" width="120" height="20" rx="9" fill="#2e6f6e"/><rect x="-58" y="-8" width="116" height="18" rx="7" fill="#2a6564"/><rect x="-52" y="-20" width="48" height="16" rx="6" fill="#57a9a6"/><rect x="6" y="-20" width="48" height="16" rx="6" fill="#57a9a6"/><rect x="-66" y="-18" width="12" height="26" rx="5" fill="#255957"/><rect x="54" y="-18" width="12" height="26" rx="5" fill="#255957"/><rect x="-18" y="18" width="36" height="12" rx="3" fill="'+OUT+'"/><rect x="-16" y="20" width="32" height="8" rx="2" fill="#8a5a34"/>');
+  props.push({g:lounge,sortY:452});
+  var loungeSpots=[{x:215,y:448},{x:250,y:448},{x:285,y:448}];
 
- var AR={work:['work','work'],drink:['drink','drink'],coffee:['drink','drink'],lounge:['idle','stand'],wander:['idle','stand']};
- function frame(){
-  chars.forEach(function(c){
-   if(c.state==='walk'){var dx=c.tx-c.x,dy=c.ty-c.y,d=Math.hypot(dx,dy);
-    if(d<3){var a=AR[c.goal];c.state=a[0];setPose(c,a[1]);c.timer=c.big?720:(c.goal==='work'?260+Math.random()*280:(c.goal==='drink'||c.goal==='coffee')?120+Math.random()*70:c.goal==='lounge'?200+Math.random()*150:70+Math.random()*110);c.big=false;}
-    else{if(Math.abs(dx)>0.4)c.dir=dx>0?1:-1;var sp=c.boss?0.5:0.6;c.x+=dx/d*sp;c.y+=dy/d*sp;setPose(c,'stand');}}
-   else{c.timer--;if(c.timer<=0)chooseGoal(c);}
-   var s=(0.82+(c.y-286)/165*0.5)*c.mul;c.sortY=c.y;
-   c.g.setAttribute('transform','translate('+c.x.toFixed(1)+','+c.y.toFixed(1)+') scale('+s.toFixed(2)+')');
-   var ps=c.g.querySelector('.ps');
-   if(c.state==='walk'){c.ph+=0.25;var bob=Math.abs(Math.sin(c.ph))*-2.5;ps.setAttribute('transform','translate(0,'+bob.toFixed(1)+') scale('+c.dir+',1)');var lg=ps.querySelector('.lg');if(lg)lg.setAttribute('transform','translate('+(Math.sin(c.ph)*2.5).toFixed(1)+',0)');}
-   else if(c.state==='work'){c.ph+=0.3;var h=ps.querySelector('.hd');if(h)h.setAttribute('transform','translate(0,'+(Math.abs(Math.sin(c.ph*2))*1.4).toFixed(1)+')');ps.setAttribute('transform','translate(0,0)');}
-   else if(c.state==='drink'){c.ph+=0.08;var cp=ps.querySelector('.cp');if(cp){var l=(Math.sin(c.ph)*0.5+0.5)*-3;cp.setAttribute('transform','translate('+(-4*(Math.sin(c.ph)*0.5+0.5)).toFixed(1)+','+l.toFixed(1)+')');}ps.setAttribute('transform','scale('+c.dir+',1)');}
-   else ps.setAttribute('transform','scale('+c.dir+',1)');
-   ps.style.filter=(selected===c)?'drop-shadow(0 0 3px #f4d47c)':'none';
-  });
-  [].concat(desks,[bossDesk],props,chars).sort(function(a,b){return a.sortY-b.sortY;}).forEach(function(o){world.appendChild(o.g);});
+  function head(s,back){return back?'<rect x="-9" y="-33" width="18" height="15" rx="2" fill="'+OUT+'"/><rect x="-7" y="-31" width="14" height="12" fill="'+s.hair+'"/><rect x="-5" y="-30" width="5" height="3" fill="'+s.hh+'"/><rect x="-3" y="-20" width="6" height="3" fill="#e8b98a"/>':'<rect x="-8" y="-34" width="16" height="16" rx="2" fill="'+OUT+'"/><rect x="-7" y="-33" width="14" height="6" fill="'+s.hair+'"/><rect x="-6" y="-32" width="5" height="2" fill="'+s.hh+'"/><rect x="-7" y="-28" width="14" height="9" fill="#f0c9a0"/><rect x="3" y="-28" width="4" height="9" fill="#e0b184"/><rect x="-4" y="-24" width="2" height="2" fill="#20283f"/><rect x="2" y="-24" width="2" height="2" fill="#20283f"/><rect x="-1" y="-21" width="3" height="1" fill="#b06a5a"/>';}
+  function stand(s){return '<ellipse cx="0" cy="1" rx="12" ry="4" fill="#00000020"/><g class="lg"><rect x="-7" y="-11" width="14" height="11" fill="'+OUT+'"/><rect x="-6" y="-10" width="5" height="7" fill="#2f3b57"/><rect x="1" y="-10" width="5" height="7" fill="#2f3b57"/><rect x="-7" y="-3" width="6" height="3" fill="#1a1d2b"/><rect x="1" y="-3" width="6" height="3" fill="#1a1d2b"/></g><rect x="-12" y="-21" width="7" height="13" fill="'+OUT+'"/><rect x="5" y="-21" width="7" height="13" fill="'+OUT+'"/><rect x="-11" y="-20" width="4" height="8" fill="'+s.shirt+'"/><rect x="7" y="-20" width="4" height="8" fill="'+s.shirt+'"/><rect x="-11" y="-12" width="4" height="3" fill="#f0c9a0"/><rect x="7" y="-12" width="4" height="3" fill="#f0c9a0"/><rect x="-9" y="-22" width="18" height="16" rx="2" fill="'+OUT+'"/><rect x="-8" y="-21" width="16" height="14" fill="'+s.shirt+'"/><rect x="-8" y="-21" width="5" height="14" fill="'+s.sh2+'"/><rect x="-2" y="-21" width="4" height="3" fill="#eef1f6"/>'+(s.tie?'<rect x="-1" y="-19" width="3" height="10" fill="'+s.tie+'"/>':'')+head(s,false);}
+  function work(s){return '<rect x="-9" y="-20" width="18" height="15" rx="2" fill="'+OUT+'"/><rect x="-8" y="-19" width="16" height="13" fill="'+s.shirt+'"/><rect x="-8" y="-19" width="5" height="13" fill="'+s.sh2+'"/><g class="hd"><rect x="-12" y="-15" width="6" height="9" fill="'+OUT+'"/><rect x="6" y="-15" width="6" height="9" fill="'+OUT+'"/><rect x="-11" y="-14" width="4" height="6" fill="'+s.shirt+'"/><rect x="7" y="-14" width="4" height="6" fill="'+s.shirt+'"/><rect x="-11" y="-9" width="4" height="3" fill="#f0c9a0"/><rect x="7" y="-9" width="4" height="3" fill="#f0c9a0"/></g>'+head(s,true);}
+  function drink(s){return stand(s)+'<g class="cp"><rect x="6" y="-25" width="6" height="7" rx="1" fill="'+OUT+'"/><rect x="7" y="-24" width="4" height="5" fill="#eef4fa"/><rect x="7" y="-24" width="4" height="2" fill="#c98a3a"/></g>';}
+
+  var selected=null;
+  function makeChar(s,x,y,isBoss,idx){var g=document.createElementNS(NS,'g');g.style.cursor='pointer';var plate=isBoss?'#7a5a10':'#12172ad9',txt=isBoss?'#ffdf8a':'#fff',w=isBoss?102:54;g.innerHTML='<g class="nm"><rect x="'+(-w/2)+'" y="-50" width="'+w+'" height="13" rx="3" fill="'+plate+'"/><text x="0" y="-40" text-anchor="middle" font-size="9" fill="'+txt+'">'+s.name+'</text></g><g class="bd" transform="translate(0,-64)"></g><g class="ps">'+stand(s)+'</g>';var c={g:g,s:s,idx:idx,x:x,y:y,tx:x,ty:y,dir:1,state:'walk',goal:'wander',timer:30+Math.random()*120,ph:Math.random()*6,desk:null,sortY:0,pose:'stand',boss:!!isBoss,mul:isBoss?1.12:1,big:false};g.addEventListener('click',function(){select(c);});world.appendChild(g);return c;}
+  var chars=staff.map(function(s,i){return makeChar(s,120+i*70,430-i*6,false,i);});chars.push(makeChar(boss,560,430,true,chars.length));
+
+  function setPose(c,p){if(c.pose===p)return;c.pose=p;c.g.querySelector('.ps').innerHTML=p==='work'?work(c.s):p==='drink'?drink(c.s):stand(c.s);}
+  function select(c){selected=c;var btn=c.s.go?'<button id="sfpof_go" style="font-family:var(--mono,monospace);background:#f4d47c;color:#1c2338;border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer">ไปหน้างาน ↗</button>':'';panel.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><span style="color:#f4d47c;font-size:14px;font-weight:500">'+c.s.name+'</span><span style="color:#9fb3d8;font-size:12px"> · '+c.s.th+'</span></div>'+btn+'</div>';var g=document.getElementById('sfpof_go');if(g)g.onclick=function(){goWork(c.idx);c.s.go&&c.s.go();};}
+  function freeDesk(c){if(c.desk){c.desk.occupant=null;c.desk=null;}}
+  function goWork(i){var c=chars[i];if(!c)return;selected=c;freeDesk(c);var d;if(c.boss)d=bossDesk;else{var open=desks.filter(function(x){return!x.occupant;});d=open.length?pick(open):pick(desks);d.occupant=c;}c.desk=d;c.goal='work';c.tx=d.seat.x;c.ty=d.seat.y;c.state='walk';c.big=true;setPose(c,'stand');}
+
+  function chooseGoal(c){freeDesk(c);var r=Math.random();if(c.boss){if(r<0.3){c.desk=bossDesk;c.goal='work';c.tx=bossDesk.seat.x;c.ty=bossDesk.seat.y;}else if(r<0.55){var d=pick(desks);c.goal='wander';c.tx=d.x+44;c.ty=d.y+34;}else if(r<0.7){c.goal='coffee';c.tx=coffeeSpot.x+8;c.ty=coffeeSpot.y;}else if(r<0.85){var p=pick(loungeSpots);c.goal='lounge';c.tx=p.x;c.ty=p.y;}else{c.goal='drink';c.tx=460;c.ty=262;}c.state='walk';return;}var busy=c._busy||0;var wt=0.42+Math.min(busy,5)*0.06;if(r<wt){var open=desks.filter(function(d){return!d.occupant;});if(open.length){var d=pick(open);d.occupant=c;c.desk=d;c.goal='work';c.tx=d.seat.x;c.ty=d.seat.y;c.state='walk';return;}}if(r<0.6){c.goal='coffee';c.tx=coffeeSpot.x-8+Math.random()*20;c.ty=coffeeSpot.y;c.state='walk';return;}if(r<0.75){var p=pick(loungeSpots);c.goal='lounge';c.tx=p.x;c.ty=p.y;c.state='walk';return;}if(r<0.86){c.goal='drink';c.tx=459+Math.random()*8;c.ty=262;c.state='walk';return;}c.goal='wander';c.tx=70+Math.random()*430;c.ty=286+Math.random()*150;c.state='walk';}
+
+  var AR={work:['work','work'],drink:['drink','drink'],coffee:['drink','drink'],lounge:['idle','stand'],wander:['idle','stand']};
+  function frame(){
+   if(!scene.isConnected)return; /* stop loop when office removed */
+   chars.forEach(function(c){if(c.state==='walk'){var dx=c.tx-c.x,dy=c.ty-c.y,d=Math.hypot(dx,dy);if(d<3){var a=AR[c.goal];c.state=a[0];setPose(c,a[1]);c.timer=c.big?720:(c.goal==='work'?260+Math.random()*280:(c.goal==='drink'||c.goal==='coffee')?120+Math.random()*70:c.goal==='lounge'?200+Math.random()*150:70+Math.random()*110);c.big=false;}else{if(Math.abs(dx)>0.4)c.dir=dx>0?1:-1;var sp=c.boss?0.5:0.6;c.x+=dx/d*sp;c.y+=dy/d*sp;setPose(c,'stand');}}else{c.timer--;if(c.timer<=0)chooseGoal(c);}var s=(0.82+(c.y-286)/165*0.5)*c.mul;c.sortY=c.y;c.g.setAttribute('transform','translate('+c.x.toFixed(1)+','+c.y.toFixed(1)+') scale('+s.toFixed(2)+')');var ps=c.g.querySelector('.ps');if(c.state==='walk'){c.ph+=0.25;var bob=Math.abs(Math.sin(c.ph))*-2.5;ps.setAttribute('transform','translate(0,'+bob.toFixed(1)+') scale('+c.dir+',1)');var lg=ps.querySelector('.lg');if(lg)lg.setAttribute('transform','translate('+(Math.sin(c.ph)*2.5).toFixed(1)+',0)');}else if(c.state==='work'){c.ph+=0.3;var h=ps.querySelector('.hd');if(h)h.setAttribute('transform','translate(0,'+(Math.abs(Math.sin(c.ph*2))*1.4).toFixed(1)+')');ps.setAttribute('transform','translate(0,0)');}else if(c.state==='drink'){c.ph+=0.08;var cp=ps.querySelector('.cp');if(cp){var l=(Math.sin(c.ph)*0.5+0.5)*-3;cp.setAttribute('transform','translate('+(-4*(Math.sin(c.ph)*0.5+0.5)).toFixed(1)+','+l.toFixed(1)+')');}ps.setAttribute('transform','scale('+c.dir+',1)');}else ps.setAttribute('transform','scale('+c.dir+',1)');ps.style.filter=(selected===c)?'drop-shadow(0 0 3px #f4d47c)':'none';});[].concat(desks,[bossDesk],props,chars).sort(function(a,b){return a.sortY-b.sortY;}).forEach(function(o){world.appendChild(o.g);});requestAnimationFrame(frame);}
   requestAnimationFrame(frame);
- }
- requestAnimationFrame(frame);
 
- /* ---------- stat board + live badges ---------- */
- function chip(label,val,color){return '<div style="background:#324066;border-radius:8px;padding:8px 6px;text-align:center"><div style="color:'+color+';font-size:20px;font-weight:500">'+val+'</div><div style="color:#9fb3d8;font-size:11px">'+label+'</div></div>';}
- function renderStats(){var s=stats();
-  statsEl.innerHTML=chip('active jobs',s.active,'#f4d47c')+chip('gate ≤48h',s.gateToday,'#f0997b')+chip('GP &lt;3%',s.gp0,'#f09595')+chip('to release',s.pending,'#9fe1cb');
-  chars.forEach(function(c){var key=c.s.badge;var n=key?s[key]:0;c._busy=n;var b=c.g.querySelector('.bd');b.innerHTML=n>0?'<circle cx="14" cy="0" r="7" fill="#e24b4a"/><text x="14" y="3" text-anchor="middle" font-size="8" fill="#fff">'+n+'</text>':'';});
+  function chip(label,val,color){return '<div style="background:#324066;border-radius:8px;padding:8px 6px;text-align:center"><div style="color:'+color+';font-size:20px;font-weight:500">'+val+'</div><div style="color:#9fb3d8;font-size:11px">'+label+'</div></div>';}
+  function renderStats(){var s=stats();statsEl.innerHTML=chip('active jobs',s.active,'#f4d47c')+chip('gate &le;48h',s.gateToday,'#f0997b')+chip('GP &lt;3%',s.gp0,'#f09595')+chip('to release',s.pending,'#9fe1cb');chars.forEach(function(c){var key=c.s.badge;var n=key?s[key]:0;c._busy=n;var b=c.g.querySelector('.bd');b.innerHTML=n>0?'<circle cx="14" cy="0" r="7" fill="#e24b4a"/><text x="14" y="3" text-anchor="middle" font-size="8" fill="#fff">'+n+'</text>':'';});}
+  renderStats();
+
+  var timers=[];
+  timers.push(setInterval(renderStats,4000));
+  var tm=540;timers.push(setInterval(function(){tm=(tm+1)%1440;var el=document.getElementById('sfpof_clk');if(el)el.textContent=(''+Math.floor(tm/60)).padStart(2,'0')+':'+(''+tm%60).padStart(2,'0');},900));
+  window.SFPOffice={refresh:renderStats,_timers:timers};
  }
- renderStats();
- setInterval(renderStats,4000);
- var tm=540;setInterval(function(){tm=(tm+1)%1440;document.getElementById('sfpof_clk').textContent=(''+Math.floor(tm/60)).padStart(2,'0')+':'+(''+tm%60).padStart(2,'0');},900);
+
+ /* ================= access gate ================= */
+ function gate(){
+   if(currentEmail()===ALLOWED){ if(!document.getElementById('page-office')) buildOffice(); }
+   else { removeOffice(); }
+ }
+ gate();
+ setInterval(gate,3000);
 })();
 </script>
