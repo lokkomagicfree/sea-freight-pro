@@ -7769,7 +7769,11 @@ onAuthStateChanged(auth, async user=>{
       let changed = false;
       remoteJobs.forEach(rj=>{
         const lj = window.savedJobs?.find(x=>x.no===rj.no);
-        if(!lj) return;
+        if(!lj){
+          // Shipment created on another device — add it (never drop remote jobs)
+          if(rj && rj.no!=null){ window.savedJobs.push(rj); changed = true; }
+          return;
+        }
         const fields = ['etd','eta','vessel','voyage','motherVessel','motherVoy','status','remarks','csTasks','lastRemarked','preAlert','assignedAt',
           'bpdfData','siCutoff','vgmCutoff','docCutoff','gateClosing','pickupDate','turninDate','pickupPlace','pickupPic','turninAt','turninPic','paperlessCode','carrier'];
         fields.forEach(f=>{
@@ -7783,13 +7787,17 @@ onAuthStateChanged(auth, async user=>{
         if(lj.eta) lj.etaMonth = lj.eta.slice(0,7);
       });
       if(changed){
-        try{ localStorage.setItem('sfp_jobs', JSON.stringify(window.savedJobs)); }catch(e){}
-        // Cloud now holds these jobs — record the hash so the next storageSave
-        // doesn't redundantly push an identical copy back.
-        window._sfpSyncHash.jobs = _sfpHash(window.savedJobs||[]);
+        try{ localStorage.setItem('seafreight_jobs_v1', JSON.stringify(window.savedJobs)); }catch(e){}
+        // Record the CLOUD copy's hash (not ours). If we hold shipments the cloud
+        // doesn't have yet (e.g. just-created bookings), the next flush still sees
+        // a difference and pushes them up instead of silently dropping them.
+        window._sfpSyncHash.jobs = _sfpHash(remoteJobs);
+        const localOnly = (window.savedJobs||[]).filter(j=>j&&j.no!=null&&!remoteJobs.some(r=>String(r.no)===String(j.no)));
+        if(localOnly.length){ console.log('⬆️ ดัน '+localOnly.length+' shipment ที่ยังไม่ขึ้น cloud'); setTimeout(()=>{ try{ window._sfpFlushToCloud?.(); }catch(e){} }, 300); }
         window.renderShipments?.();
         window.updateAlertCount?.();
         window.renderNewBizList?.();
+        window.renderWorkBench?.();
         console.log('🔄 Jobs updated by CS Portal');
       }
     }, ()=>{});
