@@ -3820,7 +3820,28 @@ function saveShipment(){
     const btn2=g('save_btn');if(btn2){btn2.textContent='💾 Save Shipment';btn2.className='btn btn-cyan';btn2.style.background='';}
     toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
   }
+  // ── FIX 1: don't let a sticky Status/Month filter hide the shipment we just saved ──
+  // If the active filter would exclude this shipment's status or month, clear that
+  // filter so the user actually SEES their new/edited shipment instead of an empty list.
+  try{
+    const _sf=g('status_filter');
+    if(_sf && _sf.value && _sf.value!==jobData.status){
+      _sf.value='';
+      if(window._savedFilterPrefs) window._savedFilterPrefs.status_filter='';
+      toast('ℹ️ ล้างตัวกรอง Status ให้แล้ว (งานใหม่คนละสถานะ)');
+    }
+    const _mf=g('month_filter');
+    const _jm = jobData.jobType==='import'?(jobData.etaMonth||''):(jobData.etdMonth||'');
+    if(_mf && _mf.value && _jm && _mf.value!==_jm){
+      _mf.value=''; window._monthFilterCleared=true;
+      if(window._savedFilterPrefs) window._savedFilterPrefs.month_filter='';
+    }
+  }catch(e){}
   renderShipments();updateAlertCount();storageSave();
+  // ── FIX 2: push to cloud IMMEDIATELY so other devices see this shipment right away ──
+  // (instead of waiting for the 4s debounce in the patched storageSave). The flush is
+  // dirty-tracked and guarded against concurrent runs, so this is safe to call directly.
+  try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
 }
 
 function editShipment(idx){
