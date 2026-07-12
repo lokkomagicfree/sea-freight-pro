@@ -7666,7 +7666,7 @@ function clearImgExtract(){
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot }
+import { getFirestore, initializeFirestore, doc, setDoc, getDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
@@ -7682,7 +7682,7 @@ const firebaseConfig = {
 
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db   = getFirestore(app);
+const db   = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
 const storage = getStorage(app);
 let _currentUser = null;
 
