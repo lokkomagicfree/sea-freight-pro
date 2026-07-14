@@ -528,7 +528,7 @@ body{font-size:14px;font-weight:450}
       <button onclick="addManualRate()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.3)">+ Add Rate</button>
       <button onclick="openPasteRatesModal()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--cyan);border-color:rgba(41,128,185,.35)">📋 Paste Rates</button>
       <button onclick="publishRatesToShared('manual')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--gold);border-color:rgba(183,128,10,.4)" title="เผยแพร่ rate ปัจจุบันเข้าคลังกลาง ให้ทุก account เห็น (มี confirm + log)">☁ เผยแพร่ให้ทุก account</button>
-      <button onclick="showBestByPOD()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.4)" title="ดูเรทถูกสุดของแต่ละ POD แยกตามขนาดตู้ (เฉพาะ active)">🏆 Best/POD</button>
+      <button onclick="showBestByPOD()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.4)" title="ดูเรทถูกสุดของแต่ละ POD จัดอันดับ 1-2-3 แยกตามขนาดตู้ (เฉพาะ active)">🏆 Best/POD</button>
     </div>
   </div>
 
@@ -2587,7 +2587,7 @@ function renderTable(filtered){
       ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px">⚠ SC/NAC</div>`
       : '';
     const commTag = r.commodity
-      ? `<div style="font-size:9px;color:#8a6d00;background:rgba(183,128,10,.14);border:1px solid rgba(183,128,10,.35);border-radius:4px;padding:1px 5px;margin-top:3px;font-weight:700;white-space:normal;max-width:96px;line-height:1.25;word-break:break-word;display:inline-block" title="${(r.remark||'ใช้กับ commodity นี้เท่านั้น').replace(/"/g,'&quot;')}">🏷 ${r.commodity}</div>`
+      ? `<div style="font-size:9px;color:#8a6d00;background:rgba(183,128,10,.14);border:1px solid rgba(183,128,10,.35);border-radius:4px;padding:1px 6px;margin-top:3px;font-weight:700;white-space:nowrap;display:inline-block" title="${(r.remark||'ใช้กับ commodity นี้เท่านั้น').replace(/"/g,'&quot;')}">🏷 ${r.commodity}</div>`
       : '';
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span>${fixRemark}${commTag}</td>
@@ -10634,9 +10634,9 @@ window.pasteBpdfVesselInfo = function(){
 </div>
 
 <div id="best_pod_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
-  <div style="background:var(--s1,#141a2a);color:var(--text,#e8ecf4);max-width:960px;width:93%;max-height:86vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+  <div style="background:var(--s1,#141a2a);color:var(--text,#e8ecf4);max-width:1000px;width:94%;max-height:86vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <h3 style="margin:0;font-size:15px">Best Rate per POD <span style="font-size:11px;color:var(--muted,#8b95a7);font-weight:400">(active only, cheapest by container size)</span></h3>
+      <h3 style="margin:0;font-size:15px">Best Rate per POD <span style="font-size:11px;color:var(--muted,#8b95a7);font-weight:400">(active only - top 3 cheapest per container size)</span></h3>
       <button onclick="document.getElementById('best_pod_modal').style.display='none'" style="border:none;background:rgba(255,255,255,.12);color:inherit;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">x</button>
     </div>
     <input id="best_pod_search" placeholder="search POD / carrier" oninput="renderBestByPOD()" style="width:100%;padding:7px 10px;margin-bottom:8px;border:1px solid var(--border2,#334);border-radius:6px;font-size:12px;background:var(--s2,#0e1320);color:inherit;box-sizing:border-box">
@@ -10657,24 +10657,30 @@ function renderBestByPOD(){
   rates.forEach(function(r){
     var key=(r.pod||'').trim(); if(!key) return;
     if(!byPod[key]) byPod[key]={pod:r.pod};
-    FIELDS.forEach(function(f){ var v=r[f[0]]; if(v&&v>0){ if(!byPod[key][f[0]]||v<byPod[key][f[0]].rate){ byPod[key][f[0]]={rate:v,carrier:r.carrier,source:r.source}; } } });
+    FIELDS.forEach(function(f){ var v=r[f[0]]; if(v&&v>0){
+      var slot=byPod[key][f[0]] || (byPod[key][f[0]]={});
+      if(!slot[r.carrier] || v<slot[r.carrier].rate) slot[r.carrier]={rate:v,carrier:r.carrier,source:r.source};
+    }});
   });
+  function top3(slot){ if(!slot) return []; return Object.keys(slot).map(function(k){return slot[k];}).sort(function(a,b){return a.rate-b.rate;}).slice(0,3); }
+  var MEDAL=['🥇','🥈','🥉'];
   var pods=Object.keys(byPod).map(function(k){return byPod[k];})
-    .filter(function(p){ if(!q) return true; var hay=(p.pod||'').toLowerCase(); FIELDS.forEach(function(f){var b=p[f[0]]; if(b) hay+=' '+(b.carrier||'').toLowerCase();}); return hay.indexOf(q)>-1; })
+    .filter(function(p){ if(!q) return true; var hay=(p.pod||'').toLowerCase(); FIELDS.forEach(function(f){ top3(p[f[0]]).forEach(function(x){hay+=' '+(x.carrier||'').toLowerCase();}); }); return hay.indexOf(q)>-1; })
     .sort(function(a,b){return (a.pod||'').localeCompare(b.pod||'');});
   var h='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border2,#334)">'
     +'<th style="padding:6px;text-align:left">POD</th>'+FIELDS.map(function(f){return '<th style="padding:6px;text-align:right">'+f[1]+'</th>';}).join('')+'<th style="padding:6px;text-align:center">F/T</th></tr></thead><tbody>';
   pods.forEach(function(p){
-    h+='<tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;font-weight:600">'+(p.pod||'-')+'</td>';
-    FIELDS.forEach(function(f){ var b=p[f[0]];
-      h+= b ? '<td style="padding:6px;text-align:right"><span style="color:#2ecc71;font-weight:700;font-family:monospace">$'+b.rate.toLocaleString()+'</span><br><span style="font-size:10px;color:var(--muted,#8b95a7)">'+(b.carrier||'')+(b.source?' '+b.source:'')+'</span></td>'
-             : '<td style="padding:6px;text-align:right;color:var(--muted,#556)">-</td>'; });
-    var winCar=(p.hc40||p.gp40||p.gp20||p.rf40||{}).carrier||'';
-    var ft=(window._CARRIER_FREETIME||{})[winCar]||'';
-    h+='<td style="padding:6px;text-align:center;font-size:11px;color:var(--muted,#8b95a7)" title="Free Time of '+winCar+'">'+(ft||'-')+'</td>';
-    h+='</tr>';
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;font-weight:600;vertical-align:top">'+(p.pod||'-')+'</td>';
+    FIELDS.forEach(function(f){ var t=top3(p[f[0]]);
+      if(!t.length){ h+='<td style="padding:6px;text-align:right;color:var(--muted,#556);vertical-align:top">-</td>'; return; }
+      var cell=t.map(function(x,i){ return '<div style="white-space:nowrap;'+(i===0?'':'opacity:.75;')+'margin-bottom:'+(i<t.length-1?'3px':'0')+'">'+MEDAL[i]+' <span style="color:#2ecc71;font-weight:'+(i===0?'700':'500')+';font-family:monospace">$'+x.rate.toLocaleString()+'</span> <span style="font-size:9px;color:var(--muted,#8b95a7)">'+(x.carrier||'')+(x.source?' '+x.source:'')+'</span></div>'; }).join('');
+      h+='<td style="padding:6px;text-align:right;vertical-align:top">'+cell+'</td>';
+    });
+    var t1=(top3(p.hc40)[0]||top3(p.gp40)[0]||top3(p.gp20)[0]||top3(p.rf40)[0]||{});
+    var ft=(window._CARRIER_FREETIME||{})[t1.carrier||'']||'';
+    h+='<td style="padding:6px;text-align:center;font-size:11px;color:var(--muted,#8b95a7);vertical-align:top" title="Free Time of '+(t1.carrier||'')+'">'+(ft||'-')+'</td></tr>';
   });
-  h+='</tbody></table><div style="font-size:11px;color:var(--muted,#8b95a7);margin-top:8px">'+pods.length+' POD - green = cheapest - under = carrier - F/T per carrier</div>';
+  h+='</tbody></table><div style="font-size:11px;color:var(--muted,#8b95a7);margin-top:8px">'+pods.length+' POD - 🥇1 🥈2 🥉3 = อันดับเรทถูกสุด - green = ราคา - carrier ต่อท้าย - F/T ตามคาร์ริเออร์อันดับ 1</div>';
   var body=document.getElementById('best_pod_body');
   if(body) body.innerHTML = pods.length ? h : '<div style="padding:20px;text-align:center;color:var(--muted,#8b95a7)">no active rate</div>';
 }
