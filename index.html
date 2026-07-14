@@ -3022,6 +3022,9 @@ function buildCharges(){
     <td style="font-family:var(--mono);font-size:11px;text-align:right;padding:6px 8px" class="row-margin">—</td>
   </tr>`;
   }).join('');
+  // Rebuilding the charge table wipes inputs — re-apply the LKB/BKK Inland default
+  // so ticking origin isn't lost when containers/charge type change.
+  if(g('lkb_toggle')?.checked || g('bkk_toggle')?.checked) applyLKBSurcharge();
   recalc();
 }
 
@@ -3194,14 +3197,14 @@ function updateCtnRow(el){
   if(f==='type') _ctnRows[i].type = el.value;
   syncLegacyQty();
   checkCtnVsRate();
-  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+  if(g('lkb_toggle')?.checked || g('bkk_toggle')?.checked) applyLKBSurcharge();
   recalc();
 }
 
 function stepCtn(i, delta){
   _ctnRows[i].qty = Math.max(1, (_ctnRows[i].qty||1) + delta);
   renderCtnRows();
-  if(g('lkb_toggle')?.checked) applyLKBSurcharge();
+  if(g('lkb_toggle')?.checked || g('bkk_toggle')?.checked) applyLKBSurcharge();
   recalc();
 }
 
@@ -3508,12 +3511,51 @@ function applyRate(idx){
 }
 
 // ── Factory Origin Toggle (LKB / BKK) ─────────────────────
-// ติ๊ก = เปลี่ยน POL ตอน save เท่านั้น ไม่บวก cost อะไรทั้งนั้น
+// ติ๊ก LKB/BKK = เปลี่ยน POL ตอน save + ตั้ง Inland Haulage COST = 100 USD (ค่าเริ่มต้น)
+// แก้ราคาเองทีหลังได้ และถ้าติ๊กซ้ำจะคงราคาที่แก้ไว้ (ไม่รีเซ็ตกลับ 100)
+
+const _INLAND_LKB_DEFAULT = 100;   // USD ต่อตู้ (Inland Haulage เป็น per-container charge)
+
+// หา cost input ของแถว Inland Haulage (แถวปกติ ไม่ split)
+function _findInlandCostInput(){
+  const rows=[...document.querySelectorAll('#charge_body tr')];
+  for(const r of rows){
+    if((r.dataset?.charge||'').toLowerCase()==='inland haulage'){
+      return r.querySelector('.cost-inp');
+    }
+  }
+  return null;
+}
+
+// ตั้งค่า Inland cost = 100 เมื่อ LKB/BKK ถูกติ๊ก แต่ "ไม่ทับ" ค่าที่ผู้ใช้แก้เอง
+function applyLKBSurcharge(){
+  const inp=_findInlandCostInput(); if(!inp) return;
+  const cur=parseFloat(inp.value)||0;
+  // เขียนทับได้เฉพาะกรณียังว่าง (0) หรือค่ายังเท่ากับที่ระบบเคยตั้งอัตโนมัติ (แปลว่าผู้ใช้ยังไม่แก้)
+  if(cur===0 || cur===window._inlandLkbAutoVal){
+    inp.value=_INLAND_LKB_DEFAULT;
+    window._inlandLkbAutoVal=_INLAND_LKB_DEFAULT;
+  }
+  // ถ้า cur เป็นค่าอื่น = ผู้ใช้แก้เอง → คงไว้
+}
+window.applyLKBSurcharge=applyLKBSurcharge;
 
 function onOriginToggle(which){
   // Mutual exclusive
   if(which==='lkb' && g('lkb_toggle')?.checked){ const b=g('bkk_toggle'); if(b) b.checked=false; }
   if(which==='bkk' && g('bkk_toggle')?.checked){ const l=g('lkb_toggle'); if(l) l.checked=false; }
+  const anyOn = g('lkb_toggle')?.checked || g('bkk_toggle')?.checked;
+  if(anyOn){
+    applyLKBSurcharge();                        // ติ๊ก → ตั้ง Inland 100 (ถ้ายังไม่ถูกแก้)
+  } else {
+    // เอาติ๊กออกทั้งคู่ → ลบค่าอัตโนมัติออกเฉพาะกรณีที่ยังไม่ถูกแก้เอง
+    const inp=_findInlandCostInput();
+    if(inp){
+      const cur=parseFloat(inp.value)||0;
+      if(cur===window._inlandLkbAutoVal){ inp.value=''; window._inlandLkbAutoVal=undefined; }
+    }
+  }
+  try{ recalc(); }catch(e){}
 }
 
 // ── Alert system ───────────────────────────────────────────
@@ -3821,8 +3863,6 @@ function saveShipment(){
     toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
   }
   // ── FIX 1: don't let a sticky Status/Month filter hide the shipment we just saved ──
-  // If the active filter would exclude this shipment's status or month, clear that
-  // filter so the user actually SEES their new/edited shipment instead of an empty list.
   try{
     const _sf=g('status_filter');
     if(_sf && _sf.value && _sf.value!==jobData.status){
@@ -3839,8 +3879,6 @@ function saveShipment(){
   }catch(e){}
   renderShipments();updateAlertCount();storageSave();
   // ── FIX 2: push to cloud IMMEDIATELY so other devices see this shipment right away ──
-  // (instead of waiting for the 4s debounce in the patched storageSave). The flush is
-  // dirty-tracked and guarded against concurrent runs, so this is safe to call directly.
   try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
 }
 
@@ -8511,7 +8549,7 @@ function openBookingPdfModal(idx){
   set('bpdf_port_receive',  j.pol || '');
   set('bpdf_port_discharge',j.pod || '');
   set('bpdf_port_loading',  j.pol || 'LAEM CHABANG,THAILAND');
-  set('bpdf_final_dest',    j.pod || '');
+  set('bpdf_final_dest',    j.del || j.pod || '');   // DEL (final destination) ก่อน, ถ้าไม่มีค่อยใช้ POD
   set('bpdf_port_transit',  j.portTransit || '');
   set('bpdf_volume',        vol);
   set('bpdf_si_cutoff',     j.siCutoff || '');
@@ -8611,6 +8649,9 @@ function saveBpdfData(){
   if(gv2('bpdf_eta'))         j.eta     = gv2('bpdf_eta');
   if(gv2('bpdf_port_receive'))   j.pol  = gv2('bpdf_port_receive');
   if(gv2('bpdf_port_discharge')) j.pod  = gv2('bpdf_port_discharge');
+  // DEL two-way sync: แก้ Final Destination ใน PDF → บันทึกกลับเข้า shipment.del
+  // เขียนกลับเฉพาะเมื่อค่าต่างจาก POD (กัน del ถูกตั้งเท่ากับ pod โดยไม่ตั้งใจ เพราะ final_dest มี fallback = pod)
+  { const _fd=gv2('bpdf_final_dest'); if(_fd && _fd!==gv2('bpdf_port_discharge')) j.del = _fd; }
   if(gv2('bpdf_port_transit'))   j.portTransit = gv2('bpdf_port_transit');
   if(gv2('bpdf_vsl')){        const x=splitVV(gv2('bpdf_vsl'));        j.vessel=x.v||j.vessel; if(x.voy) j.voyage=x.voy; }
   if(gv2('bpdf_mother_vsl')){ const x=splitVV(gv2('bpdf_mother_vsl')); j.motherVessel=x.v||j.motherVessel; if(x.voy) j.motherVoy=x.voy; }
