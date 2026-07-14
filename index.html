@@ -2587,7 +2587,7 @@ function renderTable(filtered){
       ? `<div style="font-size:9px;color:#e74c3c;font-family:var(--mono);font-weight:600;margin-top:2px">⚠ SC/NAC</div>`
       : '';
     const commTag = r.commodity
-      ? `<div style="font-size:9px;color:#8a6d00;background:rgba(183,128,10,.14);border:1px solid rgba(183,128,10,.35);border-radius:4px;padding:1px 5px;margin-top:3px;font-weight:700;white-space:nowrap;display:inline-block" title="${(r.remark||'ใช้กับ commodity นี้เท่านั้น').replace(/"/g,'&quot;')}">🏷 ${r.commodity}</div>`
+      ? `<div style="font-size:9px;color:#8a6d00;background:rgba(183,128,10,.14);border:1px solid rgba(183,128,10,.35);border-radius:4px;padding:1px 5px;margin-top:3px;font-weight:700;white-space:normal;max-width:96px;line-height:1.25;word-break:break-word;display:inline-block" title="${(r.remark||'ใช้กับ commodity นี้เท่านั้น').replace(/"/g,'&quot;')}">🏷 ${r.commodity}</div>`
       : '';
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span>${fixRemark}${commTag}</td>
