@@ -526,6 +526,7 @@ body{font-size:14px;font-weight:450}
       <button onclick="clearFilters()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">✕ Clear</button>
       <button onclick="addManualRate()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.3)">+ Add Rate</button>
       <button onclick="openPasteRatesModal()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--cyan);border-color:rgba(41,128,185,.35)">📋 Paste Rates</button>
+      <button onclick="publishRatesToShared('manual')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--gold);border-color:rgba(183,128,10,.4)" title="เผยแพร่ rate ปัจจุบันเข้าคลังกลาง ให้ทุก account เห็น (มี confirm + log)">☁ เผยแพร่ให้ทุก account</button>
     </div>
   </div>
 
@@ -3514,8 +3515,7 @@ function applyRate(idx){
 }
 
 // ── Factory Origin Toggle (LKB / BKK) ─────────────────────
-// ติ๊ก LKB/BKK = เปลี่ยน POL ตอน save + ตั้ง Inland Haulage COST = 100 USD (ค่าเริ่มต้น)
-// แก้ราคาเองทีหลังได้ และถ้าติ๊กซ้ำจะคงราคาที่แก้ไว้ (ไม่รีเซ็ตกลับ 100)
+// ติ๊ก LKB/BKK = เปลี่ยน POL ตอน save + ตั้ง Inland Haulage COST = 100 USD (แก้เองได้, ติ๊กซ้ำคงค่าที่แก้)
 const _INLAND_LKB_DEFAULT = 100;
 function _findInlandCostInput(){
   const rows=[...document.querySelectorAll('#charge_body tr')];
@@ -3844,17 +3844,10 @@ function saveShipment(){
   // FIX 1: don't let a sticky Status/Month filter hide the shipment we just saved
   try{
     const _sf=g('status_filter');
-    if(_sf && _sf.value && _sf.value!==jobData.status){
-      _sf.value='';
-      if(window._savedFilterPrefs) window._savedFilterPrefs.status_filter='';
-      toast('ℹ️ ล้างตัวกรอง Status ให้แล้ว (งานใหม่คนละสถานะ)');
-    }
+    if(_sf && _sf.value && _sf.value!==jobData.status){ _sf.value=''; if(window._savedFilterPrefs) window._savedFilterPrefs.status_filter=''; toast('ℹ️ ล้างตัวกรอง Status ให้แล้ว (งานใหม่คนละสถานะ)'); }
     const _mf=g('month_filter');
     const _jm = jobData.jobType==='import'?(jobData.etaMonth||''):(jobData.etdMonth||'');
-    if(_mf && _mf.value && _jm && _mf.value!==_jm){
-      _mf.value=''; window._monthFilterCleared=true;
-      if(window._savedFilterPrefs) window._savedFilterPrefs.month_filter='';
-    }
+    if(_mf && _mf.value && _jm && _mf.value!==_jm){ _mf.value=''; window._monthFilterCleared=true; if(window._savedFilterPrefs) window._savedFilterPrefs.month_filter=''; }
   }catch(e){}
   renderShipments();updateAlertCount();storageSave();
   // FIX 2: push to cloud IMMEDIATELY so other devices see this shipment right away
@@ -7743,6 +7736,58 @@ async function fbSet(path, data){
 window.fbSet = fbSet;
 window.fbGet = fbGet;
 
+// ── SHARED RATE POOL — rate ทั้งหมดอยู่ที่ collection กลาง sharedRates ทุก account เห็นเหมือนกัน ──
+async function fbGetShared(path){
+  try{ const snap=await getDoc(doc(db,...path.split('/'))); return snap.exists()?snap.data():null; }
+  catch(e){ console.warn('fbGetShared',e); return null; }
+}
+async function fbSetShared(path, data){
+  try{ await setDoc(doc(db,...path.split('/')), data, {merge:true}); return true; }
+  catch(e){ console.warn('fbSetShared',e); return false; }
+}
+window.fbGetShared=fbGetShared; window.fbSetShared=fbSetShared;
+
+async function loadSharedRates(){
+  const meta = await fbGetShared('sharedRates/meta');
+  if(!meta || !(meta.chunks>0)) return [];
+  const ps=[]; for(let i=0;i<meta.chunks;i++) ps.push(fbGetShared('sharedRates/chunk_'+i));
+  const chunks = await Promise.all(ps);
+  return chunks.flatMap(c=>c && c.rates ? c.rates : []);
+}
+window.loadSharedRates=loadSharedRates;
+
+// เผยแพร่ ALL_RATES เข้าคลังกลาง — มี confirm ก่อนแก้ + เขียน log ที่ลบไม่ได้
+window.publishRatesToShared = async function(source, skipConfirm){
+  if(!uid()){ toast('❌ ยังไม่ได้ล็อกอิน'); return false; }
+  const rates = window.ALL_RATES||[];
+  const meta = await fbGetShared('sharedRates/meta');
+  const before = (meta && meta.total) || 0;
+  const after = rates.length;
+  if(!skipConfirm){
+    if(!confirm('เผยแพร่ RATE เข้าคลังกลาง (ทุก account จะเห็นชุดนี้)?\n\nปัจจุบันในคลังกลาง: '+before+' rate\nจะเปลี่ยนเป็น: '+after+' rate\n\nกด OK เพื่อยืนยัน · Cancel เพื่อยกเลิก')){
+      toast('ยกเลิกการเผยแพร่ rate'); return false;
+    }
+  }
+  try{
+    const CHUNK=500, numChunks=Math.ceil(after/CHUNK)||0;
+    const writes=[];
+    for(let i=0;i<numChunks;i++) writes.push(fbSetShared('sharedRates/chunk_'+i, {rates:rates.slice(i*CHUNK,(i+1)*CHUNK)}));
+    writes.push(fbSetShared('sharedRates/meta', {chunks:numChunks, total:after, updatedAt:new Date().toISOString(), by:((window._currentUser&&window._currentUser.email)||uid()||'')}));
+    await Promise.all(writes);
+    // เคลียร์ chunk เก่าที่เกิน (กรณีชุดใหม่เล็กลง)
+    if(meta && meta.chunks>numChunks){ for(let i=numChunks;i<meta.chunks;i++){ try{ await fbSetShared('sharedRates/chunk_'+i, {rates:[]}); }catch(e){} } }
+    // LOG แก้ไม่ได้ (create-only)
+    try{
+      const logId=Date.now()+'_'+String(uid()||'x').slice(0,6);
+      await setDoc(doc(db,'sharedRateLog',logId), { at:new Date().toISOString(), byUid:(uid()||''), byEmail:((window._currentUser&&window._currentUser.email)||''), action:(source||'publish'), before:before, after:after });
+    }catch(e){ console.warn('rate log',e); }
+    window._sfpSyncHash.rates = _sfpHash(rates);
+    showSyncBadge(true);
+    toast('☁ เผยแพร่ '+after.toLocaleString()+' rate เข้าคลังกลางแล้ว — ทุก account เห็น');
+    return true;
+  }catch(e){ showSyncBadge(false); console.warn('publishRatesToShared',e); toast('❌ เผยแพร่ rate ไม่สำเร็จ: '+(e&&e.message||e)); return false; }
+};
+
 // Strict variant that actually throws on failure, for call sites that need to know
 // whether the write really succeeded (fbSet swallows errors silently by design).
 window.fbSetStrict = async function(path, data){
@@ -8068,17 +8113,20 @@ async function initFirestoreSync(){
   window._sfpSyncHash.rates      = _sfpHash(window.ALL_RATES||[]); // re-seeded after chunk load below
   window._sfpSyncHash.dbIntransit= _sfpHash(window.__getDbRows?.()||[]);
 
-  // Load rates from Firestore chunks — skip if user intentionally cleared
-  if(rateMetaSnap?.chunks > 0 && !userClearedRates()){
+  // Load rates — prefer the SHARED cross-account pool (sharedRates); fall back to
+  // this account's own rates only if the shared pool is still empty (pre-migration).
+  if(!userClearedRates()){
     try{
-      const chunkPromises = [];
-      for(let i=0; i<rateMetaSnap.chunks; i++) chunkPromises.push(fbGet(`data/rates_${i}`));
-      const chunks = await Promise.all(chunkPromises);
-      const allRates = chunks.flatMap(c => c?.rates||[]);
-      if(allRates.length){
+      let allRates = await loadSharedRates();
+      if((!allRates || !allRates.length) && rateMetaSnap?.chunks > 0){
+        const chunkPromises = [];
+        for(let i=0; i<rateMetaSnap.chunks; i++) chunkPromises.push(fbGet(`data/rates_${i}`));
+        const chunks = await Promise.all(chunkPromises);
+        allRates = chunks.flatMap(c => c?.rates||[]);
+      }
+      if(allRates && allRates.length){
         window.ALL_RATES = allRates;
         try{ localStorage.setItem('seafreight_rates_v1', JSON.stringify(allRates)); }catch(e){}
-        // Re-seed rate hash to the cloud copy so storageSave won't re-upload it.
         window._sfpSyncHash.rates = _sfpHash(window.ALL_RATES||[]);
       }
     }catch(e){ console.warn('Rate load error',e); }
@@ -8119,22 +8167,8 @@ async function initFirestoreSync(){
 
   // ── Exposed sync function for rates ──
   window.syncRatesToCloud = async function(){
-    if(!uid()) return;
-    const rates = window.ALL_RATES||[];
-    if(!rates.length) return;
-    try{
-      const CHUNK = 500;
-      const numChunks = Math.ceil(rates.length/CHUNK);
-      const promises = [];
-      for(let i=0;i<numChunks;i++){
-        promises.push(fbSet(`data/rates_${i}`, {rates: rates.slice(i*CHUNK,(i+1)*CHUNK)}));
-      }
-      promises.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt:new Date().toISOString()}));
-      await Promise.all(promises);
-      window._sfpSyncHash.rates = _sfpHash(rates);
-      showSyncBadge(true);
-      toast('☁ Rates synced to cloud ('+rates.length+' routes)');
-    }catch(e){ showSyncBadge(false); console.warn('Rate sync error',e); }
+    // rate ย้ายไปคลังกลางแล้ว — เผยแพร่ผ่าน publishRatesToShared (มี confirm + log)
+    return window.publishRatesToShared ? window.publishRatesToShared('sync') : false;
   };
 
   // ── Patch storageSave → debounced, dirty-tracked Firestore write ──
@@ -8190,18 +8224,10 @@ async function initFirestoreSync(){
       writes.push(fbSet('data/deletedJobs', {list: delData, updatedAt: now()}));
       newHash.deleted = delH;
     }
-    // Rates — the expensive part. Write chunks ONLY when they changed.
-    const rates = window.ALL_RATES||[];
-    const ratesH = _sfpHash(rates);
-    if(ratesH !== window._sfpSyncHash.rates){
-      const CHUNK = 500;
-      const numChunks = Math.ceil(rates.length/CHUNK);
-      for(let i=0;i<numChunks;i++){
-        writes.push(fbSet(`data/rates_${i}`, {rates: rates.slice(i*CHUNK,(i+1)*CHUNK)}));
-      }
-      writes.push(fbSet('data/rateMeta', {chunks:numChunks, total:rates.length, updatedAt: now()}));
-      newHash.rates = ratesH;
-    }
+    // Rates now live in the SHARED pool (sharedRates), published explicitly via
+    // publishRatesToShared() with confirm + log — so the automatic per-account flush
+    // no longer writes rates. Keep the hash in sync so this stays a no-op.
+    window._sfpSyncHash.rates = _sfpHash(window.ALL_RATES||[]);
 
     if(!writes.length) return; // nothing changed → zero writes
     _flushInFlight = true;
