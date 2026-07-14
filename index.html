@@ -1668,7 +1668,7 @@ let sortField  = 'gp20'; let sortAsc = true;
 const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Dest','B/L Fee','Surrender Fee','Seal Fee','Inland Haulage','Port Congestion','Wharfage','ISPS','AMS/ENS','Handling Fee','Others'];
 const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Surrender Fee','Inland Haulage','AMS/ENS','Handling Fee','Others'];
 // Charges that multiply by number of containers (per-CTN)
-const PER_CTN_CHARGES = new Set(['Ocean Freight','Ocean Freight (per CBM)','THC Origin','THC Dest','Inland Haulage','ISPS']);
+const PER_CTN_CHARGES = new Set(['Ocean Freight','Ocean Freight (per CBM)','THC Origin','THC Dest','Inland Haulage','ISPS','Seal Fee']);
 
 const MN = {'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
 
@@ -7666,7 +7666,7 @@ function clearImgExtract(){
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getFirestore, initializeFirestore, doc, setDoc, getDoc, onSnapshot }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject }
   from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
@@ -7682,7 +7682,7 @@ const firebaseConfig = {
 
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db   = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
+const db   = getFirestore(app);
 const storage = getStorage(app);
 let _currentUser = null;
 
