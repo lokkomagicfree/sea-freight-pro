@@ -3855,7 +3855,7 @@ function saveShipment(){
     if(_mf && _mf.value && _jm && _mf.value!==_jm){ _mf.value=''; window._monthFilterCleared=true; if(window._savedFilterPrefs) window._savedFilterPrefs.month_filter=''; }
   }catch(e){}
   renderShipments();updateAlertCount();storageSave();
-  try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
+  try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){}
 }
 
 function editShipment(idx){
@@ -7784,6 +7784,23 @@ window.publishRatesToShared = async function(source, skipConfirm){
     toast('☁ เผยแพร่ '+after.toLocaleString()+' rate เข้าคลังกลางแล้ว — ทุก account เห็น');
     return true;
   }catch(e){ showSyncBadge(false); console.warn('publishRatesToShared',e); toast('❌ เผยแพร่ rate ไม่สำเร็จ: '+(e&&e.message||e)); return false; }
+};
+
+// ── บันทึก shipment ขึ้น cloud ทันทีแบบยืนยันผล (กันงานหาย) ──
+window.syncShipmentsNow = async function(){
+  if(!uid()){ toast('⚠ ยังไม่ได้ล็อกอิน — งานยังไม่ขึ้น cloud'); return false; }
+  try{
+    await window.fbSetStrict('data/jobs', {jobs: window.savedJobs||[], updatedAt:new Date().toISOString()});
+    if(window._sfpSyncHash) window._sfpSyncHash.jobs = _sfpHash(window.savedJobs||[]);
+    showSyncBadge(true);
+    toast('☁ บันทึกขึ้น cloud แล้ว ✓');
+    return true;
+  }catch(e){
+    showSyncBadge(false);
+    console.warn('syncShipmentsNow',e);
+    toast('⚠ ขึ้น cloud ไม่สำเร็จ — เช็คเน็ตแล้วกด Save ใหม่');
+    return false;
+  }
 };
 
 // Strict variant that actually throws on failure, for call sites that need to know
