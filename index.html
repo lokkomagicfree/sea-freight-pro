@@ -1751,6 +1751,7 @@ const TODO_KEY    = 'seafreight_todos_v1';
 function storageSave(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedJobs));
+    try{ localStorage.setItem('sfp_jobs_savedAt', new Date().toISOString()); }catch(_e){}
     // Save settings
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({commRate, exRate, commMode, commSalary, commAllowance}));
     // Save rates (always save — even empty — so clear() persists across refresh)
@@ -8055,9 +8056,18 @@ async function initFirestoreSync(){
     let local=[]; try{ local=JSON.parse(localStorage.getItem('seafreight_jobs_v1')||'[]')||[]; }catch(e){}
     local = local.filter(j=>j && !isDel(j.no));
     const byNo=new Map();
-    cloud.forEach(j=>{ if(j&&j.no!=null) byNo.set(String(j.no),j); });
     let addedLocal=0;
-    local.forEach(j=>{ if(j&&j.no!=null&&!byNo.has(String(j.no))){ byNo.set(String(j.no),j); addedLocal++; } });
+    const _localTs = localStorage.getItem('sfp_jobs_savedAt')||'';
+    const _cloudTs = jobsSnap.updatedAt||'';
+    const _localNewer = _localTs && (!_cloudTs || _localTs > _cloudTs);
+    if(_localNewer){
+      // local เพิ่งเซฟใหม่กว่า cloud → ยึด local เป็นหลัก (กันข้อมูลที่เพิ่งกรอกหายตอน refresh เร็ว)
+      local.forEach(j=>{ if(j&&j.no!=null) byNo.set(String(j.no),j); });
+      cloud.forEach(j=>{ if(j&&j.no!=null&&!byNo.has(String(j.no))) byNo.set(String(j.no),j); });
+    } else {
+      cloud.forEach(j=>{ if(j&&j.no!=null) byNo.set(String(j.no),j); });
+      local.forEach(j=>{ if(j&&j.no!=null&&!byNo.has(String(j.no))){ byNo.set(String(j.no),j); addedLocal++; } });
+    }
     const merged=[...byNo.values()];
     window.savedJobs = merged;
     try{ localStorage.setItem('seafreight_jobs_v1', JSON.stringify(merged)); }catch(e){}
