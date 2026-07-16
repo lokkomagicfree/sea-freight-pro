@@ -495,6 +495,7 @@ body{font-size:14px;font-weight:450}
         <option value="FIX">FIX</option><option value="FAK">FAK</option>
         <option value="BULLET">BUL</option><option value="FOOD">FOOD</option>
         <option value="ISC-ME">ISC-ME</option>
+        <option value="MED">MED</option>
         <option value="IA-EU">IA-EU</option>
         <option value="REEFER">❄️ REEFER</option>
         <option value="OTHER">OTHER</option>
@@ -628,6 +629,7 @@ body{font-size:14px;font-weight:450}
       <input class="fi" id="jobno_search" placeholder="🔍 Job No…" oninput="renderShipments()" spellcheck="false" style="width:160px;font-size:12px;padding:6px 10px">
       <input class="fi" id="ref_search" placeholder="🔍 REF No…" oninput="renderShipments()" spellcheck="false" style="width:150px;font-size:12px;padding:6px 10px">
       <input class="fi" id="cust_search" placeholder="🔍 Customer…" oninput="renderShipments()" spellcheck="false" style="width:160px;font-size:12px;padding:6px 10px">
+      <input class="fi" id="carrier_search" placeholder="🔍 Carrier…" oninput="renderShipments()" spellcheck="false" style="width:130px;font-size:12px;padding:6px 10px">
       <select class="fi" id="month_filter" onchange="window._monthFilterCleared=!this.value;renderShipments();saveFilterPrefs()" style="width:145px;font-size:12px;padding:6px 10px">
         <option value="">📅 All Months</option>
       </select>
@@ -1956,13 +1958,13 @@ function vBadge(s){
 function srcCls(s,r){
   if(r && r.container_type==='REEFER') return 'src-reefer';
   if(s==='image_upload') return 'src-bullet';
-  const m={FIX:'src-fix',FAK:'src-wwl',BULLET:'src-bullet',FOOD:'src-food','ISC-ME':'src-isc','IA-EU':'src-iaeu',TP:'src-tp'};
+  const m={FIX:'src-fix',FAK:'src-wwl',BULLET:'src-bullet',FOOD:'src-food','ISC-ME':'src-isc','MED':'src-isc','IA-EU':'src-iaeu',TP:'src-tp'};
   return m[s]||'src-import';
 }
 function srcLabel(s,r){
   if(r && r.container_type==='REEFER') return 'RF';
   if(s==='image_upload') return 'BUL';
-  const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','IA-EU':'IA-EU'};
+  const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','MED':'MED','IA-EU':'IA-EU'};
   return m[s]||'OTHER';
 }
 
@@ -2546,7 +2548,7 @@ function applyFilter(resetPage=true){
   if(resetPage) curPage=1;
   const src=v('f_source'),car=v('f_carrier'),pol=v('f_pol').toLowerCase(),pod=v('f_pod').toLowerCase(),del_=v('f_del').toLowerCase();
   const val=v('f_validity')||'',sort=v('f_sort')||'gp20_asc';
-  const KNOWN_SRCS = new Set(['FIX','FAK','BULLET','FOOD','ISC-ME','IA-EU']);
+  const KNOWN_SRCS = new Set(['FIX','FAK','BULLET','FOOD','ISC-ME','MED','IA-EU']);
   let filtered=ALL_RATES.filter(r=>{
     if(src==='REEFER'){
       if(r.container_type!=='REEFER') return false;
@@ -3990,6 +3992,7 @@ function renderShipments(){
   const jobnoQ=(v('jobno_search')||'').toLowerCase().trim();
   const ref=(v('ref_search')||'').toLowerCase().trim();
   const cust=(v('cust_search')||'').toLowerCase().trim();
+  const car=(v('carrier_search')||'').toLowerCase().trim();
   const stFilt=v('status_filter')||'';
   // Populate month dropdown — apply pending pref FIRST before reading value
   const mthSel=g('month_filter');
@@ -4015,6 +4018,7 @@ function renderShipments(){
     if(jobnoQ&&!(j.jobno||'').toLowerCase().includes(jobnoQ))return false;
     if(ref&&!(j.refno||'').toLowerCase().includes(ref))return false;
     if(cust&&!(j.customer||j.shipper||'').toLowerCase().includes(cust))return false;
+    if(car&&!(j.carrier||j.selCarrier||'').toLowerCase().includes(car))return false;
     if(stFilt&&j.status!==stFilt)return false;
     if(mthFilt){const jm=j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'');if(jm!==mthFilt)return false;}
     if(etdFrom||etdTo){const d=j.etd||'';if(!d)return false;if(etdFrom&&d<etdFrom)return false;if(etdTo&&d>etdTo)return false;}
