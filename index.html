@@ -963,6 +963,7 @@ body{font-size:14px;font-weight:450}
           <table style="width:100%;border-collapse:collapse;font-size:12px" id="q_rate_tbl">
             <thead><tr style="border-bottom:1px solid var(--border)">
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:80px">Carrier</th>
+              <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:110px">POL</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:140px">POD</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:120px">DEL</th>
               <th id="q_col_rate" style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
@@ -6077,9 +6078,9 @@ function openGroupMailto(){
 
 // ── Quotation Page ─────────────────────────────────────────
 
-function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit='', del=''){
+function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit='', del='', pol=''){
   const id = Date.now() + Math.random();
-  qRateRows.push({id, carrier, pod, del, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
+  qRateRows.push({id, carrier, pol, pod, del, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
   qRenderRateRows();
   qPreview();
 }
@@ -6095,6 +6096,8 @@ function qRenderRateRows(){
     <tr style="border-bottom:1px solid rgba(30,48,80,.3)">
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="e.g. Laem Chabang"
+        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:100px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. New York"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="e.g. Chicago"
@@ -6254,7 +6257,7 @@ function qApplyRate(idx){
   const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
   set('q_pol', r.pol);
   const vd = r.validity || (r.date_from&&r.date_to ? r.date_from+' ~ '+r.date_to : '');
-  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'', r.dem||'', r.det||'', r.combined||'', r.direct||'', r.tt||'', '', r.del||'');
+  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'', r.dem||'', r.det||'', r.combined||'', r.direct||'', r.tt||'', '', r.del||'', r.pol||'');
   toast('✅ Added: '+r.carrier+' '+r.pol+' → '+r.pod);
   // Scroll to rate table so user can see the added row
   const tbl = document.getElementById('q_rate_tbl');
@@ -6304,7 +6307,7 @@ function qBuildEmail(){
       const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
       if(isLCL){
         if(!r20) return;
-        lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
+        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
         lines.push(`  USD ${r20.toLocaleString()} / CBM (W/M, min 1 CBM)`);
         if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
         lines.push('');
@@ -6314,7 +6317,7 @@ function qBuildEmail(){
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
       if(!parts.length) return;
-      lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
+      lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
       lines.push(`  ${parts.join(' / ')}`);
       if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
       lines.push('');
@@ -6600,7 +6603,7 @@ function qCopyLine(){
         if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
         if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
       }
-      lines.push(`  ${pol?pol+' - ':''}${pod}`);
+      lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${pod}`);
       if(parts.length) lines.push(`  ${parts.join(' / ')} `);
       lines.push('');
     });
