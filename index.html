@@ -734,7 +734,7 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">Mother Vessel</label><input spellcheck="false" class="inp" id="s_mother_vessel" placeholder="Mother vessel name"></div>
           <div class="inp-group"><label class="inp-lbl">Voy (Mother)</label><input spellcheck="false" class="inp" id="s_mother_voy" placeholder="Mother voyage no."></div>
           <div class="inp-group"><label class="inp-lbl">Type</label>
-            <select class="inp" id="s_type" onchange="buildCharges()"><option>FCL</option><option>LCL</option></select></div>
+            <select class="inp" id="s_type" onchange="onShipTypeChange()"><option>FCL</option><option>LCL</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Job Type</label>
             <select class="inp" id="s_jobtype"><option value="export">Export</option><option value="import">Import</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Status</label>
@@ -749,6 +749,11 @@ body{font-size:14px;font-weight:450}
             <div id="ctn_rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
             <button type="button" onclick="addCtnRow()" class="btn btn-ghost" style="font-size:11px;padding:4px 12px;width:100%">+ Add Container Type</button>
             <div id="ctn_warn" style="display:none;margin-top:6px;font-size:11px;color:var(--red);font-family:var(--mono);background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:6px;padding:6px 10px"></div>
+          </div>
+          <div class="inp-group full-col" id="s_cbm_card" style="display:none">
+            <label class="inp-lbl">Volume (CBM) — LCL</label>
+            <input type="number" min="0" step="0.001" class="inp" id="s_cbm" placeholder="e.g. 3.5" oninput="recalc()" style="color:var(--text)">
+            <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:4px">W/M ขั้นต่ำ 1 CBM — charge (Freight + Local) คูณตาม CBM</div>
           </div>
           <div class="inp-group full-col"><label class="inp-lbl">Remarks</label><input spellcheck="false" class="inp" id="s_remarks" placeholder="หมายเหตุ…" style="color:var(--text)"></div>
           <div class="inp-group"><label class="inp-lbl">👤 CS Assigned</label><input spellcheck="false" class="inp" id="s_cs_assigned" placeholder="ชื่อ CS ที่ดูแล…"></div>
@@ -938,6 +943,8 @@ body{font-size:14px;font-weight:450}
             <input spellcheck="false" class="inp" id="q_pod" placeholder="e.g. Sokhna" oninput="qFilterRates()" autocomplete="off">
             <div id="qac_pod" class="ac-drop" style="display:none"></div></div>
           <div class="inp-group"><label class="inp-lbl">Incoterm</label><input spellcheck="false" class="inp" id="q_incoterm" placeholder="e.g. CIF"></div>
+          <div class="inp-group"><label class="inp-lbl">Type</label>
+            <select class="inp" id="q_type" onchange="qTypeChange()"><option>FCL</option><option>LCL</option></select></div>
           <div class="inp-group"><label class="inp-lbl">Valid Date</label><input spellcheck="false" class="inp" id="q_valid" placeholder="e.g. May 1-31 2026"></div>
           <div class="inp-group"><label class="inp-lbl">F/T (Transit)</label><input spellcheck="false" class="inp" id="q_transit" placeholder="e.g. 14 days combine"></div>
           <div class="inp-group"><label class="inp-lbl">Vessel</label><input spellcheck="false" class="inp" id="q_vessel" placeholder="e.g. EVER GIVEN 123E"></div>
@@ -951,14 +958,14 @@ body{font-size:14px;font-weight:450}
       </div>
 
       <div class="card" style="margin-top:12px">
-        <div class="card-title">📦 Sell Rates (USD)</div>
+        <div class="card-title" id="q_rate_title">📦 Sell Rates (USD)</div>
         <div style="overflow-x:auto;margin-bottom:8px">
           <table style="width:100%;border-collapse:collapse;font-size:12px" id="q_rate_tbl">
             <thead><tr style="border-bottom:1px solid var(--border)">
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:80px">Carrier</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:140px">POD</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:120px">DEL</th>
-              <th style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
+              <th id="q_col_rate" style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DEM</th>
@@ -1678,6 +1685,8 @@ const CHARGES_FCL = ['Ocean Freight','BAF/CAF','PSS','EBS','THC Origin','THC Des
 const CHARGES_LCL = ['Ocean Freight (per CBM)','CFS Origin','CFS Dest','BAF/CAF','THC Origin','THC Dest','B/L Fee','Surrender Fee','Inland Haulage','AMS/ENS','Handling Fee','Others'];
 // Charges that multiply by number of containers (per-CTN)
 const PER_CTN_CHARGES = new Set(['Ocean Freight','Ocean Freight (per CBM)','THC Origin','THC Dest','Inland Haulage','ISPS','Seal Fee']);
+// LCL: charges that multiply by CBM (freight + main local charges). B/L Fee, Surrender, AMS/ENS = flat per BL.
+const PER_CBM_CHARGES = new Set(['Ocean Freight (per CBM)','CFS Origin','CFS Dest','THC Origin','THC Dest','Handling Fee']);
 
 const MN = {'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
 
@@ -2946,16 +2955,29 @@ window.deleteLocalChargeTemplate = async function(){
   }catch(e){ toast('❌ '+e.message); }
 };
 
+// Toggle Container card (FCL) vs CBM card (LCL) then rebuild charges
+window.onShipTypeChange = function(){
+  const isLCL = v('s_type')==='LCL';
+  const qc=g('s_qty_card'), cc=g('s_cbm_card');
+  if(qc) qc.style.display = isLCL ? 'none' : '';
+  if(cc) cc.style.display = isLCL ? '' : 'none';
+  buildCharges();
+};
+
 function buildCharges(){
   const type=v('s_type'),items=type==='FCL'?CHARGES_FCL:CHARGES_LCL;
   const tbody=g('charge_body');if(!tbody)return;
 
+  const isLCL = type==='LCL';
+  const cbm = parseFloat(v('s_cbm'))||0;
+  const effCBM = Math.max(cbm,1);          // W/M minimum 1 CBM
+  const perUnitSet = isLCL ? PER_CBM_CHARGES : PER_CTN_CHARGES;
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
 
-  // Charges that need per-container-type split inputs
+  // Charges that need per-container-type split inputs (FCL only)
   const SPLIT_CHARGES = ['Ocean Freight','THC Origin','THC Dest'];
   const ctnTypes = (_ctnRows||[]).filter(r=>r.qty>0);
-  const needSplit = ctnTypes.length > 1;
+  const needSplit = !isLCL && ctnTypes.length > 1;
 
   tbody.innerHTML=items.map((name,i)=>{
     const isTHB=isThbCharge(name);
@@ -2968,10 +2990,12 @@ function buildCharges(){
       data-apr="0" title="Toggle As per receipt">APR</button>` : '';
 
     const doSplit = needSplit && SPLIT_CHARGES.includes(name);
-    const isPerCtn = PER_CTN_CHARGES.has(name);
-    const qtyLabel = isPerCtn && totalQty > 1
-      ? `<span style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-left:4px">×${totalQty}</span>`
-      : '';
+    const isPerCtn = perUnitSet.has(name);
+    const qtyLabel = isLCL
+      ? (isPerCtn ? `<span style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-left:4px">×${effCBM} CBM</span>` : '')
+      : (isPerCtn && totalQty > 1
+        ? `<span style="font-size:9px;font-family:var(--mono);color:var(--muted);margin-left:4px">×${totalQty}</span>`
+        : '');
 
     // The "Others" row gets an editable item name + a clickable THB/USD badge.
     const isEditableName = (name === 'Others');
@@ -3081,10 +3105,15 @@ window.toggleChargePerCtn = function(btn){
 
 function recalc(){
   const totalQty = (_ctnRows||[]).reduce((s,r)=>s+(r.qty||1),0) || 1;
+  const _type = v('s_type'); const _isLCL = _type==='LCL';
+  const _cbm = parseFloat(v('s_cbm'))||0; const _effCBM = Math.max(_cbm,1);  // W/M min 1 CBM
+  const unitQty = _isLCL ? _effCBM : totalQty;
+  const perUnitSet = _isLCL ? PER_CBM_CHARGES : PER_CTN_CHARGES;
   const badge = g('charge_qty_badge');
   if(badge){
-    const label = (_ctnRows||[]).filter(r=>r.qty>0).map(r=>r.qty+'×'+r.type).join(', ') || '1×20GP';
-    badge.textContent = label;
+    badge.textContent = _isLCL
+      ? ((_cbm||0)+' CBM'+(_cbm<1?' (min 1)':''))
+      : ((_ctnRows||[]).filter(r=>r.qty>0).map(r=>r.qty+'×'+r.type).join(', ') || '1×20GP');
   }
   const rows=[...document.querySelectorAll('#charge_body tr')];
   let ts=0, tc=0;
@@ -3095,9 +3124,9 @@ function recalc(){
     const chargeName = row.dataset?.charge || '';
     const rate = isTHB?(exRate||35):1;
 
-    // Only multiply by container qty for designated per-CTN charges
-    const isPerCtn = row.dataset?.perctn==='1' || [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
-    const qty = isPerCtn ? totalQty : 1;
+    // Multiply by container qty (FCL) or CBM (LCL) for designated per-unit charges
+    const isPerCtn = row.dataset?.perctn==='1' || [...perUnitSet].some(n=>chargeName===n.toLowerCase());
+    const qty = isPerCtn ? unitQty : 1;
 
     let rowSell=0, rowCost=0;
 
@@ -3763,14 +3792,18 @@ function saveShipment(){
   // charges scale with the container count; flat fees (B/L, Surrender, Seal,
   // Docs…) are counted once. Split rows are already weighted per type inside
   // sells/costs, so they must not be multiplied again.
+  const _isLCL = v('s_type')==='LCL';
+  const _cbm = parseFloat(v('s_cbm'))||0;
+  const _unitQty = _isLCL ? Math.max(_cbm,1) : totalQty;   // W/M min 1 CBM for LCL
+  const _perUnitSet = _isLCL ? PER_CBM_CHARGES : PER_CTN_CHARGES;
   let ts=0,tc=0;
   chargeRows.forEach((row,i)=>{
     const isTHB   = row.dataset?.thb==='true';
     const isSplit = row.dataset?.split==='true';
     const chargeName = row.dataset?.charge || '';
     const rate = isTHB?(exRate||35):1;
-    const isPerCtn = row.dataset?.perctn==='1' || [...PER_CTN_CHARGES].some(n=>chargeName===n.toLowerCase());
-    const qty = (isSplit || !isPerCtn) ? 1 : totalQty;
+    const isPerCtn = row.dataset?.perctn==='1' || [..._perUnitSet].some(n=>chargeName===n.toLowerCase());
+    const qty = (isSplit || !isPerCtn) ? 1 : _unitQty;
     ts += ((sells[i]||0)*qty)/rate;
     tc += ((costs[i]||0)*qty)/rate;
   });
@@ -3786,7 +3819,7 @@ function saveShipment(){
     etd:etdVal,eta:etaVal,etdMonth:etdVal?etdVal.slice(0,7):'Unknown',etaMonth:etaVal?etaVal.slice(0,7):'Unknown',
     jobType,vessel:v('s_vessel'),motherVessel:v('s_mother_vessel'),voyage:v('s_voyage'),motherVoy:v('s_mother_voy'),remarks:v('s_remarks'),
     csAssigned:v('s_cs_assigned')||'', csTasks:v('s_cs_tasks')||'',
-    status:v('s_status')||'pending',chargeType:v('s_type'),
+    status:v('s_status')||'pending',chargeType:v('s_type'),cbm:parseFloat(v('s_cbm'))||0,
     sells,costs,sellsPerType,costsPerType,sell:ts,cost:tc,profit,margin,comm,commThb:comm*exRate,commRate,rate:exRate,
     carrier:v2('s_carrier'),incoterm:v2('s_incoterm'),consignee:v2('s_consignee'),
     bltype:v2('s_bltype'),sc:v2('s_sc'),ams:v2('s_ams'),commodity:v2('s_commodity'),
@@ -3891,6 +3924,8 @@ function editShipment(idx){
   const bkkT=g('bkk_toggle'); if(bkkT) bkkT.checked=j.bkk||false;
   if(j.pol||j.pod)setTimeout(filterRoutes,150);
   if(j.chargeType)set('s_type',j.chargeType);
+  set('s_cbm', j.cbm||'');
+  { const isLCL=(j.chargeType==='LCL'); const qc=g('s_qty_card'),cc=g('s_cbm_card'); if(qc)qc.style.display=isLCL?'none':''; if(cc)cc.style.display=isLCL?'':'none'; }
   // Restore container rows
   if(j.ctnRows && j.ctnRows.length){ _ctnRows = JSON.parse(JSON.stringify(j.ctnRows)); }
   else {
@@ -3975,8 +4010,9 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del','s_cbm'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
+  { const st=g('s_type'); if(st) st.value='FCL'; const qc=g('s_qty_card'),cc=g('s_cbm_card'); if(qc)qc.style.display=''; if(cc)cc.style.display='none'; }
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
   const lkbInfo=g('lkb_arb_info'); if(lkbInfo){lkbInfo.style.display='none';lkbInfo.innerHTML='';}
@@ -6167,6 +6203,16 @@ function qRemoveLocal(id){
 
 function qRecalc(){ qPreview(); }
 
+// LCL/FCL toggle for quotation: relabel rate column + rebuild preview
+window.qTypeChange = function(){
+  const isLCL = ((document.getElementById('q_type')||{}).value)==='LCL';
+  const col = document.getElementById('q_col_rate');
+  if(col) col.textContent = isLCL ? 'USD / CBM' : '20 GP';
+  const title = document.getElementById('q_rate_title');
+  if(title) title.textContent = isLCL ? '📦 Sell Rates (USD / CBM — LCL · W/M min 1)' : '📦 Sell Rates (USD)';
+  qPreview();
+};
+
 function qFilterRates(){
   const car = (document.getElementById('q_f_carrier')?.value||'').toLowerCase();
   const pol = (document.getElementById('q_f_pol')?.value||document.getElementById('q_pol')?.value||'').toLowerCase().trim();
@@ -6237,6 +6283,7 @@ function qBuildEmail(){
   const remarks = get('q_remarks');
   const subjto  = get('q_subjto');
   const globalValid = get('q_valid');
+  const isLCL   = get('q_type')==='LCL';
 
   // Group rows by carrier
   const groups = {};
@@ -6255,6 +6302,14 @@ function qBuildEmail(){
       const _p=parseFloat(row.profit)||0;
       const _b20=parseFloat(row.r20)||0, _b40=parseFloat(row.r40)||0, _b4h=parseFloat(row.r4h)||0;
       const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
+      if(isLCL){
+        if(!r20) return;
+        lines.push(`  ${pol?pol+' - ':''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
+        lines.push(`  USD ${r20.toLocaleString()} / CBM (W/M, min 1 CBM)`);
+        if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
+        lines.push('');
+        return;
+      }
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
@@ -6519,6 +6574,7 @@ function qCopyLine(){
   const transit    = get('q_transit');
   const vessel     = get('q_vessel');
   const etd        = get('q_etd');
+  const isLCL      = get('q_type')==='LCL';
   const rateData   = qRateRows||[];
   if(!rateData.length){ toast('❌ ยังไม่มี rate — เพิ่ม POD ก่อนครับ'); return; }
   // Group by carrier
@@ -6537,9 +6593,13 @@ function qCopyLine(){
       const _b20=parseFloat(row.r20)||0,_b40=parseFloat(row.r40)||0,_b4h=parseFloat(row.r4h)||0;
       const r20=_b20?_b20+_p:0,r40=_b40?_b40+_p:0,r4h=_b4h?_b4h+_p:0;
       const parts=[];
-      if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
-      if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
-      if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
+      if(isLCL){
+        if(r20) parts.push(`USD ${r20.toLocaleString()} / CBM (W/M, min 1 CBM)`);
+      } else {
+        if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
+        if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
+        if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
+      }
       lines.push(`  ${pol?pol+' - ':''}${pod}`);
       if(parts.length) lines.push(`  ${parts.join(' / ')} `);
       lines.push('');
@@ -6594,6 +6654,7 @@ function qSave(){
     carrier:   get('q_carrier'),
     pol:       get('q_pol'),
     incoterm:  get('q_incoterm'),
+    qtype:     get('q_type'),
     valid:     get('q_valid'),
     transit:   get('q_transit'),
     vessel:    get('q_vessel'),
@@ -6739,12 +6800,13 @@ function qLoadQuot(i){
   const set = (id,val)=>{ const e=document.getElementById(id); if(e) e.value=val||''; };
   set('q_customer', q.customer); set('q_carrier', q.carrier); set('q_pol', q.pol);
   set('q_incoterm', q.incoterm); set('q_valid', q.valid); set('q_transit', q.transit);
+  set('q_type',     q.qtype||'FCL');
   set('q_vessel',   q.vessel);   set('q_etd',   q.etd);
   set('q_subjto',   q.subjto);   set('q_connote', q.connote);
   set('q_commodity',q.commodity);set('q_remarks', q.remarks);
   qRateRows  = JSON.parse(JSON.stringify(q.rateRows||[]));
   qLocalRows = JSON.parse(JSON.stringify(q.localRows||[]));
-  qRenderRateRows(); qRenderLocal(); qPreview();
+  qRenderRateRows(); qRenderLocal(); if(typeof qTypeChange==='function') qTypeChange(); qPreview();
   quotEditIdx = i;
   const btn = document.getElementById('quot_save_btn');
   if(btn){ btn.textContent='💾 Update Quotation'; btn.className='btn btn-gold'; btn.style.background=''; }
