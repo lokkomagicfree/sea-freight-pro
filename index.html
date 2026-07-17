@@ -6374,6 +6374,7 @@ window.exportRateSheetXLSX = function(){
   const remarks = get('q_remarks')  || '';
   const valid   = get('q_valid')    || '';
   const isLCL   = get('q_type')==='LCL';
+  const subjto  = get('q_subjto') || '';
   const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
 
   const rateRows  = qRateRows  || [];
@@ -6431,13 +6432,20 @@ window.exportRateSheetXLSX = function(){
 
   /* ── RATE TABLE ── */
   // Column definitions
-  const cols = [
+  const cols = isLCL ? [
+    {label:'POL',        w:34, align:'left'},
+    {label:'POD',        w:48, align:'left'},
+    {label:'DEL',        w:32, align:'left'},
+    {label:'USD / CBM',  w:24, align:'right'},
+    {label:'SUBJ TO',    w:78, align:'left'},
+    {label:'VALID',      w:30, align:'center'},
+  ] : [
     {label:'POL',        w:30, align:'left'},
-    {label:'POD',        w:isLCL?52:38, align:'left'},
+    {label:'POD',        w:38, align:'left'},
     {label:'DEL',        w:28, align:'left'},
-    ...(isLCL
-      ? [{label:'USD / CBM', w:25, align:'right'}]
-      : [{label:"20'", w:17, align:'right'},{label:"40'", w:17, align:'right'},{label:"40'HC", w:17, align:'right'}]),
+    {label:"20'",        w:17, align:'right'},
+    {label:"40'",        w:17, align:'right'},
+    {label:"40'HC",      w:17, align:'right'},
     {label:'CARRIER',    w:15, align:'center'},
     {label:'DEM',        w:11, align:'center'},
     {label:'DET',        w:11, align:'center'},
@@ -6477,15 +6485,20 @@ window.exportRateSheetXLSX = function(){
       const r4h = parseFloat(row.r4h)||0;
 
       const _pf=parseFloat(row.profit)||0;
-      const vals = [
+      const vals = isLCL ? [
         {v:row.pol||pol,                  col:MUTED,align:'left'},
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
-        ...(isLCL
-          ? [{v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'}]
-          : [{v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
-             {v:r40?(r40+_pf).toLocaleString():'—', col:r40?GREEN:MUTED, align:'right'},
-             {v:r4h?(r4h+_pf).toLocaleString():'—', col:r4h?GREEN:MUTED, align:'right'}]),
+        {v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
+        {v:(subjto?subjto+', ':'')+'local charges both ends', col:MUTED, align:'left'},
+        {v:v,                             col:GOLD, align:'center'},
+      ] : [
+        {v:row.pol||pol,                  col:MUTED,align:'left'},
+        {v:row.pod||'—',                  col:BLK,  align:'left'},
+        {v:row.del||'',                   col:MUTED,align:'left'},
+        {v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
+        {v:r40?(r40+_pf).toLocaleString():'—', col:r40?GREEN:MUTED, align:'right'},
+        {v:r4h?(r4h+_pf).toLocaleString():'—', col:r4h?GREEN:MUTED, align:'right'},
         {v:car,                           col:CYAN, align:'center'},
         {v:row.dem||'—',                  col:MUTED,align:'center'},
         {v:row.det||'—',                  col:MUTED,align:'center'},
