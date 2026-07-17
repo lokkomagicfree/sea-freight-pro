@@ -6368,7 +6368,8 @@ window.exportRateSheetXLSX = function(){
   const get = id => (document.getElementById(id)||{}).value||'';
   const cust    = get('q_customer') || 'Customer';
   const carrier = get('q_carrier')  || '';
-  const pol     = get('q_pol')      || 'LCH';
+  // POL: use global field, else distinct per-row POLs (no 'LCH' default — wrong for imports)
+  const pol     = get('q_pol') || [...new Set((qRateRows||[]).map(r=>r.pol).filter(Boolean))].join(', ') || '';
   const inco    = get('q_incoterm') || '';
   const comm    = get('q_commodity')|| '';
   const remarks = get('q_remarks')  || '';
