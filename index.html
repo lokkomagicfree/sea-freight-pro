@@ -6747,18 +6747,20 @@ function qRenderList(){
   const filtered = savedQuotations.map((q,i)=>({q,i})).filter(({q})=>
     !search || (q.customer||'').toLowerCase().includes(search) ||
     (q.carrier||'').toLowerCase().includes(search) ||
-    (q.pol||'').toLowerCase().includes(search)
+    (q.pol||'').toLowerCase().includes(search) ||
+    (q.rateRows||[]).some(r=>(r.pol||'').toLowerCase().includes(search))
   );
   const countEl = document.getElementById('quot_count');
   if(countEl) countEl.textContent = filtered.length+' รายการ';
   body.innerHTML = filtered.map(({q, i}) => {
     const pods = (q.rateRows||[]).map(r=>r.pod).filter(Boolean).join(', ') || '—';
+    const pols = q.pol || [...new Set((q.rateRows||[]).map(r=>r.pol).filter(Boolean))].join(', ') || '—';
     const date = q.savedAt ? new Date(q.savedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}) : '';
     return `<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
       <td style="font-size:11px;padding:7px 8px;font-family:var(--mono);color:var(--cyan)">#${String(i+1).padStart(3,'0')}</td>
       <td style="font-size:11px;padding:7px 8px;font-weight:600">${q.customer||'—'}</td>
       <td style="font-size:11px;padding:7px 8px">${q.carrier||'—'}</td>
-      <td style="font-size:11px;padding:7px 8px;font-family:var(--mono)">${q.pol||'—'}</td>
+      <td style="font-size:11px;padding:7px 8px;font-family:var(--mono)">${pols}</td>
       <td style="font-size:11px;padding:7px 8px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pods}</td>
       <td style="font-size:10px;padding:7px 8px;font-family:var(--mono);color:var(--muted)">${date}</td>
       <td style="padding:5px 8px;text-align:center;white-space:nowrap">
