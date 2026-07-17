@@ -6373,6 +6373,7 @@ window.exportRateSheetXLSX = function(){
   const comm    = get('q_commodity')|| '';
   const remarks = get('q_remarks')  || '';
   const valid   = get('q_valid')    || '';
+  const isLCL   = get('q_type')==='LCL';
   const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
 
   const rateRows  = qRateRows  || [];
@@ -6420,6 +6421,7 @@ window.exportRateSheetXLSX = function(){
   /* ── SUB-HEADER ── */
   const subParts = [];
   if(pol)  subParts.push('Origin: '+pol);
+  if(isLCL) subParts.push('LCL · W/M min 1 CBM');
   if(inco) subParts.push('Incoterm: '+inco);
   if(comm) subParts.push('Commodity: '+comm);
   if(valid)subParts.push('Valid: '+valid);
@@ -6431,11 +6433,11 @@ window.exportRateSheetXLSX = function(){
   // Column definitions
   const cols = [
     {label:'POL',        w:30, align:'left'},
-    {label:'POD',        w:38, align:'left'},
+    {label:'POD',        w:isLCL?52:38, align:'left'},
     {label:'DEL',        w:28, align:'left'},
-    {label:"20'",        w:17, align:'right'},
-    {label:"40'",        w:17, align:'right'},
-    {label:"40'HC",      w:17, align:'right'},
+    ...(isLCL
+      ? [{label:'USD / CBM', w:25, align:'right'}]
+      : [{label:"20'", w:17, align:'right'},{label:"40'", w:17, align:'right'},{label:"40'HC", w:17, align:'right'}]),
     {label:'CARRIER',    w:15, align:'center'},
     {label:'DEM',        w:11, align:'center'},
     {label:'DET',        w:11, align:'center'},
@@ -6474,13 +6476,16 @@ window.exportRateSheetXLSX = function(){
       const r40 = parseFloat(row.r40)||0;
       const r4h = parseFloat(row.r4h)||0;
 
+      const _pf=parseFloat(row.profit)||0;
       const vals = [
-        {v:pol,                           col:MUTED,align:'center'},
+        {v:row.pol||pol,                  col:MUTED,align:'left'},
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
-        {v:r20?(r20+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r20?GREEN:MUTED, align:'right'},
-        {v:r40?(r40+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r40?GREEN:MUTED, align:'right'},
-        {v:r4h?(r4h+(parseFloat(row.profit)||0)).toLocaleString():'—',  col:r4h?GREEN:MUTED, align:'right'},
+        ...(isLCL
+          ? [{v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'}]
+          : [{v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
+             {v:r40?(r40+_pf).toLocaleString():'—', col:r40?GREEN:MUTED, align:'right'},
+             {v:r4h?(r4h+_pf).toLocaleString():'—', col:r4h?GREEN:MUTED, align:'right'}]),
         {v:car,                           col:CYAN, align:'center'},
         {v:row.dem||'—',                  col:MUTED,align:'center'},
         {v:row.det||'—',                  col:MUTED,align:'center'},
@@ -6539,7 +6544,7 @@ window.exportRateSheetXLSX = function(){
   /* ── FOOTER ── */
   const footY = H-8;
   hln(footY, LM, RM, [200,200,200], 0.3);
-  T('Sea Freight Pro — Confidential', LM, footY+5, 7, false, MUTED);
+  T('Worldwide Logistics (Services) Thailand', LM, footY+5, 7, false, MUTED);
   T(cust+' · '+today, RM, footY+5, 7, false, MUTED, 'right');
 
   /* ── SAVE ── */
