@@ -3496,7 +3496,7 @@ function filterRoutes(){
   }).slice(0,100);
   g('route_count').textContent=res.length+' routes found';
   g('route_body').innerHTML=res.length?res.map(r=>`<tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
-    <td style="font-size:11px;padding:6px 8px">${r.carrier}</td>
+    <td style="font-size:11px;padding:6px 8px">${r.carrier}<span class="src-badge ${srcCls(r.source,r)}" style="padding:1px 5px;border-radius:4px;font-size:9px;margin-left:5px;font-family:var(--mono)">${srcLabel(r.source,r)}</span></td>
     <td style="font-size:11px;font-family:var(--mono);padding:6px 8px">${r.pol} → ${r.pod}</td>
     <td style="font-size:10px;font-family:var(--mono);padding:6px 8px;color:var(--muted)">${r.del||'—'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:6px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
@@ -3546,7 +3546,7 @@ function applyRate(idx){
 
   const box=g('sel_rate_box'),lbl=g('sel_label');
   if(box)box.style.display='';
-  if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod+(r.del?' / DEL:'+r.del:'')+(r.commodity?'  🏷 '+r.commodity:'');
+  if(lbl)lbl.textContent=r.carrier+': '+r.pol+' → '+r.pod+(r.del?' / DEL:'+r.del:'')+(r.commodity?'  🏷 '+r.commodity:'')+'  ['+srcLabel(r.source,r)+']';
   window._selPol=r.pol||''; window._selPod=r.pod||''; window._selDel=r.del||'';
   window._selCarrier=r.carrier||'';
   const cf=g('s_carrier'); if(cf&&!cf.value) cf.value=r.carrier||'';
@@ -4117,7 +4117,7 @@ function renderShipments(){
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--purple);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">${j.pod||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis">${j.del||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--orange);white-space:nowrap">${j.carrier||j.selCarrier||'—'}</td>
-        <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');return p.join('<br>')||'—';})()}</td>
+        <td style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 6px;white-space:nowrap">${(()=>{const p=[];if(j.q20)p.push(j.q20+'×20');if(j.q40)p.push(j.q40+'×40');if(j.q40hc)p.push(j.q40hc+'×HC');if(!p.length&&Array.isArray(j.ctnRows))j.ctnRows.forEach(r=>{if(r&&r.qty)p.push(r.qty+'×'+r.type);});return p.join('<br>')||'—';})()}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:7px 10px">$${(j.sell||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--red);padding:7px 10px">$${(j.cost||0).toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.profit>0?'var(--green)':j.profit<0?'var(--red)':'var(--muted)'};font-weight:600;padding:7px 10px">${j.status==='cancelled'?'—':(j.profit?'$'+Math.round(j.profit):'—')}</td>
@@ -6251,7 +6251,7 @@ function qFilterRates(){
   if(count_el) count_el.textContent = results.length+' routes found';
   if(body_el) body_el.innerHTML = results.length ? results.map(r=>`
     <tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
-      <td style="font-size:11px;padding:6px 8px">${r.carrier}</td>
+      <td style="font-size:11px;padding:6px 8px">${r.carrier}<span class="src-badge ${srcCls(r.source,r)}" style="padding:1px 5px;border-radius:4px;font-size:9px;margin-left:5px;font-family:var(--mono)">${srcLabel(r.source,r)}</span></td>
       <td style="font-size:11px;font-family:var(--mono);padding:6px 8px">${r.pol} → ${r.pod}</td>
       <td style="font-size:10px;font-family:var(--mono);padding:6px 8px;color:var(--muted)">${r.del||'—'}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:6px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
