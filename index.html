@@ -4490,10 +4490,9 @@ function pbkgLog(action, bkgno){
 }
 
 // ── Inline editors (require editor name, write log, sync) ──
-// Move an edited/updated Pre-Booking item to the top of the list.
+// Keep an edited/updated Pre-Booking item in its current position (no jump to top).
 function pbkgBumpToTop(p){
-  const i=_preBkgList.indexOf(p);
-  if(i>0){ _preBkgList.splice(i,1); _preBkgList.unshift(p); }
+  // no-op — revising a row must not scroll/move it to the top (makes data entry hard)
 }
 window.pbkgSetStatus = async function(idx, val){
   const p=_preBkgList[idx]; if(!p) return;
@@ -4771,8 +4770,7 @@ window.savePreBkg = async function(){
   if(!p.bkgno){ toast('กรุณากรอก Booking No.'); return; }
   if(_preBkgEditIdx!==null){
     const prev = _preBkgList[_preBkgEditIdx]||{};
-    _preBkgList.splice(_preBkgEditIdx,1);      // remove from current position
-    _preBkgList.unshift({...prev,...p});        // move edited item to the top
+    _preBkgList[_preBkgEditIdx] = {...prev,...p};   // update in place — keep current position (don't jump to top)
     pbkgLog('แก้ไขรายการ (ฟอร์ม)', p.bkgno);
   } else { _preBkgList.unshift(p); pbkgLog('เพิ่ม Pre-Booking ใหม่', p.bkgno); }
   await savePreBkgList();
