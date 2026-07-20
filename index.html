@@ -807,11 +807,24 @@ body{font-size:14px;font-weight:450}
               oninput="filterRoutes();acSuggest(this,'ac_del','del')" onkeydown="acKey(event,'ac_del')" autocomplete="off">
             <div id="ac_del" class="ac-drop" style="display:none"></div></div>
         </div>
-        <div class="inp-group" style="margin-bottom:8px"><label class="inp-lbl">Validity Status</label>
-          <select class="inp" id="r_vstatus" onchange="filterRoutes()" style="width:150px">
-            <option value="">All Status</option><option value="active">✅ Active</option>
-            <option value="upcoming">🔜 Upcoming</option><option value="unknown">— Unknown</option>
-          </select></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <div class="inp-group" style="margin-bottom:0"><label class="inp-lbl">Validity Status</label>
+            <select class="inp" id="r_vstatus" onchange="filterRoutes()" style="width:130px">
+              <option value="">All Status</option><option value="active">✅ Active</option>
+              <option value="upcoming">🔜 Upcoming</option><option value="unknown">— Unknown</option>
+            </select></div>
+          <div class="inp-group" style="margin-bottom:0"><label class="inp-lbl">Source</label>
+            <select class="inp" id="r_source" onchange="filterRoutes()" style="width:120px">
+              <option value="">All Source</option><option value="FIX">FIX</option><option value="FAK">FAK</option>
+              <option value="ISC">ISC</option><option value="MED">MED</option><option value="IA-EU">IA-EU</option>
+              <option value="RF">RF (Reefer)</option><option value="BUL">BUL</option><option value="FOOD">FOOD</option><option value="OTHER">OTHER</option>
+            </select></div>
+          <div class="inp-group" style="margin-bottom:0"><label class="inp-lbl">Sort ราคา</label>
+            <select class="inp" id="r_sort" onchange="filterRoutes()" style="width:150px">
+              <option value="hc40">40HC ถูก→แพง</option><option value="gp40">40GP ถูก→แพง</option>
+              <option value="gp20">20GP ถูก→แพง</option><option value="">ไม่เรียง</option>
+            </select></div>
+        </div>
         <div id="route_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px"></div>
         <div style="max-height:200px;overflow-y:auto">
           <table class="tbl"><thead><tr>
@@ -3484,6 +3497,7 @@ function expandAndFilterThaiPOL(rates){
 
 function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),del=v('r_del').toLowerCase(),vstatus=v('r_vstatus');
+  const src=v('r_source'), sortBy=v('r_sort');
   if(!pol&&!pod&&!car&&!del){g('route_body').innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
   let res=ALL_RATES.filter(r=>{
     if(!isThaiPOL(r.pol)) return false;
@@ -3492,8 +3506,12 @@ function filterRoutes(){
     if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod))return false;
     if(del&&!(r.del||'').toLowerCase().includes(del))return false;
     if(vstatus&&r.valid_status!==vstatus)return false;
+    if(src&&srcLabel(r.source,r)!==src)return false;
     return true;
-  }).slice(0,100);
+  });
+  // Sort ราคาถูก→แพง (ค่าว่าง/0 ดันไปท้าย)
+  if(sortBy){ res.sort((a,b)=>((+a[sortBy]||Infinity)-(+b[sortBy]||Infinity))); }
+  res=res.slice(0,100);
   g('route_count').textContent=res.length+' routes found';
   g('route_body').innerHTML=res.length?res.map(r=>`<tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
     <td style="font-size:11px;padding:6px 8px">${r.carrier}<span class="src-badge ${srcCls(r.source,r)}" style="padding:1px 5px;border-radius:4px;font-size:9px;margin-left:5px;font-family:var(--mono)">${srcLabel(r.source,r)}</span></td>
