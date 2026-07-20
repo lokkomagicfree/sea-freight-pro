@@ -1740,6 +1740,17 @@ window._isJobDeleted = function(no){
   if(no==null) return false;
   return window._loadDeletedJobs().some(d=>String(d.no)===String(no));
 };
+// Un-tombstone a booking No — called whenever a shipment with that No is (re)saved,
+// so re-adding a previously-deleted booking sticks instead of being wiped on every sync.
+window._undeleteJob = function(no){
+  if(no==null) return;
+  const del = window._loadDeletedJobs();
+  const keep = del.filter(d=>String(d.no)!==String(no));
+  if(keep.length!==del.length){
+    window._saveDeletedJobs(keep);
+    try{ window._sfpFlushToCloud && window._sfpFlushToCloud(); }catch(e){}
+  }
+};
 window.deleteShipment = function(idx){
   const j = savedJobs[idx];
   if(!j) return;
@@ -3884,6 +3895,9 @@ function saveShipment(){
     const btn2=g('save_btn');if(btn2){btn2.textContent='💾 Save Shipment';btn2.className='btn btn-cyan';btn2.style.background='';}
     toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
   }
+  // Saving a shipment must clear any old delete-tombstone for its booking No,
+  // otherwise the sync/merge keeps wiping it on every reload (root cause of "งานที่ save หาย").
+  try{ window._undeleteJob && window._undeleteJob(jobData.no); }catch(e){}
   try{
     const _sf=g('status_filter');
     if(_sf && _sf.value && _sf.value!==jobData.status){ _sf.value=''; if(window._savedFilterPrefs) window._savedFilterPrefs.status_filter=''; toast('ℹ️ ล้างตัวกรอง Status ให้แล้ว (งานใหม่คนละสถานะ)'); }
