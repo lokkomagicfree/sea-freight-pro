@@ -4163,9 +4163,11 @@ function renderShipments(){
     const active=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed')&&j.status!=='cancelled';
     return s+(active?(j.commThb||0):0);
   },0);
-  const tot20=jobs.reduce((s,j)=>s+(j.q20||0),0);
-  const tot40=jobs.reduce((s,j)=>s+(j.q40||0),0);
-  const tot40hc=jobs.reduce((s,j)=>s+(j.q40hc||0),0);
+  // ตู้ที่ cancel ไม่นับรวมยอด total
+  const _notCancelled=(j)=>j.status!=='cancelled';
+  const tot20=jobs.reduce((s,j)=>s+(_notCancelled(j)?(j.q20||0):0),0);
+  const tot40=jobs.reduce((s,j)=>s+(_notCancelled(j)?(j.q40||0):0),0);
+  const tot40hc=jobs.reduce((s,j)=>s+(_notCancelled(j)?(j.q40hc||0):0),0);
   const volTotParts=[];
   if(tot20)  volTotParts.push(tot20+'×20GP');
   if(tot40)  volTotParts.push(tot40+'×40GP');
