@@ -1742,8 +1742,10 @@ window._isJobDeleted = function(no){
 };
 // Un-tombstone a booking No — called whenever a shipment with that No is (re)saved,
 // so re-adding a previously-deleted booking sticks instead of being wiped on every sync.
+window._revivedNos = window._revivedNos || new Set();   // Nos re-added this session — protect from stale cross-device deletes
 window._undeleteJob = function(no){
   if(no==null) return;
+  window._revivedNos.add(String(no));
   const del = window._loadDeletedJobs();
   const keep = del.filter(d=>String(d.no)!==String(no));
   if(keep.length!==del.length){
@@ -8042,6 +8044,9 @@ onAuthStateChanged(auth, async user=>{
       const local = window._loadDeletedJobs?.() || [];
       const map = new Map();
       [...list, ...local].forEach(d=>{ if(d && d.no!=null) map.set(String(d.no), d); });
+      // Never honor a delete for a booking re-added this session (stale cross-device tombstone).
+      const _rev = window._revivedNos || new Set();
+      _rev.forEach(no=> map.delete(String(no)));
       const merged = [...map.values()];
       window._saveDeletedJobs?.(merged);
       // Drop any locally-held shipment that has been deleted elsewhere
@@ -8140,9 +8145,18 @@ async function initFirestoreSync(){
     const cloudDel = Array.isArray(delSnap?.list) ? delSnap.list : [];
     const map = new Map();
     [...cloudDel, ...localDel].forEach(d=>{ if(d && d.no!=null) map.set(String(d.no), d); });
+    // INVARIANT: any booking that exists in cloud data/jobs is LIVE and must never be tombstoned.
+    // Tombstones only ever get UNION-merged across devices (never removed), so a stale delete on
+    // one device would otherwise keep hiding a re-added shipment and re-poison the cloud list.
+    // Purging live booking Nos here makes a re-add win over any stale delete on EVERY device.
+    const _liveNos = new Set((jobsSnap?.jobs||[]).filter(j=>j&&j.no!=null).map(j=>String(j.no)));
+    let _purged=false;
+    _liveNos.forEach(no=>{ if(map.delete(no)) _purged=true; });
     const merged = [...map.values()];
     window._saveDeletedJobs?.(merged);
-    window._sfpSyncHash.deleted = _sfpHash(cloudDel);   // differs if we have new ones → pushes up
+    // If cloud still lists a live booking as deleted, force a push so the cloud list self-heals.
+    const _cloudHasLive = cloudDel.some(d=>d&&d.no!=null&&_liveNos.has(String(d.no)));
+    window._sfpSyncHash.deleted = (_purged || _cloudHasLive) ? ('__heal__'+Date.now()) : _sfpHash(cloudDel);
   }
 
   // ── Set data from Firestore (override localStorage) ──
