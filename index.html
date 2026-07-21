@@ -5549,15 +5549,16 @@ function exportDateRange(){
     return;
   }
 
-  const h = 'Booking No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,Comm USD,Comm THB\n';
+  // ไม่ดึง Commission ออกมา · เพิ่มคอลัมน์ หมายเหตุ (remarks)
+  const h = 'Booking No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,หมายเหตุ\n';
   const rows = jobs.map(j =>
     [j.no,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,
      (j.sell||0).toFixed(2),(j.cost||0).toFixed(2),(j.profit||0).toFixed(2),
-     (j.margin||0).toFixed(1),(j.comm||0).toFixed(2),(j.commThb||0).toFixed(0)]
-    .map(v=>`"${v||''}"`).join(',')
+     (j.margin||0).toFixed(1),(j.remarks||'')]
+    .map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')
   ).join('\n');
 
-  const blob = new Blob([h+rows],{type:'text/csv'});
+  const blob = new Blob(['﻿'+h+rows],{type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'shipments_'+fromVal+'_to_'+toVal+'.csv';
