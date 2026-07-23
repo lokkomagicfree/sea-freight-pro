@@ -5549,12 +5549,10 @@ function exportDateRange(){
     return;
   }
 
-  // ไม่ดึง Commission ออกมา · เพิ่มคอลัมน์ หมายเหตุ (remarks)
-  const h = 'Booking No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,หมายเหตุ\n';
+  // ไม่ดึง Commission / Sell / Cost / Profit / Margin ออกมา · มีคอลัมน์ หมายเหตุ (remarks)
+  const h = 'Booking No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,หมายเหตุ\n';
   const rows = jobs.map(j =>
-    [j.no,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,
-     (j.sell||0).toFixed(2),(j.cost||0).toFixed(2),(j.profit||0).toFixed(2),
-     (j.margin||0).toFixed(1),(j.remarks||'')]
+    [j.no,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,(j.remarks||'')]
     .map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')
   ).join('\n');
 
