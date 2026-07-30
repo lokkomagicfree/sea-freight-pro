@@ -3522,7 +3522,7 @@ function filterRoutes(){
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf20?'$'+r.rf20:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf40?'$'+r.rf40:'-'}</td>
-    <td>${vBadge(r.valid_status)}</td>
+    <td style="text-align:center;white-space:nowrap">${vBadge(r.valid_status)}<div style="font-size:9px;font-family:var(--mono);margin-top:2px;color:${(r.date_to&&r.date_to<new Date().toISOString().slice(0,10))?'var(--red)':'var(--muted)'}">${(function(){var v=(r.validity||'').replace(/^RATE\s*/i,'');if(!v&&r.date_from)v=r.date_from+(r.date_to?' ~ '+r.date_to:'');return v||'';})()}</div></td>
     <td style="padding:4px 6px"><button class="btn btn-cyan" style="font-size:10px;padding:3px 8px" onclick="applyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
   </tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
 }
