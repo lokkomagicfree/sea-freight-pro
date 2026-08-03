@@ -1861,11 +1861,38 @@ function storageImport(){
         const jobs = data.jobs || (Array.isArray(data) ? data : null);
         if(!jobs) throw new Error('Invalid format');
         const merge = confirm('Merge with existing ('+savedJobs.length+') jobs? \nOK = Merge  |  Cancel = Replace');
-        if(merge) savedJobs = [...savedJobs, ...jobs];
-        else savedJobs = jobs;
+        let updated=0, added=0;
+        if(merge){
+          // Booking No. เดียวกัน = ลงทับของเดิม (ไม่สร้าง shipment ซ้ำ)
+          const key = v => String(v==null?'':v).trim().toUpperCase().replace(/\s|-/g,'')
+                            .replace(/^(COSU|WHLC|ONEY|OOLU|MAEU|MSCU|HLCU|YMLU|ZIMU|HDMU|EGLV|CMDU)/,'');
+          // ค่าที่ "ว่าง" ในไฟล์ import จะไม่ทับของเดิม (กันเรท/ค่าใช้จ่ายที่กรอกใน SFP หาย)
+          const KEEP_IF_EMPTY = ['sells','costs','sellsPerType','costsPerType','chargeNames','thbFlags','aprFlags',
+            'sell','cost','profit','margin','comm','commThb','totalSell','totalCost','commRate','ctnRows',
+            'bpdfData','statusHistory','csTasks','remarks','q20','q40','q40hc','weight','hscode','hsCode'];
+          const isEmpty = v => v==null || v==='' || (Array.isArray(v)&&v.length===0) ||
+                               (typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===0) ||
+                               (typeof v==='number'&&v===0);
+          const idxByNo = new Map();
+          savedJobs.forEach((j,i)=>{ if(j&&j.no!=null) idxByNo.set(key(j.no), i); });
+          jobs.forEach(nj=>{
+            if(!nj || nj.no==null){ savedJobs.push(nj); added++; return; }
+            const k = key(nj.no);
+            if(idxByNo.has(k)){
+              const i = idxByNo.get(k), cur = savedJobs[i] || {};
+              const out = Object.assign({}, cur, nj);          // ของใหม่ทับของเดิม
+              KEEP_IF_EMPTY.forEach(f=>{ if(isEmpty(nj[f]) && !isEmpty(cur[f])) out[f] = cur[f]; });
+              savedJobs[i] = out; updated++;
+            } else {
+              savedJobs.push(nj); idxByNo.set(k, savedJobs.length-1); added++;
+            }
+          });
+        } else {
+          savedJobs = jobs; added = jobs.length;
+        }
         storageSave();
         renderShipments(); updateAlertCount();
-        toast('✅ Imported '+jobs.length+' jobs');
+        toast('✅ Imported '+jobs.length+' jobs — เพิ่มใหม่ '+added+' / ลงทับ '+updated);
       }catch(ex){ toast('❌ Import failed: '+ex.message); }
     };
     reader.readAsText(file);
