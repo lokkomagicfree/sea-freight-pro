@@ -946,6 +946,13 @@ body{font-size:14px;font-weight:450}
     <div>
       <div class="card" id="quot_form_card">
         <div class="card-title">💰 Rate Quotation</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;padding:7px 9px;border:1px dashed var(--border);border-radius:8px">
+          <span style="font-size:10px;font-family:var(--mono);color:var(--muted);white-space:nowrap">📋 TEMPLATE</span>
+          <select id="q_template_sel" class="inp" style="font-size:11px;padding:4px 6px;flex:1">
+            <option value="">-- เลือกเทมเพลตลูกค้า --</option>
+          </select>
+          <button onclick="qLoadTemplate()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap">โหลดเทมเพลต</button>
+        </div>
         <div class="four-col">
           <div class="inp-group"><label class="inp-lbl">Customer</label><input spellcheck="false" class="inp" id="q_customer" placeholder="e.g. Indorama"></div>
           <div class="inp-group"><label class="inp-lbl">Carrier</label><input spellcheck="false" class="inp" id="q_carrier" placeholder="e.g. HMM"></div>
@@ -1966,6 +1973,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   const pg=g('page-'+id); if(pg) pg.classList.add('active');
+  if(id==='quotation'){ try{ qFillTemplateSelect(); }catch(e){} }
   document.querySelectorAll('.nav-tab').forEach(b=>{
     if(b.textContent.toLowerCase().includes(id.slice(0,4))||
        (id==='news'&&b.textContent.includes('News'))||
@@ -6162,7 +6170,8 @@ function qRenderRateRows(){
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="e.g. Laem Chabang"
-        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:100px"></td>
+        ${row.polLock?'readonly title="POL ล็อกไว้จากเทมเพลต — กด 🔓 เพื่อปลดล็อก"':''}
+        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:${row.polLock?'82':'100'}px${row.polLock?';opacity:.75;cursor:not-allowed':''}">${row.polLock?`<button onclick="qUnlockPol(${row.id})" title="ปลดล็อก POL" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:11px;padding:0 2px">🔒</button>`:''}</td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. New York"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="e.g. Chicago"
@@ -6198,6 +6207,58 @@ function qRenderRateRows(){
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
 }
 
+// ── Quotation Templates (ลูกค้าประจำ) ──────────────────────
+// INDORAMA: จาก WWL RATE REQUEST — POL ล็อกเป็น LAEM CHABANG ทุกแถว
+// เก็บ DEM/DET/COMBINED/DIRECT-T\u2044S/TT ตามที่ลูกค้าระบุมาในฟอร์ม
+const QUOTE_TEMPLATES = {
+  'INDORAMA': {
+    customer: 'INDORAMA',
+    pol: 'LAEM CHABANG',
+    lockPol: true,
+    subjto: 'EBS, CIC, PCS, LSS, PSS, HEA, ISD, EID, ETS at destination',
+    remarks: 'All in rate incl. of SBS · Freight all-in · EX BKK/LCB',
+    rows: [{"pod":"Acajutla, El Salvador (SVAQJ)","del":"","dem":"","det":"","combined":"16","direct":"T/S","tt":"33-60"},{"pod":"GENOA, Italy (ITGOA)","del":"","dem":"","det":"","combined":"9","direct":"T/S","tt":"39-41"},{"pod":"Antwerp Sea Port, Belgium (BEANR)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Barcelona Sea Port, Spain (ESBCN)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Rotterdam, Netherlands (NLRTM)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Koper, Koper, Slovenia (SIKOP)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Southampton, UK (GBSOU)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Buenaventura, Colombia (COBUN)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Navegantes, Brazil (BRNVT)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Paranaguá, Brazil (BRPNG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"RIO GRANDE, RIO GRANDE, Brazil (BRRIG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Santos, Brazil (BRSSZ)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Buenos Aires, Argentina (ARBUE)","del":"","dem":"","det":"","combined":"18","direct":"T/S","tt":"35-45"},{"pod":"La Guaira, Venezuela (VELAG)","del":"","dem":"","det":"","combined":"","direct":"","tt":""},{"pod":"Manzanillo, Manzanillo, Mexico (MXZLO)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Burgas, Bulgaria (BGBOJ)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"57"},{"pod":"Cagayan de Oro, Philippines (PHCGY)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":""},{"pod":"Cat Lai Port, VICT, Ho Chi Minh City, Vietnam (VNOCL)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"4"},{"pod":"Long Beach, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"Los Angeles, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"New York, USA (USNYC)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Norfolk, USA (USOFK)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Savannah, USA (USSAV)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Los Angeles, USA","del":"Chicago, IL","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"43"},{"pod":"Charleston, USA (USCST)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Karachi, Pakistan (PKKHI)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"24"},{"pod":"Chennai, India (INMAA1)","del":"","dem":"","det":"","combined":"14","direct":"DIRECT","tt":"9"},{"pod":"Jeddah, Saudi Arabia","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"30"}]
+  }
+};
+function qFillTemplateSelect(){
+  const sel = document.getElementById('q_template_sel');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">-- เลือกเทมเพลตลูกค้า --</option>' +
+    Object.keys(QUOTE_TEMPLATES).map(k=>{
+      const t = QUOTE_TEMPLATES[k];
+      return `<option value="${k}"${k===cur?' selected':''}>📋 ${k} — ${t.pol} → ${t.rows.length} POD</option>`;
+    }).join('');
+}
+window.qUnlockPol = function(id){
+  const row = qRateRows.find(r=>r.id===id);
+  if(!row) return;
+  row.polLock = false; qRenderRateRows(); toast('🔓 ปลดล็อก POL แถวนี้แล้ว');
+};
+window.qLoadTemplate = function(name){
+  const key = name || (document.getElementById('q_template_sel')||{}).value || '';
+  if(!key) return toast('เลือกเทมเพลตก่อนครับ');
+  const t = QUOTE_TEMPLATES[key];
+  if(!t) return toast('ไม่พบเทมเพลต ' + key);
+  if(qRateRows.length && !confirm('โหลดเทมเพลต "'+key+'" ('+t.rows.length+' POD)?\n\nแถวเรทที่มีอยู่ '+qRateRows.length+' แถวจะถูกแทนที่')) return;
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el && val!=null && (!el.value || id==='q_customer' || id==='q_pol')) el.value = val; };
+  set('q_customer', t.customer);
+  set('q_pol', t.pol);
+  set('q_subjto', t.subjto);
+  set('q_remarks', t.remarks);
+  qRateRows = t.rows.map(r=>({
+    id: Date.now()+Math.random(),
+    carrier:'', pol: t.pol, pod: r.pod||'', del: r.del||'',
+    r20:'', r40:'', r4h:'', profit:'',
+    dem: r.dem||'', det: r.det||'', combined: r.combined||'',
+    direct: r.direct||'', tt: r.tt||'', valid:'',
+    polLock: !!t.lockPol
+  }));
+  qRenderRateRows();
+  try{ window.qSyncRates(); }catch(e){ qPreview(); }   // ดึงเรทที่ยัง valid ให้ทันที
+  toast('📋 โหลดเทมเพลต '+key+' — '+t.rows.length+' POD (POL ล็อก '+t.pol+')');
+};
+
 // ── Sync Rate: ดึงเรทจากคลังเรทกลาง (ALL_RATES) มาลงในตาราง Sell Rates ─────
 // จับคู่จาก POL / POD / DEL ของแต่ละแถว · ใช้เฉพาะเรทที่ยัง valid เท่านั้น
 // ถ้าไม่เจอเรทที่ valid → ใส่ N/A
@@ -6209,11 +6270,21 @@ function _qKey(s){
 }
 // ชื่อท่า: เทียบเฉพาะส่วนหน้าคอมมา (เมือง) เช่น "Long Beach, CA" ↔ "Long Beach"
 function _qCity(s){ return _qKey(String(s==null?'':s).split(',')[0]); }
+// ชื่อประเทศ/คำทั่วไป — ไม่ใช้เป็นตัวจับคู่ (กันแมตช์ผิด)
+const _Q_STOP = new Set(['USA','US','UNITED STATES','UNITED KINGDOM','UK','THAILAND','PORT','SEA PORT',
+  'CA','NY','GA','VA','SC','FL','IL','NJ','TX','WA','BC','QC','NS','VICT','TBA','VIA LA']);
+function _qSegs(s){
+  return String(s==null?'':s).split(',').map(x=>_qKey(x)).filter(x=> x && x.length>=4 && !_Q_STOP.has(x));
+}
 function _qPortMatch(a, b){
   const ca=_qCity(a), cb=_qCity(b);
-  if(!ca || !cb) return false;
-  if(ca===cb) return true;
-  return ca.length>=4 && cb.length>=4 && (ca.startsWith(cb) || cb.startsWith(ca));
+  if(ca && cb){
+    if(ca===cb) return true;
+    if(ca.length>=4 && cb.length>=4 && (ca.startsWith(cb) || cb.startsWith(ca))) return true;
+  }
+  // เผื่อชื่อยาวหลายท่อน เช่น "Cat Lai Port, VICT, Ho Chi Minh City, Vietnam" ↔ "Ho Chi Minh"
+  const A=_qSegs(a), B=_qSegs(b);
+  return A.some(x=> B.some(y=> x===y || x.startsWith(y) || y.startsWith(x)));
 }
 function _qRateValid(r){
   // ใช้ valid_status ถ้ามี ไม่งั้นคำนวณจาก date_from/date_to
