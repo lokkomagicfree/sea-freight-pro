@@ -552,6 +552,7 @@ body{font-size:14px;font-weight:450}
         <th style="text-align:right;width:80px">40'HC ⇅</th>
         <th style="text-align:right;color:var(--cyan);width:70px">20'RF ⇅</th>
         <th style="text-align:right;color:var(--cyan);width:70px">40'RF ⇅</th>
+        <th style="text-align:center;width:70px" title="Free time ที่ปลายทาง">F/T</th>
         <th style="width:120px">VALID PERIOD</th><th style="width:70px">STATUS</th><th style="width:70px">SHEET</th><th style="width:70px"></th>
       </tr></thead>
       <tbody id="rate_body"></tbody>
@@ -834,9 +835,10 @@ body{font-size:14px;font-weight:450}
             <th style="text-align:right;color:var(--cyan)">40HC</th>
             <th style="text-align:right;color:#00d4ff">20RF</th>
             <th style="text-align:right;color:#00d4ff">40RF</th>
+            <th style="text-align:center;color:var(--gold)" title="Free time ที่ปลายทาง">F/T</th>
             <th>Valid</th><th></th>
           </tr></thead>
-          <tbody id="route_body"><tr><td colspan="10" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
+          <tbody id="route_body"><tr><td colspan="11" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr></tbody>
           </table>
         </div>
         <div id="sel_rate_box" style="display:none;margin-top:8px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.2);border-radius:7px;padding:10px 12px">
@@ -2049,6 +2051,13 @@ function refreshRateStatuses(list){
   return changed;
 }
 window.refreshRateStatuses = refreshRateStatuses;
+// Free time ที่ปลายทาง — เก็บเป็น r.ft (จำนวนวัน หรือข้อความ เช่น "14 days combined")
+function ftText(r){
+  if(!r || r.ft==null || r.ft==='') return '';
+  const n = parseFloat(r.ft);
+  return isNaN(n) ? String(r.ft) : (n+' days');
+}
+window.ftText = ftText;
 function vBadge(s){
   const m={active:'#22c55e',expired:'#f43f5e',upcoming:'#fbbf24',unknown:'#5c7a9e'};
   const icons={active:'✅',expired:'❌',upcoming:'🔜',unknown:'—'};
@@ -2683,7 +2692,7 @@ function renderTable(filtered){
   const total=filtered.length,pages=Math.ceil(total/PER_PAGE);
   const slice=filtered.slice((curPage-1)*PER_PAGE,curPage*PER_PAGE);
   const tbody=g('rate_body');if(!tbody)return;
-  if(!slice.length){tbody.innerHTML=`<tr><td colspan="14" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
+  if(!slice.length){tbody.innerHTML=`<tr><td colspan="15" style="padding:32px;text-align:center;color:var(--muted)">No rates found</td></tr>`;g('page_info').textContent='';g('page_btns').innerHTML='';return;}
   tbody.innerHTML=slice.map(r=>{
     const isReefer = r.container_type==='REEFER';
     const realIdx = ALL_RATES.indexOf(r);
@@ -2707,6 +2716,7 @@ function renderTable(filtered){
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
+    <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${r.ft?'var(--gold)':'var(--muted)'};white-space:nowrap">${ftText(r)||'—'}</td>
     <td style="font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap">${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td>${vBadge(liveStat(r))}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
@@ -2743,6 +2753,7 @@ function openEditRate(idx){
   document.getElementById('er_hc40').value=r.hc40||'';
   document.getElementById('er_rf20').value=r.rf20||'';
   document.getElementById('er_rf40').value=r.rf40||'';
+  document.getElementById('er_ft').value=r.ft||'';
   document.getElementById('er_validity').value=r.validity||'';
   document.getElementById('er_src').value=r.source||'';
   m.dataset.idx=idx;
@@ -2762,6 +2773,7 @@ function saveEditRate(){
   r.hc40=N(document.getElementById('er_hc40').value);
   r.rf20=N(document.getElementById('er_rf20').value);
   r.rf40=N(document.getElementById('er_rf40').value);
+  r.ft=(document.getElementById('er_ft').value||'').trim();
   // Auto-detect container type
   if(r.rf20||r.rf40) r.container_type='REEFER';
   else if(r.gp20||r.gp40||r.hc40) r.container_type='DRY';
@@ -3563,7 +3575,7 @@ function expandAndFilterThaiPOL(rates){
 function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),del=v('r_del').toLowerCase(),vstatus=v('r_vstatus');
   const src=v('r_source'), sortBy=v('r_sort');
-  if(!pol&&!pod&&!car&&!del){g('route_body').innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
+  if(!pol&&!pod&&!car&&!del){g('route_body').innerHTML='<tr><td colspan="11" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
   let res=ALL_RATES.filter(r=>{
     if(!isThaiPOL(r.pol)) return false;
     if(car&&normalizeCarrier(r.carrier)!==car)return false;
@@ -3587,9 +3599,10 @@ function filterRoutes(){
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf20?'$'+r.rf20:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf40?'$'+r.rf40:'-'}</td>
+    <td style="text-align:center;font-family:var(--mono);font-size:10px;color:${r.ft?'var(--gold)':'var(--muted)'};padding:6px 8px;white-space:nowrap">${ftText(r)||'-'}</td>
     <td style="text-align:center;white-space:nowrap">${vBadge(liveStat(r))}<div style="font-size:9px;font-family:var(--mono);margin-top:2px;color:${(r.date_to&&r.date_to<new Date().toISOString().slice(0,10))?'var(--red)':'var(--muted)'}">${(function(){var v=(r.validity||'').replace(/^RATE\s*/i,'');if(!v&&r.date_from)v=r.date_from+(r.date_to?' ~ '+r.date_to:'');return v||'';})()}</div></td>
     <td style="padding:4px 6px"><button class="btn btn-cyan" style="font-size:10px;padding:3px 8px" onclick="applyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
-  </tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
+  </tr>`).join(''):'<tr><td colspan="11" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
 }
 
 function applyRate(idx){
@@ -6211,7 +6224,7 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.det||''}" placeholder="e.g. 5"
         oninput="qUpdateRate(${row.id},'det',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.combined||''}" placeholder="e.g. 14"
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="combined" class="inp" value="${row.combined||''}" placeholder="e.g. 14"
         oninput="qUpdateRate(${row.id},'combined',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:55px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="direct" class="inp" value="${row.direct||''}" placeholder="DIRECT"
         oninput="qUpdateRate(${row.id},'direct',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:70px"></td>
@@ -6514,6 +6527,7 @@ window.qSyncRates = function(){
     const vt = _qValidText(r); if(vt) row.valid = vt;
     if(r.tt && !row.tt) row.tt = r.tt;
     if(r.direct && !row.direct) row.direct = r.direct;
+    if(r.ft) row.combined = String(r.ft).replace(/\s*days?\s*$/i,'');   // F/T ที่ปลายทาง → ช่อง COMBINED
     row._src = r.source || '';
     hit++;
   });
@@ -6548,7 +6562,7 @@ function qPaintRow(row){
     const el = document.querySelector('[data-rid="'+row.id+'"][data-f="'+f+'"]');
     if(el && document.activeElement !== el) el.value = (val==null?'':val);
   };
-  ['carrier','r20','r40','r4h','valid','tt','direct'].forEach(f=> put(f, row[f]));
+  ['carrier','r20','r40','r4h','valid','tt','direct','combined'].forEach(f=> put(f, row[f]));
   const tr = document.querySelector('tr[data-rowid="'+row.id+'"]');
   if(tr){
     tr.style.background = row.na ? 'rgba(200,60,45,.10)' : '';
@@ -6577,6 +6591,7 @@ window.qRefreshRowRate = function(id){
     const vt = _qValidText(r); if(vt) row.valid = vt;
     if(r.tt) row.tt = r.tt;
     if(r.direct) row.direct = r.direct;
+    if(r.ft) row.combined = String(r.ft).replace(/\s*days?\s*$/i,'');
     row._src = r.source || '';
   }
   qPaintRow(row); qPreview();
@@ -11061,6 +11076,7 @@ window.pasteBpdfVesselInfo = function(){
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'HC (USD)</label><input id="er_hc40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">20'RF (USD)</label><input id="er_rf20" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'RF (USD)</label><input id="er_rf40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">F/T ที่ปลายทาง (วัน)</label><input id="er_ft" class="inp" style="width:100%;font-size:12px;margin-top:3px;color:var(--gold)" placeholder="e.g. 14"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">VALIDITY</label><input id="er_validity" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="e.g. 1-30 Jun"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
