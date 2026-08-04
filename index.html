@@ -994,7 +994,12 @@ body{font-size:14px;font-weight:450}
             <tbody id="q_rate_body"></tbody>
           </table>
         </div>
-        <button onclick="qAddRateRow()" class="btn btn-ghost" style="font-size:11px;width:100%;margin-bottom:4px">+ Add POD / Rate</button>
+        <div style="display:flex;gap:6px;margin-bottom:4px">
+          <button onclick="qAddRateRow()" class="btn btn-ghost" style="font-size:11px;flex:1">+ Add POD / Rate</button>
+          <button onclick="qSyncRates()" class="btn btn-ghost" style="font-size:11px;flex:1;color:var(--cyan);border-color:var(--cyan)"
+            title="ดึงเรทล่าสุดจากคลังเรทตาม POL / POD / DEL ของแต่ละแถว (เฉพาะเรทที่ยัง valid)">🔄 Sync Rate จากคลังเรท</button>
+        </div>
+        <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
 
       <div class="card" style="margin-top:12px">
@@ -6153,7 +6158,7 @@ function qRenderRateRows(){
     return;
   }
   body.innerHTML = qRateRows.map(row => `
-    <tr style="border-bottom:1px solid rgba(30,48,80,.3)">
+    <tr style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}" title="${row.na?'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A':''}">
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="e.g. Laem Chabang"
@@ -6162,11 +6167,11 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="e.g. Chicago"
         oninput="qUpdateRate(${row.id},'del',this.value)" style="font-size:11px;padding:3px 6px;width:100px;color:var(--muted)"></td>
-      <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r20||''}" placeholder="0" min="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r20||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--green);width:70px"></td>
-      <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r40||''}" placeholder="0" min="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r40||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
-      <td style="padding:3px 4px"><input type="number" class="inp" value="${row.r4h||''}" placeholder="0" min="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r4h||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r4h',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
@@ -6192,6 +6197,98 @@ function qRenderRateRows(){
     </tr>`).join('');
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
 }
+
+// ── Sync Rate: ดึงเรทจากคลังเรทกลาง (ALL_RATES) มาลงในตาราง Sell Rates ─────
+// จับคู่จาก POL / POD / DEL ของแต่ละแถว · ใช้เฉพาะเรทที่ยัง valid เท่านั้น
+// ถ้าไม่เจอเรทที่ valid → ใส่ N/A
+function _qKey(s){
+  return String(s==null?'':s).toUpperCase()
+    .replace(/\(.*?\)/g,' ')            // ตัดวงเล็บ เช่น (LKB)
+    .replace(/[^A-Z0-9]/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+// ชื่อท่า: เทียบเฉพาะส่วนหน้าคอมมา (เมือง) เช่น "Long Beach, CA" ↔ "Long Beach"
+function _qCity(s){ return _qKey(String(s==null?'':s).split(',')[0]); }
+function _qPortMatch(a, b){
+  const ca=_qCity(a), cb=_qCity(b);
+  if(!ca || !cb) return false;
+  if(ca===cb) return true;
+  return ca.length>=4 && cb.length>=4 && (ca.startsWith(cb) || cb.startsWith(ca));
+}
+function _qRateValid(r){
+  // ใช้ valid_status ถ้ามี ไม่งั้นคำนวณจาก date_from/date_to
+  const st = r.valid_status || (typeof calcStatus==='function' ? calcStatus(r.date_from, r.date_to) : 'active');
+  return st === 'active';
+}
+function _qValidText(r){
+  let v = (r.validity||'').replace(/^RATE\s*/i,'').trim();
+  if(!v && r.date_from) v = r.date_from + (r.date_to ? ' ~ ' + r.date_to : '');
+  return v;
+}
+// หาเรทที่ตรงที่สุดของแถวหนึ่ง — คืน null ถ้าไม่มีเรทที่ valid
+function qFindRateForRow(row, fallbackPol){
+  const pool = window.ALL_RATES || [];
+  const pol  = row.pol || fallbackPol || '';
+  const wantDel = _qCity(row.del);
+  let res = pool.filter(r=>{
+    if(!_qRateValid(r)) return false;                       // ← เฉพาะที่ยัง valid
+    if(!_qPortMatch(r.pod, row.pod)) return false;
+    if(pol && !_qPortMatch(r.pol, pol)) return false;
+    const rDel = _qCity(r.del);
+    if(wantDel){ if(rDel !== wantDel && !_qPortMatch(r.del, row.del)) return false; }
+    else if(rDel) return false;                             // แถวไม่ระบุ DEL = ต้องเป็น direct port
+    return true;
+  });
+  if(row.carrier){
+    const want = _qKey(row.carrier);
+    const same = res.filter(r=> _qKey(r.carrier)===want ||
+      (typeof normalizeCarrier==='function' && normalizeCarrier(r.carrier)===normalizeCarrier(row.carrier)));
+    if(same.length) res = same;                             // ล็อกสายเรือถ้าแถวระบุไว้แล้ว
+  }
+  if(!res.length) return null;
+  const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
+  res.sort((a,b)=> price(a)-price(b));                      // ถูกสุดก่อน
+  return res[0];
+}
+window.qSyncRates = function(){
+  if(!qRateRows.length) return toast('ยังไม่มีแถวให้ sync — กด "+ Add POD / Rate" ก่อน');
+  const pool = window.ALL_RATES || [];
+  if(!pool.length) return toast('คลังเรทยังไม่โหลด ลองรีเฟรชหน้าอีกครั้ง');
+  const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
+  let hit=0, na=0, skip=0;
+  const naList=[];
+  qRateRows.forEach(row=>{
+    if(!row.pod || !String(row.pod).trim()){ skip++; return; }
+    const r = qFindRateForRow(row, fallbackPol);
+    if(!r){
+      row.na = true;
+      row.r20 = 'N/A'; row.r40 = 'N/A'; row.r4h = 'N/A';
+      row.valid = 'N/A';
+      na++; naList.push(row.pod + (row.del?(' / '+row.del):''));
+      return;
+    }
+    row.na = false;
+    if(!row.carrier) row.carrier = r.carrier || '';
+    if(!row.pol)     row.pol     = r.pol || fallbackPol || '';
+    row.r20 = r.gp20 || '';
+    row.r40 = r.gp40 || '';
+    row.r4h = r.hc40 || '';
+    const vt = _qValidText(r); if(vt) row.valid = vt;
+    if(r.tt && !row.tt) row.tt = r.tt;
+    if(r.direct && !row.direct) row.direct = r.direct;
+    row._src = r.source || '';
+    hit++;
+  });
+  qRenderRateRows(); qPreview();
+  const info = document.getElementById('q_sync_info');
+  if(info){
+    info.innerHTML = `🔄 sync แล้ว · <span style="color:var(--green)">อัปเดต ${hit}</span>`+
+      (na?` · <span style="color:var(--red)">N/A ${na} (${naList.slice(0,4).join(' · ')}${naList.length>4?' …':''})</span>`:'')+
+      (skip?` · ข้าม ${skip} แถวที่ยังไม่ใส่ POD`:'')+
+      ` · จากคลัง ${pool.length} เรท (เฉพาะที่ยัง valid)`;
+  }
+  toast('🔄 Sync แล้ว — อัปเดต '+hit+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
+};
 
 function qUpdateRate(id, field, val){
   const row = qRateRows.find(r=>r.id===id);
@@ -6373,6 +6470,12 @@ function qBuildEmail(){
         lines.push('');
         return;
       }
+      if(row.na){
+        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
+        lines.push(`  N/A`);
+        lines.push('');
+        return;
+      }
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
@@ -6544,22 +6647,23 @@ window.exportRateSheetXLSX = function(){
       const r20 = parseFloat(row.r20)||0;
       const r40 = parseFloat(row.r40)||0;
       const r4h = parseFloat(row.r4h)||0;
+      const NA  = row.na ? 'N/A' : '—';   // ไม่มีเรทที่ valid ในระบบ → N/A
 
       const _pf=parseFloat(row.profit)||0;
       const vals = isLCL ? [
         {v:row.pol||pol,                  col:MUTED,align:'left'},
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
-        {v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
+        {v:r20?(r20+_pf).toLocaleString():NA, col:r20?GREEN:MUTED, align:'right'},
         {v:(subjto?subjto+', ':'')+'local charges both ends', col:MUTED, align:'left'},
         {v:v,                             col:GOLD, align:'center'},
       ] : [
         {v:row.pol||pol,                  col:MUTED,align:'left'},
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
-        {v:r20?(r20+_pf).toLocaleString():'—', col:r20?GREEN:MUTED, align:'right'},
-        {v:r40?(r40+_pf).toLocaleString():'—', col:r40?GREEN:MUTED, align:'right'},
-        {v:r4h?(r4h+_pf).toLocaleString():'—', col:r4h?GREEN:MUTED, align:'right'},
+        {v:r20?(r20+_pf).toLocaleString():NA, col:r20?GREEN:MUTED, align:'right'},
+        {v:r40?(r40+_pf).toLocaleString():NA, col:r40?GREEN:MUTED, align:'right'},
+        {v:r4h?(r4h+_pf).toLocaleString():NA, col:r4h?GREEN:MUTED, align:'right'},
         {v:car,                           col:CYAN, align:'center'},
         {v:row.dem||'—',                  col:MUTED,align:'center'},
         {v:row.det||'—',                  col:MUTED,align:'center'},
