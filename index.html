@@ -951,7 +951,12 @@ body{font-size:14px;font-weight:450}
           <select id="q_template_sel" class="inp" style="font-size:11px;padding:4px 6px;flex:1">
             <option value="">-- เลือกเทมเพลตลูกค้า --</option>
           </select>
-          <button onclick="qLoadTemplate()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap">โหลดเทมเพลต</button>
+          <button onclick="qLoadTemplate()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap">โหลด</button>
+          <button onclick="qSaveTemplate()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap;color:var(--green);border-color:var(--green)"
+            title="บันทึกรายการ POD ในตารางตอนนี้เป็นเทมเพลตใหม่">💾 บันทึกเป็นเทมเพลต</button>
+          <button onclick="qImportTemplateXlsx()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap"
+            title="สร้างเทมเพลตจากไฟล์ Rate Request (.xlsx) — อ่านคอลัมน์ PORT DESTINATION / POL / DET / DEM / COMBINED / DIRECT OR T-S / TT">📥 จาก Excel</button>
+          <button onclick="qDeleteTemplate()" class="btn btn-ghost" style="font-size:11px;white-space:nowrap;color:var(--red)" title="ลบเทมเพลตที่เลือก">🗑</button>
         </div>
         <div class="four-col">
           <div class="inp-group"><label class="inp-lbl">Customer</label><input spellcheck="false" class="inp" id="q_customer" placeholder="e.g. Indorama"></div>
@@ -1974,7 +1979,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   const pg=g('page-'+id); if(pg) pg.classList.add('active');
-  if(id==='quotation'){ try{ qFillTemplateSelect(); }catch(e){} }
+  if(id==='quotation'){ try{ qFillTemplateSelect(); qLoadUserTemplates(); }catch(e){} }
   document.querySelectorAll('.nav-tab').forEach(b=>{
     if(b.textContent.toLowerCase().includes(id.slice(0,4))||
        (id==='news'&&b.textContent.includes('News'))||
@@ -6230,7 +6235,7 @@ function qRenderRateRows(){
 // ── Quotation Templates (ลูกค้าประจำ) ──────────────────────
 // INDORAMA: จาก WWL RATE REQUEST — POL ล็อกเป็น LAEM CHABANG ทุกแถว
 // เก็บ DEM/DET/COMBINED/DIRECT-T\u2044S/TT ตามที่ลูกค้าระบุมาในฟอร์ม
-const QUOTE_TEMPLATES = {
+const QUOTE_TEMPLATES_BUILTIN = {
   'INDORAMA': {
     customer: 'INDORAMA',
     pol: 'LAEM CHABANG',
@@ -6240,14 +6245,153 @@ const QUOTE_TEMPLATES = {
     rows: [{"pod":"Acajutla, El Salvador (SVAQJ)","del":"","dem":"","det":"","combined":"16","direct":"T/S","tt":"33-60"},{"pod":"GENOA, Italy (ITGOA)","del":"","dem":"","det":"","combined":"9","direct":"T/S","tt":"39-41"},{"pod":"Antwerp Sea Port, Belgium (BEANR)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Barcelona Sea Port, Spain (ESBCN)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Rotterdam, Netherlands (NLRTM)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Koper, Koper, Slovenia (SIKOP)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Southampton, UK (GBSOU)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Buenaventura, Colombia (COBUN)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Navegantes, Brazil (BRNVT)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Paranaguá, Brazil (BRPNG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"RIO GRANDE, RIO GRANDE, Brazil (BRRIG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Santos, Brazil (BRSSZ)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Buenos Aires, Argentina (ARBUE)","del":"","dem":"","det":"","combined":"18","direct":"T/S","tt":"35-45"},{"pod":"La Guaira, Venezuela (VELAG)","del":"","dem":"","det":"","combined":"","direct":"","tt":""},{"pod":"Manzanillo, Manzanillo, Mexico (MXZLO)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Burgas, Bulgaria (BGBOJ)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"57"},{"pod":"Cagayan de Oro, Philippines (PHCGY)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":""},{"pod":"Cat Lai Port, VICT, Ho Chi Minh City, Vietnam (VNOCL)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"4"},{"pod":"Long Beach, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"Los Angeles, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"New York, USA (USNYC)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Norfolk, USA (USOFK)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Savannah, USA (USSAV)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Los Angeles, USA","del":"Chicago, IL","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"43"},{"pod":"Charleston, USA (USCST)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Karachi, Pakistan (PKKHI)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"24"},{"pod":"Chennai, India (INMAA1)","del":"","dem":"","det":"","combined":"14","direct":"DIRECT","tt":"9"},{"pod":"Jeddah, Saudi Arabia","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"30"}]
   }
 };
+// เทมเพลตที่ผู้ใช้สร้างเอง — เก็บใน Firestore (data/quoteTemplates) + cache ใน localStorage
+const LS_QTPL = 'sfp_quote_templates_v1';
+let QUOTE_TEMPLATES_USER = {};
+try{ QUOTE_TEMPLATES_USER = JSON.parse(localStorage.getItem(LS_QTPL)||'{}'); }catch(e){ QUOTE_TEMPLATES_USER = {}; }
+function qAllTemplates(){
+  const out = {};
+  Object.keys(QUOTE_TEMPLATES_BUILTIN).forEach(k=> out[k] = Object.assign({builtin:true}, QUOTE_TEMPLATES_BUILTIN[k]));
+  Object.keys(QUOTE_TEMPLATES_USER||{}).forEach(k=> out[k] = QUOTE_TEMPLATES_USER[k]);
+  return out;
+}
+// ให้โค้ดเดิมที่อ้าง QUOTE_TEMPLATES ยังใช้ได้
+Object.defineProperty(window, 'QUOTE_TEMPLATES', { get(){ return qAllTemplates(); } });
+async function qLoadUserTemplates(){
+  try{
+    const snap = await window.fbGet('data/quoteTemplates');
+    if(snap && snap.templates){
+      QUOTE_TEMPLATES_USER = snap.templates;
+      try{ localStorage.setItem(LS_QTPL, JSON.stringify(QUOTE_TEMPLATES_USER)); }catch(e){}
+      qFillTemplateSelect();
+    }
+  }catch(e){ console.warn('quoteTemplates load', e); }
+}
+async function qPersistUserTemplates(){
+  try{ localStorage.setItem(LS_QTPL, JSON.stringify(QUOTE_TEMPLATES_USER)); }catch(e){}
+  try{ await window.fbSet('data/quoteTemplates', { templates: QUOTE_TEMPLATES_USER, updatedAt:new Date().toISOString() }); }
+  catch(e){ toast('⚠ บันทึกขึ้นคลาวด์ไม่สำเร็จ (เก็บไว้ในเครื่องแล้ว)'); }
+}
+// บันทึกตารางปัจจุบันเป็นเทมเพลตใหม่
+window.qSaveTemplate = async function(){
+  if(!qRateRows.length) return toast('ยังไม่มีแถวให้บันทึก — เพิ่ม POD ก่อนครับ');
+  const gv = id => (document.getElementById(id)||{}).value || '';
+  const sel = (document.getElementById('q_template_sel')||{}).value || '';
+  const suggest = gv('q_customer') || sel || 'TEMPLATE';
+  const name = prompt('ชื่อเทมเพลต (ถ้าซ้ำจะเขียนทับ):', suggest);
+  if(!name || !name.trim()) return;
+  const key = name.trim();
+  if(QUOTE_TEMPLATES_BUILTIN[key]) return toast('❌ ชื่อนี้เป็นเทมเพลตของระบบ ใช้ชื่ออื่นครับ');
+  if(QUOTE_TEMPLATES_USER[key] && !confirm('มีเทมเพลต "'+key+'" อยู่แล้ว — เขียนทับ?')) return;
+  const polFromRows = [...new Set(qRateRows.map(r=>(r.pol||'').trim()).filter(Boolean))];
+  const pol = gv('q_pol') || polFromRows[0] || '';
+  const lockPol = confirm('ล็อก POL เป็น "'+(pol||'(ว่าง)')+'" ทุกแถวไหม?\n\nOK = ล็อก   |   Cancel = แก้ POL ได้อิสระ');
+  QUOTE_TEMPLATES_USER[key] = {
+    customer: gv('q_customer'), pol, lockPol,
+    subjto: gv('q_subjto'), remarks: gv('q_remarks'),
+    rows: qRateRows.map(r=>({ pod:r.pod||'', del:r.del||'', dem:r.dem||'', det:r.det||'',
+                              combined:r.combined||'', direct:r.direct||'', tt:r.tt||'' }))
+  };
+  await qPersistUserTemplates();
+  qFillTemplateSelect();
+  const selEl = document.getElementById('q_template_sel'); if(selEl) selEl.value = key;
+  toast('💾 บันทึกเทมเพลต "'+key+'" แล้ว — '+qRateRows.length+' POD'+(lockPol?' (POL ล็อก)':''));
+};
+window.qDeleteTemplate = async function(){
+  const key = (document.getElementById('q_template_sel')||{}).value || '';
+  if(!key) return toast('เลือกเทมเพลตที่จะลบก่อนครับ');
+  if(QUOTE_TEMPLATES_BUILTIN[key]) return toast('❌ เทมเพลตของระบบลบไม่ได้');
+  if(!QUOTE_TEMPLATES_USER[key]) return toast('ไม่พบเทมเพลตนี้');
+  if(!confirm('ลบเทมเพลต "'+key+'"?')) return;
+  delete QUOTE_TEMPLATES_USER[key];
+  await qPersistUserTemplates();
+  qFillTemplateSelect();
+  toast('🗑 ลบเทมเพลต "'+key+'" แล้ว');
+};
+// สร้างเทมเพลตจากไฟล์ Rate Request (.xlsx) แบบเดียวกับของ INDORAMA
+window.qImportTemplateXlsx = function(){
+  if(!window.XLSX) return toast('⏳ กำลังโหลดตัวอ่าน Excel… ลองอีกครั้ง');
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.xlsx,.xls,.xlsm';
+  inp.onchange = function(){
+    const f = this.files && this.files[0]; if(!f) return;
+    const fr = new FileReader();
+    fr.onerror = ()=> toast('❌ อ่านไฟล์ไม่สำเร็จ');
+    fr.onload = async e=>{
+      let rows;
+      try{ rows = qParseTemplateWorkbook(XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true})); }
+      catch(err){ return toast('❌ อ่าน Excel ไม่ได้: '+err.message); }
+      if(!rows.length) return toast('❌ ไม่พบตารางปลายทาง (ต้องมีหัวคอลัมน์ PORT DESTINATION)');
+      const name = prompt('ชื่อเทมเพลต:', f.name.replace(/\.(xlsx|xls|xlsm)$/i,'').trim());
+      if(!name || !name.trim()) return;
+      const key = name.trim();
+      if(QUOTE_TEMPLATES_BUILTIN[key]) return toast('❌ ชื่อนี้เป็นเทมเพลตของระบบ ใช้ชื่ออื่นครับ');
+      if(QUOTE_TEMPLATES_USER[key] && !confirm('มีเทมเพลต "'+key+'" อยู่แล้ว — เขียนทับ?')) return;
+      const pol = prompt('ล็อก POL เป็น:', 'LAEM CHABANG');
+      QUOTE_TEMPLATES_USER[key] = {
+        customer: key, pol: (pol||'').trim(), lockPol: !!(pol||'').trim(),
+        subjto: '', remarks: '', rows
+      };
+      await qPersistUserTemplates();
+      qFillTemplateSelect();
+      const selEl = document.getElementById('q_template_sel'); if(selEl) selEl.value = key;
+      toast('📥 สร้างเทมเพลต "'+key+'" — '+rows.length+' POD');
+    };
+    fr.readAsArrayBuffer(f);
+  };
+  inp.click();
+};
+// อ่านไฟล์ Rate Request: หาหัวตาราง PORT DESTINATION แล้วเก็บแถวที่มี POL
+function qParseTemplateWorkbook(wb){
+  const K = v => String(v==null?'':v).replace(/\s+/g,' ').trim().toUpperCase();
+  const out = [];
+  wb.SheetNames.forEach(sn=>{
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+    // หัวตารางจริงต้องมีทั้งช่องปลายทางและช่อง POL
+    // (กันไปเจอบรรทัดโน้ตด้านบนที่มีคำว่า "at destination")
+    let h = -1;
+    for(let i=0;i<Math.min(25, aoa.length);i++){
+      const rk = (aoa[i]||[]).map(K);
+      const hasDest = rk.some(x=> x.includes('PORT DESTINATION') || x==='DESTINATION' || x==='POD' || x==='PORT OF DISCHARGE');
+      const hasPol  = rk.some(x=> x.startsWith('POL'));
+      if(hasDest && hasPol){ h=i; break; }
+    }
+    if(h<0) return;
+    const hdr = (aoa[h]||[]).map(K);
+    const find = (...keys)=> hdr.findIndex(x=> keys.some(k=> x.includes(k)));
+    let cDest = hdr.findIndex(x=> x.includes('PORT DESTINATION'));
+    if(cDest<0) cDest = hdr.findIndex(x=> x==='DESTINATION' || x==='POD' || x==='PORT OF DISCHARGE');
+    const cPol  = find('POL');
+    const cDet  = find('DET'), cDem = find('DEM');
+    const cCmb  = find('COMBINED'), cDir = find('DIRECT'), cTt = find('TT','T/T','TRANSIT');
+    if(cDest<0) return;
+    for(let r=h+1; r<aoa.length; r++){
+      const row = aoa[r]||[];
+      const dest = String(row[cDest]==null?'':row[cDest]).replace(/\s+/g,' ').trim();
+      const pol  = cPol>=0 ? String(row[cPol]==null?'':row[cPol]).trim() : '';
+      if(!dest || !pol) continue;             // ต้องมีปลายทาง + POL
+      if(/^DAP\b/i.test(dest)) continue;      // งาน door ไม่ใช่ port-to-port
+      let pod = dest, del = '';
+      if(/VIA\s+LA\b/i.test(dest)){ del = dest.split(',')[0].trim()+', IL'; pod = 'Los Angeles, USA'; }
+      out.push({ pod, del,
+        dem: cDem>=0 ? String(row[cDem]==null?'':row[cDem]).trim() : '',
+        det: cDet>=0 ? String(row[cDet]==null?'':row[cDet]).trim() : '',
+        combined: cCmb>=0 ? String(row[cCmb]==null?'':row[cCmb]).trim() : '',
+        direct: cDir>=0 ? String(row[cDir]==null?'':row[cDir]).trim() : '',
+        tt: cTt>=0 ? String(row[cTt]==null?'':row[cTt]).trim() : '' });
+    }
+  });
+  return out;
+}
 function qFillTemplateSelect(){
   const sel = document.getElementById('q_template_sel');
   if(!sel) return;
   const cur = sel.value;
+  const all = qAllTemplates();
   sel.innerHTML = '<option value="">-- เลือกเทมเพลตลูกค้า --</option>' +
-    Object.keys(QUOTE_TEMPLATES).map(k=>{
-      const t = QUOTE_TEMPLATES[k];
-      return `<option value="${k}"${k===cur?' selected':''}>📋 ${k} — ${t.pol} → ${t.rows.length} POD</option>`;
+    Object.keys(all).sort((a,b)=>a.localeCompare(b)).map(k=>{
+      const t = all[k];
+      return `<option value="${String(k).replace(/"/g,'&quot;')}"${k===cur?' selected':''}>${t.builtin?'📋':'⭐'} ${k} — ${t.pol||'-'} → ${(t.rows||[]).length} POD</option>`;
     }).join('');
 }
 window.qUnlockPol = function(id){
@@ -6258,7 +6402,7 @@ window.qUnlockPol = function(id){
 window.qLoadTemplate = function(name){
   const key = name || (document.getElementById('q_template_sel')||{}).value || '';
   if(!key) return toast('เลือกเทมเพลตก่อนครับ');
-  const t = QUOTE_TEMPLATES[key];
+  const t = qAllTemplates()[key];
   if(!t) return toast('ไม่พบเทมเพลต ' + key);
   if(qRateRows.length && !confirm('โหลดเทมเพลต "'+key+'" ('+t.rows.length+' POD)?\n\nแถวเรทที่มีอยู่ '+qRateRows.length+' แถวจะถูกแทนที่')) return;
   const set = (id,val)=>{ const el=document.getElementById(id); if(el && val!=null && (!el.value || id==='q_customer' || id==='q_pol')) el.value = val; };
