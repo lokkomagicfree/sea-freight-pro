@@ -1012,9 +1012,7 @@ body{font-size:14px;font-weight:450}
           <button onclick="qAddRateRow()" class="btn btn-ghost" style="font-size:11px;flex:1">+ Add POD / Rate</button>
           <button onclick="qSyncRates()" class="btn btn-ghost" style="font-size:11px;flex:1;color:var(--cyan);border-color:var(--cyan)"
             title="ดึงเรทล่าสุดจากคลังเรทตาม POL / POD / DEL ของแต่ละแถว (เฉพาะเรทที่ยัง valid)">🔄 Sync Rate จากคลังเรท</button>
-          <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gold);white-space:nowrap;cursor:pointer"
-            title="เลือกสายเรือที่ถูกที่สุดของเส้นทางนั้นให้อัตโนมัติ ถ้ามีเรือที่ถูกกว่าจะสลับให้เอง">
-            <input type="checkbox" id="q_cheapest" checked onchange="qSaveCheapestPref(this.checked)"> 🏆 เรือถูกสุด</label>
+          <span style="font-size:9px;color:var(--muted);white-space:nowrap;line-height:1.3">ใส่ชื่อเรือ = ล็อกเรือนั้น<br>เว้นว่าง = เลือกเรือถูกสุดให้</span>
         </div>
         <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
@@ -6261,7 +6259,10 @@ function qRenderRateRows(){
   body.innerHTML = qRateRows.map(row => `
     <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}" title="${row.na?'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A':''}">
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
-        oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
+        oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px">
+        ${row.src||row._src ? `<div style="margin-top:2px"><span class="src-badge" title="ประเภทเรทที่ใช้ (ภายในเท่านั้น — ไม่แสดงให้ลูกค้า)"
+            style="padding:1px 5px;border-radius:4px;font-size:9px;font-family:var(--mono);background:rgba(183,128,10,.15);color:var(--gold);border:1px solid rgba(183,128,10,.3);cursor:pointer"
+            onclick="qCycleSrc(${row.id})">${row.src||row._src}</span></div>` : ''}</td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="e.g. Laem Chabang"
         ${row.polLock?'readonly title="POL ล็อกไว้จากเทมเพลต — กด 🔓 เพื่อปลดล็อก"':''}
         oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:${row.polLock?'82':'100'}px${row.polLock?';opacity:.75;cursor:not-allowed':''}">${row.polLock?`<button onclick="qUnlockPol(${row.id})" title="ปลดล็อก POL" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:11px;padding:0 2px">🔒</button>`:''}</td>
@@ -6462,6 +6463,14 @@ function qFillTemplateSelect(){
       return `<option value="${String(k).replace(/"/g,'&quot;')}"${k===cur?' selected':''}>${t.builtin?'📋':'⭐'} ${k} — ${t.pol||'-'} → ${(t.rows||[]).length} POD</option>`;
     }).join('');
 }
+// คลิกป้าย FIX/FAK เพื่อสลับไปอีกชุดเรทของสายเรือเดียวกัน
+window.qCycleSrc = function(id){
+  const row = qRateRows.find(r=>r.id===id); if(!row) return;
+  const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
+  const opts = qSrcOptions(row, fallbackPol);
+  if(opts.length<2) return toast('เส้นทางนี้มีชุดเรทเดียว ('+(row.src||row._src||'-')+')');
+  window.qOpenSrcPicker([{row, opts}], fallbackPol);
+};
 window.qUnlockPol = function(id){
   const row = qRateRows.find(r=>r.id===id);
   if(!row) return;
@@ -6530,15 +6539,17 @@ function _qValidText(r){
   return v;
 }
 // หาเรทที่ตรงที่สุดของแถวหนึ่ง — คืน null ถ้าไม่มีเรทที่ valid
-function qCheapestMode(){
-  const el = document.getElementById('q_cheapest');
-  if(el) return el.checked;
-  return localStorage.getItem('sfp_q_cheapest') !== '0';
-}
-window.qSaveCheapestPref = function(on){ try{ localStorage.setItem('sfp_q_cheapest', on?'1':'0'); }catch(e){} };
+// กติกา: แถวไหน "ระบุสายเรือไว้" = ล็อกสายนั้นเสมอ ไม่ไปหยิบสายอื่นมาแทน
+//        แถวที่เว้นสายเรือว่าง = เลือกสายที่ถูกที่สุดของเส้นทางนั้นให้
+function qCheapestMode(){ return true; }
 // mode: 'cheapest' = ไม่สนสายเรือที่กรอกไว้ เลือกถูกสุด · 'prefer' = ใช้สายที่กรอกก่อน ไม่มีค่อยหาถูกสุด · 'lock' = ล็อกสายนั้น
 function qFindRateForRow(row, fallbackPol, mode){
-  mode = mode || (qCheapestMode() ? 'cheapest' : 'lock');
+  const list = qFindRateCandidates(row, fallbackPol, mode);
+  return list.length ? list[0] : null;
+}
+// คืนเรทที่เข้าเงื่อนไขทั้งหมด เรียงถูก→แพง
+function qFindRateCandidates(row, fallbackPol, mode){
+  mode = mode || 'lock';
   const pool = window.ALL_RATES || [];
   const pol  = row.pol || fallbackPol || '';
   const wantDel = _qCity(row.del);
@@ -6551,35 +6562,107 @@ function qFindRateForRow(row, fallbackPol, mode){
     else if(rDel) return false;                             // แถวไม่ระบุ DEL = ต้องเป็น direct port
     return true;
   });
-  const sameCarrier = ()=>{
-    const want = _qKey(row.carrier);
-    return res.filter(r=> _qKey(r.carrier)===want ||
-      (typeof normalizeCarrier==='function' && normalizeCarrier(r.carrier)===normalizeCarrier(row.carrier)));
-  };
   if(String(row.carrier||'').trim()){
-    if(mode==='lock'){
-      // ล็อกสายเรือ — สายนี้ไม่มีเรทเส้นทางนี้ = N/A (ไม่หยิบสายอื่นมาแทน)
-      res = sameCarrier();
-    } else if(mode==='prefer'){
-      // ผู้ใช้เพิ่งพิมพ์ชื่อสายเรือเอง → ใช้สายนั้นก่อน ถ้าไม่มีค่อยตกไปหาที่ถูกสุด
-      const same = sameCarrier();
-      if(same.length) res = same;
-    }
-    // mode==='cheapest' → ไม่กรองสายเรือเลย เลือกที่ถูกที่สุดของเส้นทางนั้น
+    // ระบุสายเรือไว้ = ล็อกสายนั้นจริงๆ · สายนี้ไม่มีเรทเส้นทางนี้ = N/A
+    const want = _qKey(row.carrier);
+    res = res.filter(r=> _qKey(r.carrier)===want ||
+      (typeof normalizeCarrier==='function' && normalizeCarrier(r.carrier)===normalizeCarrier(row.carrier)));
   }
-  if(!res.length) return null;
+  // เลือกประเภทเรทไว้แล้ว (FIX / FAK / …) → ใช้เฉพาะประเภทนั้น
+  if(String(row.src||'').trim()){
+    res = res.filter(r=> srcLabel(r.source,r) === row.src);
+  }
   const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
   res.sort((a,b)=> price(a)-price(b));                      // ถูกสุดก่อน
-  return res[0];
+  return res;
 }
+// ประเภทเรททั้งหมดที่มีให้เลือกในแถวนี้ (ไม่กรอง src)
+function qSrcOptions(row, fallbackPol){
+  const tmp = Object.assign({}, row, {src:''});
+  const list = qFindRateCandidates(tmp, fallbackPol);
+  const seen = new Map();
+  list.forEach(r=>{ const L = srcLabel(r.source,r); if(!seen.has(L)) seen.set(L, r); });
+  return [...seen.entries()].map(([label, r])=>({label, rate:r}));
+}
+// ── เลือกประเภทเรท (FIX / FAK / …) เมื่อสายเรือเดียวกันมีหลายชุด ──────
+// บางลูกค้าใช้เรท FIX ไม่ได้ ต้องเลือกเอง — ป้ายนี้เป็นข้อมูลภายใน ไม่ขึ้นในเมล/PDF ลูกค้า
+let _qAmbig = [], _qAmbigPol = '';
+window.qOpenSrcPicker = function(list, fallbackPol){
+  _qAmbig = list; _qAmbigPol = fallbackPol || '';
+  document.getElementById('q_src_modal')?.remove();
+  const money = r => '$'+((+r.hc40||+r.gp40||+r.gp20||0)).toLocaleString();
+  const allSrc = [...new Set(list.flatMap(x=>x.opts.map(o=>o.label)))];
+  const body = `
+  <div id="q_src_modal" style="position:fixed;inset:0;background:rgba(8,14,24,.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:720px;width:100%;max-height:80vh;overflow:auto;padding:18px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--gold);margin-bottom:4px">⚠ เลือกประเภทเรท (FIX / FAK / ETC.)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">
+        สายเรือเดียวกันมีเรทหลายชุดในเส้นทางนี้ · เลือกชุดที่จะใช้กับลูกค้ารายนี้<br>
+        <span style="color:var(--gold)">ป้ายกำกับนี้เห็นเฉพาะภายใน ไม่แสดงในเมล / PDF ที่ส่งลูกค้า</span>
+      </div>
+      ${allSrc.length>1 ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">ใช้ทุกแถว:</span>
+        ${allSrc.map(sl=>`<button onclick="qSrcPickAll('${sl}')" class="btn btn-ghost" style="font-size:11px;padding:3px 10px">${sl}</button>`).join('')}
+      </div>` : ''}
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:5px;color:var(--muted);font-size:10px;font-family:var(--mono)">เส้นทาง</th>
+          <th style="text-align:left;padding:5px;color:var(--muted);font-size:10px;font-family:var(--mono)">เลือกชุดเรท</th>
+        </tr></thead>
+        <tbody>
+        ${list.map((x,i)=>`<tr style="border-bottom:1px solid rgba(30,48,80,.3)">
+          <td style="padding:6px 5px;font-family:var(--mono);font-size:11px">
+            <b style="color:var(--accent2)">${x.row.carrier||'-'}</b> · ${(x.row.pol||'')} → ${(x.row.pod||'')}${x.row.del?(' / '+x.row.del):''}</td>
+          <td style="padding:6px 5px;display:flex;gap:6px;flex-wrap:wrap">
+            ${x.opts.map(o=>`<label style="display:flex;align-items:center;gap:4px;font-size:11px;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;cursor:pointer">
+              <input type="radio" name="qsrc_${i}" value="${o.label}"${o===x.opts[0]?' checked':''}>
+              <span class="src-badge ${srcCls(o.rate.source,o.rate)}" style="padding:1px 5px;border-radius:4px;font-size:9px;font-family:var(--mono)">${o.label}</span>
+              <span style="color:var(--green);font-family:var(--mono)">${money(o.rate)}</span></label>`).join('')}
+          </td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button onclick="document.getElementById('q_src_modal').remove()" class="btn btn-ghost" style="font-size:12px;padding:7px 14px">ข้ามไปก่อน</button>
+        <button onclick="qSrcPickApply()" class="btn btn-cyan" style="font-size:12px;padding:7px 16px">✓ ใช้ชุดเรทที่เลือก</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', body);
+};
+window.qSrcPickAll = function(label){
+  _qAmbig.forEach((x,i)=>{
+    const el = document.querySelector(`input[name="qsrc_${i}"][value="${label}"]`);
+    if(el) el.checked = true;
+  });
+};
+window.qSrcPickApply = function(){
+  _qAmbig.forEach((x,i)=>{
+    const el = document.querySelector(`input[name="qsrc_${i}"]:checked`);
+    if(!el) return;
+    x.row.src = el.value;
+    const r = qFindRateForRow(x.row, _qAmbigPol);
+    if(r){
+      x.row.na = false;
+      x.row.r20 = r.gp20||''; x.row.r40 = r.gp40||''; x.row.r4h = r.hc40||'';
+      const vt = _qValidText(r); if(vt) x.row.valid = vt;
+      if(r.tt) x.row.tt = r.tt;
+      if(r.direct) x.row.direct = r.direct;
+      if(r.ft) x.row.combined = String(r.ft).replace(/\s*days?\s*$/i,'');
+      x.row._src = r.source||'';
+    }
+  });
+  document.getElementById('q_src_modal')?.remove();
+  qRenderRateRows(); qPreview();
+  toast('✓ ใช้ชุดเรทที่เลือกแล้ว — ป้าย FIX/FAK แสดงเฉพาะในระบบ');
+};
+
 window.qSyncRates = function(){
   if(!qRateRows.length) return toast('ยังไม่มีแถวให้ sync — กด "+ Add POD / Rate" ก่อน');
   const pool = window.ALL_RATES || [];
   if(!pool.length) return toast('คลังเรทยังไม่โหลด ลองรีเฟรชหน้าอีกครั้ง');
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
   let hit=0, na=0, skip=0;
-  const naList=[], swapped=[];
-  const cheapest = qCheapestMode();
+  const naList=[], swapped=[], ambiguous=[];
   qRateRows.forEach(row=>{
     row._synced = true;
     if(!row.pod || !String(row.pod).trim()){ skip++; return; }
@@ -6592,12 +6675,13 @@ window.qSyncRates = function(){
       return;
     }
     row.na = false;
-    const oldCar = (row.carrier||'').trim();
-    if(cheapest && r.carrier && _qKey(r.carrier)!==_qKey(oldCar)){
-      if(oldCar) swapped.push(oldCar+'→'+r.carrier);
-      row.carrier = r.carrier;                       // มีเรือถูกกว่า → สลับให้เลย
-    } else if(!row.carrier) row.carrier = r.carrier || '';
+    if(!row.carrier) row.carrier = r.carrier || '';   // เว้นว่าง = เติมสายที่ถูกสุดให้
     if(!row.pol)     row.pol     = r.pol || fallbackPol || '';
+    // สายเรือนี้มีหลายประเภทเรท (FIX / FAK / …) และยังไม่ได้เลือก → เก็บไว้ถามทีเดียว
+    if(!row.src){
+      const opts = qSrcOptions(row, fallbackPol);
+      if(opts.length > 1) ambiguous.push({row, opts});
+    }
     row.r20 = r.gp20 || '';
     row.r40 = r.gp40 || '';
     row.r4h = r.hc40 || '';
@@ -6609,15 +6693,16 @@ window.qSyncRates = function(){
     hit++;
   });
   qRenderRateRows(); qPreview();
+  if(ambiguous.length) window.qOpenSrcPicker(ambiguous, fallbackPol);
   const info = document.getElementById('q_sync_info');
   if(info){
     info.innerHTML = `🔄 sync แล้ว · <span style="color:var(--green)">อัปเดต ${hit}</span>`+
-      (swapped.length?` · <span style="color:var(--gold)">🏆 เปลี่ยนเป็นเรือที่ถูกกว่า ${swapped.length} แถว (${swapped.slice(0,4).join(' · ')}${swapped.length>4?' …':''})</span>`:'')+
+      (ambiguous.length?` · <span style="color:var(--gold)">⚠ ${ambiguous.length} แถวมีหลายประเภทเรท — เลือกใน pop-up</span>`:'')+
       (na?` · <span style="color:var(--red)">N/A ${na} (${naList.slice(0,4).join(' · ')}${naList.length>4?' …':''})</span>`:'')+
       (skip?` · ข้าม ${skip} แถวที่ยังไม่ใส่ POD`:'')+
       ` · จากคลัง ${pool.length} เรท (เฉพาะที่ยัง valid)`;
   }
-  toast('🔄 Sync แล้ว — อัปเดต '+hit+(swapped.length?(' / 🏆 สลับเรือถูกกว่า '+swapped.length):'')+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
+  toast('🔄 Sync แล้ว — อัปเดต '+hit+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
 };
 
 const _qReTimer = {};
@@ -6629,6 +6714,7 @@ function qUpdateRate(id, field, val){
   if((field==='r20'||field==='r40'||field==='r4h') && val && !isNaN(parseFloat(val))) row.na = false;
   // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
   if(field==='carrier' || field==='pol' || field==='pod' || field==='del'){
+    row.src = '';                                    // เส้นทาง/สายเรือเปลี่ยน → เลือกประเภทเรทใหม่
     clearTimeout(_qReTimer[id]);
     // พิมพ์ชื่อสายเรือเอง = ใช้สายนั้นก่อน · เปลี่ยนท่าเรือ = ให้ระบบเลือกสายที่ถูกที่สุด
     const md = (field==='carrier') ? 'prefer' : undefined;
@@ -6666,8 +6752,7 @@ window.qRefreshRowRate = function(id, mode){
     row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A'; row._src='';
   }else{
     row.na = false;
-    if(qCheapestMode() && r.carrier) row.carrier = r.carrier;   // เจอเรือถูกกว่า → สลับให้
-    else if(!row.carrier) row.carrier = r.carrier || '';
+    if(!row.carrier) row.carrier = r.carrier || '';   // เว้นว่างเท่านั้นถึงเติมสายเรือให้
     row.r20 = r.gp20 || ''; row.r40 = r.gp40 || ''; row.r4h = r.hc40 || '';
     const vt = _qValidText(r); if(vt) row.valid = vt;
     if(r.tt) row.tt = r.tt;
