@@ -6166,8 +6166,8 @@ function qRenderRateRows(){
     return;
   }
   body.innerHTML = qRateRows.map(row => `
-    <tr style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}" title="${row.na?'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A':''}">
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
+    <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}" title="${row.na?'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A':''}">
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="e.g. Laem Chabang"
         ${row.polLock?'readonly title="POL ล็อกไว้จากเทมเพลต — กด 🔓 เพื่อปลดล็อก"':''}
@@ -6176,11 +6176,11 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:120px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="e.g. Chicago"
         oninput="qUpdateRate(${row.id},'del',this.value)" style="font-size:11px;padding:3px 6px;width:100px;color:var(--muted)"></td>
-      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r20||''}" placeholder="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="r20" class="inp" value="${row.r20||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--green);width:70px"></td>
-      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r40||''}" placeholder="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="r40" class="inp" value="${row.r40||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
-      <td style="padding:3px 4px"><input type="text" inputmode="decimal" class="inp" value="${row.r4h||''}" placeholder="0"
+      <td style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="r4h" class="inp" value="${row.r4h||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r4h',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
@@ -6188,11 +6188,11 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'det',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.combined||''}" placeholder="e.g. 14"
         oninput="qUpdateRate(${row.id},'combined',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:55px"></td>
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.direct||''}" placeholder="DIRECT"
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="direct" class="inp" value="${row.direct||''}" placeholder="DIRECT"
         oninput="qUpdateRate(${row.id},'direct',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:70px"></td>
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.tt||''}" placeholder="e.g. 27"
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="tt" class="inp" value="${row.tt||''}" placeholder="e.g. 27"
         oninput="qUpdateRate(${row.id},'tt',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:38px"></td>
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.valid||''}" placeholder="e.g. May 1-31"
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="valid" class="inp" value="${row.valid||''}" placeholder="e.g. May 1-31"
         oninput="qUpdateRate(${row.id},'valid',this.value)" style="font-size:11px;padding:3px 6px;color:var(--gold);width:95px"></td>
       <td style="padding:3px 4px">
         <input type="number" class="inp" value="${row.profit||''}" placeholder="+0" min="0"
@@ -6252,7 +6252,7 @@ window.qLoadTemplate = function(name){
     r20:'', r40:'', r4h:'', profit:'',
     dem: r.dem||'', det: r.det||'', combined: r.combined||'',
     direct: r.direct||'', tt: r.tt||'', valid:'',
-    polLock: !!t.lockPol
+    polLock: !!t.lockPol, _synced: true
   }));
   qRenderRateRows();
   try{ window.qSyncRates(); }catch(e){ qPreview(); }   // ดึงเรทที่ยัง valid ให้ทันที
@@ -6310,11 +6310,12 @@ function qFindRateForRow(row, fallbackPol){
     else if(rDel) return false;                             // แถวไม่ระบุ DEL = ต้องเป็น direct port
     return true;
   });
-  if(row.carrier){
+  if(String(row.carrier||'').trim()){
+    // ระบุสายเรือไว้ = ล็อกสายเรือนั้นจริงๆ — ถ้าสายนี้ไม่มีเรทเส้นทางนี้ ให้เป็น N/A
+    // (ไม่ตกไปหยิบเรทของสายอื่นมาแสดงแทน)
     const want = _qKey(row.carrier);
-    const same = res.filter(r=> _qKey(r.carrier)===want ||
+    res = res.filter(r=> _qKey(r.carrier)===want ||
       (typeof normalizeCarrier==='function' && normalizeCarrier(r.carrier)===normalizeCarrier(row.carrier)));
-    if(same.length) res = same;                             // ล็อกสายเรือถ้าแถวระบุไว้แล้ว
   }
   if(!res.length) return null;
   const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
@@ -6329,6 +6330,7 @@ window.qSyncRates = function(){
   let hit=0, na=0, skip=0;
   const naList=[];
   qRateRows.forEach(row=>{
+    row._synced = true;
     if(!row.pod || !String(row.pod).trim()){ skip++; return; }
     const r = qFindRateForRow(row, fallbackPol);
     if(!r){
@@ -6361,10 +6363,59 @@ window.qSyncRates = function(){
   toast('🔄 Sync แล้ว — อัปเดต '+hit+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
 };
 
+const _qReTimer = {};
 function qUpdateRate(id, field, val){
   const row = qRateRows.find(r=>r.id===id);
-  if(row){ row[field]=val; qPreview(); }
+  if(!row) return;
+  row[field] = val;
+  // พิมพ์ราคาเองทับ N/A → ถือว่าไม่ใช่ N/A แล้ว
+  if((field==='r20'||field==='r40'||field==='r4h') && val && !isNaN(parseFloat(val))) row.na = false;
+  // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
+  if(field==='carrier' || field==='pol' || field==='pod' || field==='del'){
+    clearTimeout(_qReTimer[id]);
+    _qReTimer[id] = setTimeout(()=>window.qRefreshRowRate(id), 500);
+  }
+  qPreview();
 }
+// อัปเดตเฉพาะช่องของแถวนั้นในหน้าจอ (ไม่ re-render ทั้งตาราง → ไม่หลุดโฟกัสตอนพิมพ์)
+function qPaintRow(row){
+  const put = (f, val)=>{
+    const el = document.querySelector('[data-rid="'+row.id+'"][data-f="'+f+'"]');
+    if(el && document.activeElement !== el) el.value = (val==null?'':val);
+  };
+  ['carrier','r20','r40','r4h','valid','tt','direct'].forEach(f=> put(f, row[f]));
+  const tr = document.querySelector('tr[data-rowid="'+row.id+'"]');
+  if(tr){
+    tr.style.background = row.na ? 'rgba(200,60,45,.10)' : '';
+    tr.title = row.na ? 'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A' : '';
+  }
+  try{ qUpdateRateDisplay(row.id); }catch(e){}
+}
+// เช็คแถวเดียวกับคลังเรท — ไม่เจอเรทที่ valid = N/A (ไม่ค้างของเก่า)
+window.qRefreshRowRate = function(id){
+  const row = qRateRows.find(r=>r.id===id);
+  if(!row) return;
+  if(!row._synced && !row.na) return;             // แถวที่กรอกเรทเองล้วนๆ ไม่ไปยุ่ง
+  const pod = String(row.pod||'').trim();
+  if(!pod){                                        // ลบ POD ทิ้ง = ล้างเป็น N/A
+    row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A';
+    qPaintRow(row); qPreview(); return;
+  }
+  const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
+  const r = qFindRateForRow(row, fallbackPol);
+  if(!r){
+    row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A'; row._src='';
+  }else{
+    row.na = false;
+    if(!row.carrier) row.carrier = r.carrier || '';
+    row.r20 = r.gp20 || ''; row.r40 = r.gp40 || ''; row.r4h = r.hc40 || '';
+    const vt = _qValidText(r); if(vt) row.valid = vt;
+    if(r.tt) row.tt = r.tt;
+    if(r.direct) row.direct = r.direct;
+    row._src = r.source || '';
+  }
+  qPaintRow(row); qPreview();
+};
 function qUpdateRateDisplay(id){
   const row = qRateRows.find(r=>r.id===id);
   if(!row) return;
