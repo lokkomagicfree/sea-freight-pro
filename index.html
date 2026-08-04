@@ -1431,7 +1431,7 @@ Object.defineProperty(window, 'savedJobs', {
 });
 Object.defineProperty(window, 'ALL_RATES', {
   get(){ return ALL_RATES; },
-  set(v){ ALL_RATES = v; }
+  set(v){ ALL_RATES = v; try{ window.refreshRateStatuses && window.refreshRateStatuses(ALL_RATES); }catch(e){} }
 });
 let todos           = [];
 let savedQuotations = [];
@@ -1843,6 +1843,7 @@ function storageLoad(){
     if(rawRates){
       const parsed = JSON.parse(rawRates);
       ALL_RATES = expandAndFilterThaiPOL(parsed);
+      refreshRateStatuses();      // เรทที่หมดอายุระหว่างนั้น ต้องกลายเป็น expired ทันที
       setTimeout(()=>{
         buildFilters(); applyFilter(); hideLoadRatesPrompt();
         toast('✅ Loaded '+ALL_RATES.length.toLocaleString()+' rates from cache');
@@ -2024,6 +2025,25 @@ function vDate(df,dt,raw){
   if(diff!==null){if(diff>0&&diff<=7)ex=`<br><span style="color:var(--yellow);font-size:9px">⚠ ${diff}d left</span>`;else if(diff<0)ex=`<br><span style="color:var(--red);font-size:9px">Expired ${-diff}d ago</span>`;}
   return `<span style="font-family:var(--mono);font-size:10px">${fmt(df)}~${fmt(dt)}</span>${ex}`;
 }
+// สถานะ valid ต้องคิดจากวันที่ ณ ตอนนี้เสมอ —
+// ค่า valid_status ที่ติดมากับไฟล์คือสถานะ "ตอน publish" พอข้ามวันมาก็ค้างเป็น active
+function liveStat(r){
+  if(!r) return 'unknown';
+  if(r.date_from || r.date_to) return calcStatus(r.date_from, r.date_to);
+  return r.valid_status || 'unknown';
+}
+// อัปเดต valid_status ของทั้งคลังให้ตรงกับวันนี้ (เรียกตอนโหลด/รับข้อมูลใหม่)
+function refreshRateStatuses(list){
+  const arr = list || ALL_RATES || [];
+  let changed = 0;
+  arr.forEach(r=>{
+    if(!r || (!r.date_from && !r.date_to)) return;
+    const st = calcStatus(r.date_from, r.date_to);
+    if(r.valid_status !== st){ r.valid_status = st; changed++; }
+  });
+  return changed;
+}
+window.refreshRateStatuses = refreshRateStatuses;
 function vBadge(s){
   const m={active:'#22c55e',expired:'#f43f5e',upcoming:'#fbbf24',unknown:'#5c7a9e'};
   const icons={active:'✅',expired:'❌',upcoming:'🔜',unknown:'—'};
@@ -2636,7 +2656,7 @@ function applyFilter(resetPage=true){
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod))return false;
     if(del_&&!(r.del||'').toLowerCase().includes(del_))return false;
-    if(val&&r.valid_status!==val)return false;
+    if(val&&liveStat(r)!==val)return false;
     return true;
   });
   const[sf,dir]=sort.split('_');
@@ -2683,7 +2703,7 @@ function renderTable(filtered){
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
     <td style="font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap">${vDate(r.date_from,r.date_to,r.validity)}</td>
-    <td>${vBadge(r.valid_status)}</td>
+    <td>${vBadge(liveStat(r))}</td>
     <td style="font-size:10px;color:var(--muted)">${r.sheet||''}</td>
     <td style="padding:4px 6px;text-align:center;white-space:nowrap">
       <button onclick="openEditRate(${realIdx})" title="Edit" style="border:none;background:rgba(41,128,185,.1);color:var(--cyan);cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;margin-right:2px">✏️</button>
@@ -3545,7 +3565,7 @@ function filterRoutes(){
     if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod))return false;
     if(del&&!(r.del||'').toLowerCase().includes(del))return false;
-    if(vstatus&&r.valid_status!==vstatus)return false;
+    if(vstatus&&liveStat(r)!==vstatus)return false;
     if(src&&srcLabel(r.source,r)!==src)return false;
     return true;
   });
@@ -3562,7 +3582,7 @@ function filterRoutes(){
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf20?'$'+r.rf20:'-'}</td>
     <td style="text-align:right;font-family:var(--mono);font-size:11px;color:#00d4ff;padding:6px 8px">${r.rf40?'$'+r.rf40:'-'}</td>
-    <td style="text-align:center;white-space:nowrap">${vBadge(r.valid_status)}<div style="font-size:9px;font-family:var(--mono);margin-top:2px;color:${(r.date_to&&r.date_to<new Date().toISOString().slice(0,10))?'var(--red)':'var(--muted)'}">${(function(){var v=(r.validity||'').replace(/^RATE\s*/i,'');if(!v&&r.date_from)v=r.date_from+(r.date_to?' ~ '+r.date_to:'');return v||'';})()}</div></td>
+    <td style="text-align:center;white-space:nowrap">${vBadge(liveStat(r))}<div style="font-size:9px;font-family:var(--mono);margin-top:2px;color:${(r.date_to&&r.date_to<new Date().toISOString().slice(0,10))?'var(--red)':'var(--muted)'}">${(function(){var v=(r.validity||'').replace(/^RATE\s*/i,'');if(!v&&r.date_from)v=r.date_from+(r.date_to?' ~ '+r.date_to:'');return v||'';})()}</div></td>
     <td style="padding:4px 6px"><button class="btn btn-cyan" style="font-size:10px;padding:3px 8px" onclick="applyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
   </tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No matching rates</td></tr>';
 }
@@ -6287,8 +6307,9 @@ function _qPortMatch(a, b){
   return A.some(x=> B.some(y=> x===y || x.startsWith(y) || y.startsWith(x)));
 }
 function _qRateValid(r){
-  // ใช้ valid_status ถ้ามี ไม่งั้นคำนวณจาก date_from/date_to
-  const st = r.valid_status || (typeof calcStatus==='function' ? calcStatus(r.date_from, r.date_to) : 'active');
+  // คิดจากวันที่จริง ณ วันนี้ (ไม่ใช้ valid_status ที่ค้างมาจากตอน publish)
+  const st = (typeof liveStat==='function') ? liveStat(r)
+           : (r.date_from||r.date_to ? calcStatus(r.date_from,r.date_to) : (r.valid_status||'active'));
   return st === 'active';
 }
 function _qValidText(r){
@@ -10777,7 +10798,7 @@ window.previewPastedRates = function(){
       <td style="text-align:right;font-family:var(--mono);color:var(--green)">${fmt(r.gp20)}</td>
       <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${fmt(r.gp40)}</td>
       <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${fmt(r.hc40)}</td>
-      <td><span class="vstat ${vsClass(r.valid_status)}">${vsLabel(r.valid_status)}</span> <span style="font-size:10px;color:var(--muted)">${r.validity||''}</span></td>
+      <td><span class="vstat ${vsClass(liveStat(r))}">${vsLabel(liveStat(r))}</span> <span style="font-size:10px;color:var(--muted)">${r.validity||''}</span></td>
       <td style="text-align:center"><input type="checkbox" ${r._sel?'checked':''} onchange="window._pastedRateRows[${i}]._sel=this.checked" style="accent-color:var(--cyan);cursor:pointer"></td>
     </tr>`).join('');
 
@@ -11066,7 +11087,7 @@ function renderBestByPOD(){
   var sb=document.getElementById('best_pod_search');
   var q=(sb&&sb.value||'').toLowerCase().trim();
   var isThai=window.isThaiPOL||function(){return true;};
-  var rates=(window.ALL_RATES||[]).filter(function(r){return r.valid_status==='active' && isThai(r.pol);});
+  var rates=(window.ALL_RATES||[]).filter(function(r){return liveStat(r)==='active' && isThai(r.pol);});
   var FIELDS=[['gp20','20GP'],['gp40','40GP'],['hc40','40HC'],['rf40','40RF']];
   var byPod={};
   rates.forEach(function(r){
