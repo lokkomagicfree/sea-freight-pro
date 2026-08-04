@@ -1012,6 +1012,9 @@ body{font-size:14px;font-weight:450}
           <button onclick="qAddRateRow()" class="btn btn-ghost" style="font-size:11px;flex:1">+ Add POD / Rate</button>
           <button onclick="qSyncRates()" class="btn btn-ghost" style="font-size:11px;flex:1;color:var(--cyan);border-color:var(--cyan)"
             title="ดึงเรทล่าสุดจากคลังเรทตาม POL / POD / DEL ของแต่ละแถว (เฉพาะเรทที่ยัง valid)">🔄 Sync Rate จากคลังเรท</button>
+          <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gold);white-space:nowrap;cursor:pointer"
+            title="เลือกสายเรือที่ถูกที่สุดของเส้นทางนั้นให้อัตโนมัติ ถ้ามีเรือที่ถูกกว่าจะสลับให้เอง">
+            <input type="checkbox" id="q_cheapest" checked onchange="qSaveCheapestPref(this.checked)"> 🏆 เรือถูกสุด</label>
         </div>
         <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
@@ -2959,21 +2962,35 @@ window.toggleChargeCcy = function(badge){
   setChargeCcy(row, row.dataset.thb !== 'true'); // flip
   recalc();
 };
+// ── Local Charge Template ────────────────────────────────
+// เก็บทุกแถวรวมทั้งแถว "Others" และแถวที่ผู้ใช้กดเพิ่มเอง (custom)
+// พร้อมชื่อรายการ · สกุลเงิน THB/USD · ปุ่ม ×ctn · APR
+// รายชื่อใน dropdown = เฉพาะ template ที่เคย Save เท่านั้น (ไม่เอาชื่อลูกค้าทั้งหมดมาปน)
+function lcRowName(r){
+  const inp = r.querySelector('.charge-name-inp');
+  if(inp) return (inp.value||'').trim();
+  const td = r.querySelector('td:first-child');
+  if(!td) return '';
+  return td.textContent.replace(/THB|USD/g,'').replace(/×\s*\d+(\s*CBM)?/gi,'')
+           .replace(/×\s*ctn/gi,'').replace(/APR/g,'').replace(/\s+/g,' ').trim();
+}
+function lcIsCustomRow(r){
+  return r.dataset.charge === 'custom' || !!r.querySelector('.charge-name-inp');
+}
 async function loadLCTemplates(){
   const sel = g('lc_template_sel');
   if(!sel) return;
   try{
     const snap = await window.fbGet('data/lcTemplates');
     const templates = snap?.templates || {};
-    // Customers that have a saved template + all customers from existing shipments,
-    // so any customer can be picked directly (no need to Save first).
-    const custNames = [...new Set((window.savedJobs||[]).map(j=>(j.customer||j.shipper||'').trim()).filter(Boolean))];
-    const all = [...new Set([...Object.keys(templates), ...custNames])].sort((a,b)=>a.localeCompare(b));
+    const keys = Object.keys(templates).sort((a,b)=>a.localeCompare(b));
     const cur = sel.value;
     sel.innerHTML = '<option value="">-- เลือก Customer --</option>' +
-      all.map(k =>
-        `<option value="${k.replace(/"/g,'&quot;')}"${k===cur?' selected':''}>${templates[k]?'📋 ':''}${k}</option>`
-      ).join('');
+      keys.map(k=>{
+        const n = (templates[k]?.charges||[]).length;
+        return `<option value="${k.replace(/"/g,'&quot;')}"${k===cur?' selected':''}>📋 ${k} (${n})</option>`;
+      }).join('') +
+      (keys.length ? '' : '<option value="" disabled>ยังไม่มี template — กรอก charges แล้วกด 💾 Save</option>');
   }catch(e){ console.warn('loadLCTemplates', e); }
 }
 
@@ -2981,34 +2998,37 @@ window.saveLocalChargeTemplate = async function(){
   const selected = g('lc_template_sel')?.value || '';
   const customer = selected || v('s_customer') || v('s_shipper') || '';
   const name = prompt('บันทึก Local Charges สำหรับลูกค้า:', customer || 'Customer');
-  if(!name) return;
+  if(!name || !name.trim()) return;
+  const key = name.trim();
 
-  // Collect local charges (skip row 0 = Ocean Freight)
   const rows = [...document.querySelectorAll('#charge_body tr')];
-  const sells = [...document.querySelectorAll('.sell-inp')].map(e=>parseFloat(e.value)||0);
-  const costs = [...document.querySelectorAll('.cost-inp')].map(e=>parseFloat(e.value)||0);
-  const charges = rows.slice(1).map((r,i)=>{
-    const aprBtn = r.querySelector('button[data-apr]');
-    const isAPR = aprBtn?.dataset?.apr === '1';
+  const charges = rows.slice(1).map(r=>{           // ข้ามแถว 0 = Ocean Freight
+    const aprBtn  = r.querySelector('button[data-apr]');
+    const isAPR   = aprBtn?.dataset?.apr === '1';
+    const sellEls = [...r.querySelectorAll('.sell-inp')];
+    const costEls = [...r.querySelectorAll('.cost-inp')];
     return {
-      name: r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'',
-      thb: r.dataset?.thb==='true',
-      sell: sells[i+1]||0,
-      cost: isAPR ? 0 : (costs[i+1]||0),
-      apr: isAPR
+      name:  lcRowName(r),
+      custom: lcIsCustomRow(r),
+      thb:   r.dataset?.thb === 'true',
+      perctn:r.dataset?.perctn === '1',
+      sell:  sellEls.map(e=>parseFloat(e.value)||0),
+      cost:  isAPR ? costEls.map(()=>0) : costEls.map(e=>parseFloat(e.value)||0),
+      apr:   isAPR
     };
-  }).filter(c=>c.sell||c.cost||c.apr);
+  }).filter(c=> c.name && (c.sell.some(x=>x) || c.cost.some(x=>x) || c.apr));
 
   if(!charges.length){ toast('❌ ไม่มี Local Charges ที่กรอก'); return; }
 
   try{
     const snap = await window.fbGet('data/lcTemplates');
     const templates = snap?.templates || {};
-    templates[name] = { charges, updatedAt: new Date().toISOString() };
+    if(templates[key] && !confirm('มี template "'+key+'" อยู่แล้ว — เขียนทับ?')) return;
+    templates[key] = { charges, updatedAt: new Date().toISOString() };
     await window.fbSet('data/lcTemplates', { templates });
     await loadLCTemplates();
-    document.getElementById('lc_template_sel').value = name;
-    toast('✅ Saved: '+name);
+    const sel = document.getElementById('lc_template_sel'); if(sel) sel.value = key;
+    toast('✅ Saved: '+key+' — '+charges.length+' รายการ');
   }catch(e){ toast('❌ '+e.message); }
 };
 
@@ -3021,27 +3041,62 @@ window.applyLocalChargeTemplate = async function(){
     const tmpl = snap?.templates?.[name];
     if(!tmpl){ toast('ℹ️ '+name+' ยังไม่มี template — กรอก Local Charges แล้วกด 💾 Save เพื่อสร้าง'); return; }
 
-    const rows  = [...document.querySelectorAll('#charge_body tr')];
-    const sells = [...document.querySelectorAll('.sell-inp')];
-    const costs = [...document.querySelectorAll('.cost-inp')];
+    const norm = s => String(s||'').toUpperCase().replace(/\s+/g,' ').trim();
+    const asArr = v => Array.isArray(v) ? v : [parseFloat(v)||0];
 
-    // Match by charge name, apply sell/cost (skip row 0 Ocean Freight)
-    rows.slice(1).forEach((r,i)=>{
-      const rowName = r.querySelector('td:first-child')?.textContent.replace(/THB|USD/,'').trim()||'';
-      const match = tmpl.charges.find(c=>c.name===rowName);
-      if(match){
-        if(sells[i+1]) sells[i+1].value = match.sell||0;
-        const aprBtn = r.querySelector('button[data-apr]');
-        if(match.apr && aprBtn && aprBtn.dataset.apr !== '1'){
-          window.toggleAPR(aprBtn); // enable APR
-        } else if(!match.apr && aprBtn && aprBtn.dataset.apr === '1'){
-          window.toggleAPR(aprBtn); // disable APR
-        }
-        if(!match.apr && costs[i+1]) costs[i+1].value = match.cost||0;
-      }
+    // ล้างแถว custom เดิมทิ้งก่อน กันซ้ำซ้อนตอน apply หลายรอบ
+    [...document.querySelectorAll('#charge_body tr[data-charge="custom"]')].forEach(r=>r.remove());
+
+    const fill = (r, c)=>{
+      const inp = r.querySelector('.charge-name-inp');
+      if(inp && c.name) inp.value = c.name;
+      const sellEls = [...r.querySelectorAll('.sell-inp')];
+      const costEls = [...r.querySelectorAll('.cost-inp')];
+      const sv = asArr(c.sell), cv = asArr(c.cost);
+      sellEls.forEach((e,i)=> e.value = (sv[i]!=null?sv[i]:(sv[0]||0)));
+      const aprBtn = r.querySelector('button[data-apr]');
+      if(aprBtn && (aprBtn.dataset.apr==='1') !== !!c.apr) window.toggleAPR(aprBtn);
+      if(!c.apr) costEls.forEach((e,i)=> e.value = (cv[i]!=null?cv[i]:(cv[0]||0)));
+      // สกุลเงิน + ×ctn ของแถวที่แก้ชื่อได้
+      if(r.querySelector('.ccy-toggle')) window.setChargeCcy(r, !!c.thb);
+      const pcBtn = r.querySelector('button[data-perctn]');
+      if(pcBtn && (r.dataset.perctn==='1') !== !!c.perctn) window.toggleChargePerCtn(pcBtn);
+    };
+
+    const rows = [...document.querySelectorAll('#charge_body tr')].slice(1);
+    const used = new Set();
+    let hitFixed=0, madeCustom=0;
+
+    // 1) แถวมาตรฐาน — จับคู่ตามชื่อ
+    rows.forEach(r=>{
+      if(lcIsCustomRow(r)) return;                    // แถว Others/custom จัดการทีหลัง
+      const rn = norm(lcRowName(r));
+      const idx = tmpl.charges.findIndex((c,i)=> !used.has(i) && !c.custom && norm(c.name)===rn);
+      if(idx<0) return;
+      used.add(idx); fill(r, tmpl.charges[idx]); hitFixed++;
     });
+
+    // 2) แถว "Others" (แก้ชื่อได้) — ใช้กับ custom ตัวแรกที่เหลือ
+    const othersRow = rows.find(r=> r.querySelector('.charge-name-inp') && r.dataset.charge!=='custom');
+    const leftovers = tmpl.charges.map((c,i)=>({c,i})).filter(x=>!used.has(x.i));
+    if(othersRow && leftovers.length){
+      used.add(leftovers[0].i); fill(othersRow, leftovers[0].c); madeCustom++;
+      leftovers.shift();
+    } else if(othersRow){
+      const inp = othersRow.querySelector('.charge-name-inp');
+      if(inp) inp.value = 'Others';
+      othersRow.querySelectorAll('.sell-inp,.cost-inp').forEach(e=> e.value = 0);
+    }
+
+    // 3) ที่เหลือ — สร้างแถวใหม่ให้ครบตาม template
+    leftovers.forEach(({c})=>{
+      window.addCustomCharge();
+      const newRow = [...document.querySelectorAll('#charge_body tr[data-charge="custom"]')].pop();
+      if(newRow){ fill(newRow, c); madeCustom++; }
+    });
+
     recalc();
-    toast('✅ Applied: '+name);
+    toast('✅ Applied: '+name+' — '+hitFixed+' รายการมาตรฐาน'+(madeCustom?(' + '+madeCustom+' รายการเพิ่มเติม'):''));
   }catch(e){ toast('❌ '+e.message); }
 };
 
@@ -6475,7 +6530,15 @@ function _qValidText(r){
   return v;
 }
 // หาเรทที่ตรงที่สุดของแถวหนึ่ง — คืน null ถ้าไม่มีเรทที่ valid
-function qFindRateForRow(row, fallbackPol){
+function qCheapestMode(){
+  const el = document.getElementById('q_cheapest');
+  if(el) return el.checked;
+  return localStorage.getItem('sfp_q_cheapest') !== '0';
+}
+window.qSaveCheapestPref = function(on){ try{ localStorage.setItem('sfp_q_cheapest', on?'1':'0'); }catch(e){} };
+// mode: 'cheapest' = ไม่สนสายเรือที่กรอกไว้ เลือกถูกสุด · 'prefer' = ใช้สายที่กรอกก่อน ไม่มีค่อยหาถูกสุด · 'lock' = ล็อกสายนั้น
+function qFindRateForRow(row, fallbackPol, mode){
+  mode = mode || (qCheapestMode() ? 'cheapest' : 'lock');
   const pool = window.ALL_RATES || [];
   const pol  = row.pol || fallbackPol || '';
   const wantDel = _qCity(row.del);
@@ -6488,12 +6551,21 @@ function qFindRateForRow(row, fallbackPol){
     else if(rDel) return false;                             // แถวไม่ระบุ DEL = ต้องเป็น direct port
     return true;
   });
-  if(String(row.carrier||'').trim()){
-    // ระบุสายเรือไว้ = ล็อกสายเรือนั้นจริงๆ — ถ้าสายนี้ไม่มีเรทเส้นทางนี้ ให้เป็น N/A
-    // (ไม่ตกไปหยิบเรทของสายอื่นมาแสดงแทน)
+  const sameCarrier = ()=>{
     const want = _qKey(row.carrier);
-    res = res.filter(r=> _qKey(r.carrier)===want ||
+    return res.filter(r=> _qKey(r.carrier)===want ||
       (typeof normalizeCarrier==='function' && normalizeCarrier(r.carrier)===normalizeCarrier(row.carrier)));
+  };
+  if(String(row.carrier||'').trim()){
+    if(mode==='lock'){
+      // ล็อกสายเรือ — สายนี้ไม่มีเรทเส้นทางนี้ = N/A (ไม่หยิบสายอื่นมาแทน)
+      res = sameCarrier();
+    } else if(mode==='prefer'){
+      // ผู้ใช้เพิ่งพิมพ์ชื่อสายเรือเอง → ใช้สายนั้นก่อน ถ้าไม่มีค่อยตกไปหาที่ถูกสุด
+      const same = sameCarrier();
+      if(same.length) res = same;
+    }
+    // mode==='cheapest' → ไม่กรองสายเรือเลย เลือกที่ถูกที่สุดของเส้นทางนั้น
   }
   if(!res.length) return null;
   const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
@@ -6506,7 +6578,8 @@ window.qSyncRates = function(){
   if(!pool.length) return toast('คลังเรทยังไม่โหลด ลองรีเฟรชหน้าอีกครั้ง');
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
   let hit=0, na=0, skip=0;
-  const naList=[];
+  const naList=[], swapped=[];
+  const cheapest = qCheapestMode();
   qRateRows.forEach(row=>{
     row._synced = true;
     if(!row.pod || !String(row.pod).trim()){ skip++; return; }
@@ -6519,7 +6592,11 @@ window.qSyncRates = function(){
       return;
     }
     row.na = false;
-    if(!row.carrier) row.carrier = r.carrier || '';
+    const oldCar = (row.carrier||'').trim();
+    if(cheapest && r.carrier && _qKey(r.carrier)!==_qKey(oldCar)){
+      if(oldCar) swapped.push(oldCar+'→'+r.carrier);
+      row.carrier = r.carrier;                       // มีเรือถูกกว่า → สลับให้เลย
+    } else if(!row.carrier) row.carrier = r.carrier || '';
     if(!row.pol)     row.pol     = r.pol || fallbackPol || '';
     row.r20 = r.gp20 || '';
     row.r40 = r.gp40 || '';
@@ -6535,11 +6612,12 @@ window.qSyncRates = function(){
   const info = document.getElementById('q_sync_info');
   if(info){
     info.innerHTML = `🔄 sync แล้ว · <span style="color:var(--green)">อัปเดต ${hit}</span>`+
+      (swapped.length?` · <span style="color:var(--gold)">🏆 เปลี่ยนเป็นเรือที่ถูกกว่า ${swapped.length} แถว (${swapped.slice(0,4).join(' · ')}${swapped.length>4?' …':''})</span>`:'')+
       (na?` · <span style="color:var(--red)">N/A ${na} (${naList.slice(0,4).join(' · ')}${naList.length>4?' …':''})</span>`:'')+
       (skip?` · ข้าม ${skip} แถวที่ยังไม่ใส่ POD`:'')+
       ` · จากคลัง ${pool.length} เรท (เฉพาะที่ยัง valid)`;
   }
-  toast('🔄 Sync แล้ว — อัปเดต '+hit+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
+  toast('🔄 Sync แล้ว — อัปเดต '+hit+(swapped.length?(' / 🏆 สลับเรือถูกกว่า '+swapped.length):'')+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
 };
 
 const _qReTimer = {};
@@ -6552,7 +6630,9 @@ function qUpdateRate(id, field, val){
   // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
   if(field==='carrier' || field==='pol' || field==='pod' || field==='del'){
     clearTimeout(_qReTimer[id]);
-    _qReTimer[id] = setTimeout(()=>window.qRefreshRowRate(id), 500);
+    // พิมพ์ชื่อสายเรือเอง = ใช้สายนั้นก่อน · เปลี่ยนท่าเรือ = ให้ระบบเลือกสายที่ถูกที่สุด
+    const md = (field==='carrier') ? 'prefer' : undefined;
+    _qReTimer[id] = setTimeout(()=>window.qRefreshRowRate(id, md), 500);
   }
   qPreview();
 }
@@ -6571,7 +6651,7 @@ function qPaintRow(row){
   try{ qUpdateRateDisplay(row.id); }catch(e){}
 }
 // เช็คแถวเดียวกับคลังเรท — ไม่เจอเรทที่ valid = N/A (ไม่ค้างของเก่า)
-window.qRefreshRowRate = function(id){
+window.qRefreshRowRate = function(id, mode){
   const row = qRateRows.find(r=>r.id===id);
   if(!row) return;
   if(!row._synced && !row.na) return;             // แถวที่กรอกเรทเองล้วนๆ ไม่ไปยุ่ง
@@ -6581,12 +6661,13 @@ window.qRefreshRowRate = function(id){
     qPaintRow(row); qPreview(); return;
   }
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
-  const r = qFindRateForRow(row, fallbackPol);
+  const r = qFindRateForRow(row, fallbackPol, mode);
   if(!r){
     row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A'; row._src='';
   }else{
     row.na = false;
-    if(!row.carrier) row.carrier = r.carrier || '';
+    if(qCheapestMode() && r.carrier) row.carrier = r.carrier;   // เจอเรือถูกกว่า → สลับให้
+    else if(!row.carrier) row.carrier = r.carrier || '';
     row.r20 = r.gp20 || ''; row.r40 = r.gp40 || ''; row.r4h = r.hc40 || '';
     const vt = _qValidText(r); if(vt) row.valid = vt;
     if(r.tt) row.tt = r.tt;
