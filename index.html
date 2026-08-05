@@ -6748,6 +6748,8 @@ function leadDueSoon(l){
 function leadsFiltered(){
   const f = _leadFilter, q = (f.q||'').toLowerCase();
   return LEADS.filter(l=>{
+    // Lost = ซ่อนจากลิสต์ปกติ ต้องกดแท็บ Lost ถึงจะเห็น (แถวจะเป็นสีแดง)
+    if((l.stage||'New')==='Lost' && f.stage!=='Lost') return false;
     if(f.stage && l.stage !== f.stage) return false;
     if(f.type  && l.type  !== f.type)  return false;
     if(f.lane  && !(l.lanes||[]).includes(f.lane)) return false;
@@ -6779,7 +6781,7 @@ function renderLeads(){
        <span class="ld-tab-n">${count}</span><span class="ld-tab-l">${label}</span></button>`;
   document.getElementById('leads_stats').innerHTML =
     `<div class="ld-tabs">` +
-    pill('ทั้งหมด', LEADS.length, 'var(--cyan)', (!_leadFilter.stage && !_leadFilter.due), "leadTab('')") +
+    pill('ทั้งหมด', LEADS.length - (byStage['Lost']||0), 'var(--cyan)', (!_leadFilter.stage && !_leadFilter.due), "leadTab('')") +
     LEAD_STAGES.map(st=> pill(st, byStage[st]||0, LEAD_STAGE_COLOR[st],
         (_leadFilter.stage===st && !_leadFilter.due), `leadTab('${st}')`)).join('') +
     pill('ถึงกำหนดติดตาม', due, 'var(--red)', _leadFilter.due, "leadTab('__due')") +
@@ -6805,10 +6807,14 @@ function renderLeads(){
       const i = LEADS.indexOf(l);
       const lanes = (l.lanes||[]).map(x=>`<span style="display:inline-block;background:rgba(41,128,185,.14);color:var(--cyan);border:1px solid rgba(41,128,185,.3);border-radius:4px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin:1px 2px 1px 0">${_le(x)}</span>`).join('');
       const dueFlag = leadDueSoon(l);
-      return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)${l.dnc?';opacity:.45':''}">
+      const isLost  = (l.stage||'New')==='Lost';
+      const rowSty  = 'border-bottom:1px solid rgba(30,48,80,.3)'
+        + (l.dnc?';opacity:.45':'')
+        + (isLost?';background:rgba(192,57,43,.16);box-shadow:inset 3px 0 0 var(--red)':'');
+      return `<tr class="${isLost?'ld-lost':''}" style="${rowSty}">
         <td style="padding:5px 8px"><input type="checkbox" class="ld-chk" data-i="${i}"></td>
         <td style="padding:5px 8px;font-size:12px">
-          <div style="font-weight:700">${_le(l.company||'—')}${l.dnc?' <span style="color:var(--red);font-size:9px">⛔ ห้ามติดต่อ</span>':''}</div>
+          <div style="font-weight:700${isLost?';color:var(--red);text-decoration:line-through':''}">${_le(l.company||'—')}${isLost?' <span style="color:var(--red);font-size:9px;text-decoration:none">✖ LOST</span>':''}${l.dnc?' <span style="color:var(--red);font-size:9px">⛔ ห้ามติดต่อ</span>':''}</div>
           <div style="font-size:10px;color:var(--muted)">${_le(l.contact||'')}${l.country?(' · '+_le(l.country)):''}</div></td>
         <td style="padding:5px 8px;font-size:11px;font-family:var(--mono)">
           ${l.email?`<div>${_le(l.email)}</div>`:''}${l.phone?`<div style="color:var(--muted)">${_le(l.phone)}</div>`:''}</td>
@@ -6854,8 +6860,10 @@ window.leadEditApproach = function(i){
 window.leadSetField = function(i, f, v){ const l=LEADS[i]; if(!l) return; l[f]=v; l.updatedAt=new Date().toISOString(); leadsSave(true); renderLeads(); };
 window.leadSetStage = function(i, v){
   const l=LEADS[i]; if(!l) return;
-  if(l.stage!==v){ leadLog(l,'เปลี่ยนสถานะ '+(l.stage||'New')+' → '+v); l.stage=v; }
+  const was = l.stage||'New';
+  if(was!==v){ leadLog(l,'เปลี่ยนสถานะ '+was+' → '+v); l.stage=v; }
   leadsSave(true); renderLeads();
+  if(was!==v && v==='Lost') toast('✖ ย้าย "'+(l.company||'')+'" เป็น Lost — ซ่อนจากลิสต์แล้ว (กดแท็บ Lost เพื่อดู)');
 };
 window.leadDelete = function(i){
   const l=LEADS[i]; if(!l) return;
