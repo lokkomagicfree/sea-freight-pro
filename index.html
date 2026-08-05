@@ -6334,10 +6334,23 @@ const LEAD_TYPES = ['Shipper','Freight Forwarder','Trading','Agent','Other'];
 let LEADS = [];
 let _leadFilter = { q:'', lane:'', stage:'', due:false, type:'' };
 
-function leadsAllowed(){
-  const em = (window._currentUser && window._currentUser.email || '').toLowerCase();
-  return em === LEADS_OWNER;
+function leadsEmail(){
+  let em = (window._currentEmail || '').toLowerCase();
+  if(!em) em = ((window._currentUser && window._currentUser.email) || '').toLowerCase();
+  if(!em){                                     // สำรอง: อ่านจากชื่อผู้ใช้ที่โชว์บนหัวเว็บ
+    const t = (document.getElementById('fb_name')||{}).textContent || '';
+    if(t.includes('@')) em = t.trim().toLowerCase();
+  }
+  if(!em){                                     // สำรองสุดท้าย: session ของ Firebase ในเครื่อง
+    try{
+      const k = Object.keys(localStorage).find(x=>x.startsWith('firebase:authUser:'));
+      if(k) em = ((JSON.parse(localStorage.getItem(k))||{}).email||'').toLowerCase();
+    }catch(e){}
+  }
+  return em;
 }
+function leadsAllowed(){ return leadsEmail() === LEADS_OWNER; }
+window.leadsEmail = leadsEmail;
 function leadsApplyVisibility(){
   const tab = document.getElementById('nav_leads_tab');
   if(tab) tab.style.display = leadsAllowed() ? '' : 'none';
@@ -6347,6 +6360,11 @@ function leadsApplyVisibility(){
   }
 }
 window.leadsApplyVisibility = leadsApplyVisibility;
+// auth บางครั้งมาช้ากว่า UI — เช็คซ้ำสองสามรอบตอนเปิดแอป
+[600, 2000, 5000].forEach(ms=> setTimeout(()=>{ try{
+  leadsApplyVisibility();
+  if(leadsAllowed() && !LEADS.length){ leadsLoad(); leadsPull(); }
+}catch(e){} }, ms));
 
 function leadsLoad(){
   try{ LEADS = JSON.parse(localStorage.getItem(LS_LEADS)||'[]')||[]; }catch(e){ LEADS=[]; }
@@ -9262,6 +9280,8 @@ onAuthStateChanged(auth, async user=>{
 
   if(user){
     _currentUser = user;
+    window._currentUser  = user;                 // ให้ส่วนอื่นอ่านอีเมลได้ (เช่น สิทธิ์เข้าหน้า Leads)
+    window._currentEmail = (user.email||'').toLowerCase();
     if(overlay) overlay.style.display='none';
     if(badge)   badge.style.display='flex';
     if(avatar)  avatar.src = user.photoURL||'';
@@ -9449,6 +9469,7 @@ onAuthStateChanged(auth, async user=>{
     }, ()=>{});
   } else {
     _currentUser = null;
+    window._currentUser = null; window._currentEmail = '';
     try{ leadsApplyVisibility(); }catch(e){}
     if(overlay) overlay.style.display='flex';
     if(badge)   badge.style.display='none';
