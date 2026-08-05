@@ -6931,26 +6931,48 @@ window.leadsImport = function(){
         rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
       }catch(err){ return toast('❌ อ่านไฟล์ไม่ได้: '+err.message); }
       if(!rows.length) return toast('❌ ไม่พบข้อมูลในไฟล์');
+      // ทำให้หัวคอลัมน์เทียบง่าย — เก็บอักษรไทยไว้ด้วย (ของเดิมตัดทิ้งหมดจนหัวไทยกลายเป็นค่าว่าง)
+      const hkey = k => String(k||'').toLowerCase().replace(/[\s._\-()\[\]\/#]/g,'');
+      const USED = new Set();
       const pick = (o, ...keys)=>{
         for(const k of Object.keys(o)){
-          const kk = k.toLowerCase().replace(/[^a-z]/g,'');
-          if(keys.some(x=>kk.includes(x))) { const v=String(o[k]||'').trim(); if(v) return v; }
+          const kk = hkey(k);
+          if(!kk) continue;
+          if(keys.some(x=>kk.includes(x))) { const v=String(o[k]||'').trim(); if(v){ USED.add(k); return v; } }
         }
         return '';
       };
+      // แปลงคำบอกโซน/ปลายทาง เป็นรหัส lane ของระบบ
+      const LANEMAP = [[/USWC|WEST\s*COAST|LOS ANGELES|LONG BEACH|OAKLAND|SEATTLE|TACOMA/i,'USWC'],
+        [/USEC|EAST\s*COAST|NEW YORK|SAVANNAH|NORFOLK|CHARLESTON/i,'USEC'],
+        [/\bUS[A-Z]{3}\b|\bUSA\b|AMERICA|สหรัฐ|อเมริกา/,'USWC'],
+        [/\bUS[A-Z]{3}\b|\bUSA\b|AMERICA|สหรัฐ|อเมริกา/,'USEC'],[/CANADA|แคนาดา/i,'CANADA'],[/\bIPI\b/i,'IPI'],
+        [/EUROPE|\bEU\b|ยุโรป|ROTTERDAM|HAMBURG|ANTWERP/i,'EU'],[/\bMED\b|MEDITER/i,'MED'],
+        [/\bISC\b|INDIA|อินเดีย|NHAVA|CHENNAI|MUNDRA/i,'ISC'],
+        [/\bME\b|MIDDLE\s*EAST|ตะวันออกกลาง|JEBEL|DUBAI|JEDDAH/i,'ME'],
+        [/LATAM|LATIN|ECSA|BRAZIL|ลาติน/i,'LATAM'],[/ECSA/i,'ECSA'],
+        [/INTRA[\s-]*ASIA|ASIA|เอเชีย|\b(CN|MY|SG|VN|JP|KR|TW|HK|ID|PH|KH|MM|BD|LA)[A-Z]{3}\b/,'INTRA-ASIA'],[/AU\/NZ|AUSTRALIA|NEW ZEALAND/i,'AU/NZ'],
+        [/AFRICA|แอฟริกา/i,'AFRICA']];
+      const toLanes = txt => { const out=[]; if(!txt) return out;
+        LANEMAP.forEach(([re,code])=>{ if(re.test(txt) && !out.includes(code) && LEAD_LANES.includes(code)) out.push(code); });
+        return out; };
       const norm = s => String(s||'').toLowerCase().trim();
       const byEmail = new Map(LEADS.filter(l=>l.email).map(l=>[norm(l.email), l]));
       const byComp  = new Map(LEADS.map(l=>[norm(l.company), l]));
       let added=0, dup=0;
       rows.forEach(o=>{
-        const company = pick(o,'company','ชื่อบริษัท','name','บริษัท');
+        USED.clear();
+        const company = pick(o,'company','บริษัท','ชื่อ','name','shipper','ผู้ส่งออก','ผู้ขาย');
         const email   = pick(o,'email','mail','อีเมล');
         if(!company && !email) return;
         const k1=norm(email), k2=norm(company);
         if((k1 && byEmail.has(k1)) || (k2 && byComp.has(k2))){ dup++; return; }   // กันซ้ำ
-        const laneRaw = pick(o,'lane','trade','route','เส้นทาง');
-        const lanes = laneRaw ? laneRaw.toUpperCase().split(/[,\/|;]+/).map(s=>s.trim())
+        const laneRaw = [pick(o,'lane','trade','route','เส้นทาง'),
+                         pick(o,'โซน','zone','region'),
+                         pick(o,'ปลายทาง','destination','pod','discharge')].filter(Boolean).join(' , ');
+        let lanes = laneRaw ? laneRaw.toUpperCase().split(/[,\/|;]+/).map(s=>s.trim())
                         .filter(s=>LEAD_LANES.includes(s)) : [];
+        if(!lanes.length) lanes = toLanes(laneRaw);
         const l = { id:leadUid(), company, email,
           contact: pick(o,'contact','person','ผู้ติดต่อ','attn'),
           phone:   pick(o,'phone','tel','mobile','เบอร์'),
@@ -6958,9 +6980,14 @@ window.leadsImport = function(){
           country: pick(o,'country','city','จังหวัด','ประเทศ'),
           type:    (()=>{ const t=pick(o,'type','ประเภท'); return LEAD_TYPES.find(x=>norm(x)===norm(t)) || (/forward/i.test(t)?'Freight Forwarder':(t?'Other':'Shipper')); })(),
           commodity: pick(o,'commodity','product','สินค้า','cargo'),
-          notes:   pick(o,'note','remark','หมายเหตุ'),
+          notes:   pick(o,'note','remark','หมายเหตุ','วิธี','approach'),
           lanes, stage:'New', dnc:false, createdAt:new Date().toISOString(), log:[]
         };
+        // คอลัมน์ที่ไม่ได้แม็ปเข้าช่องไหน เก็บต่อท้ายโน้ตไว้ ไม่ให้ข้อมูลหาย
+        const extra = Object.keys(o).filter(k=>!USED.has(k))
+          .map(k=>{ const v=String(o[k]||'').trim(); return v ? (String(k).trim()+': '+v) : ''; })
+          .filter(Boolean);
+        if(extra.length) l.notes = [l.notes, extra.join(' · ')].filter(Boolean).join(' · ');
         leadLog(l,'import จากไฟล์ '+f.name);
         LEADS.push(l);
         if(k1) byEmail.set(k1,l); if(k2) byComp.set(k2,l);
