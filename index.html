@@ -1912,9 +1912,21 @@ function storageImport(){
         } else {
           savedJobs = jobs; added = jobs.length;
         }
+        // เคลียร์ tombstone ของทุก booking ที่ import เข้ามา
+        // (ถ้าเคยลบไปแล้ว import กลับมา ต้องไม่โดนกรองทิ้งตอนโหลดใหม่)
+        jobs.forEach(nj=>{ try{ nj && nj.no!=null && window._undeleteJob && window._undeleteJob(nj.no); }catch(e){} });
         storageSave();
         renderShipments(); updateAlertCount();
         toast('✅ Imported '+jobs.length+' jobs — เพิ่มใหม่ '+added+' / ลงทับ '+updated);
+        // ดันขึ้น cloud ทันที ไม่รอ debounce 4 วินาที
+        // (ถ้ารีเฟรช/ปิดแท็บก่อน flush งานที่ import จะหายทั้งชุด)
+        (async ()=>{
+          if(!window._currentUid){ toast('⚠ ยังไม่ได้ล็อกอิน — งานที่ import เก็บแค่ในเครื่องนี้'); return; }
+          try{
+            const ok = await window.syncShipmentsNow();
+            if(!ok) toast('⚠ ยังขึ้น cloud ไม่สำเร็จ — อย่าเพิ่งรีเฟรช แล้วกด Sync อีกครั้ง');
+          }catch(e){ toast('⚠ ขึ้น cloud ไม่สำเร็จ — อย่าเพิ่งรีเฟรช'); }
+        })();
       }catch(ex){ toast('❌ Import failed: '+ex.message); }
     };
     reader.readAsText(file);
