@@ -1013,6 +1013,9 @@ body{font-size:14px;font-weight:450}
           <button onclick="qSyncRates()" class="btn btn-ghost" style="font-size:11px;flex:1;color:var(--cyan);border-color:var(--cyan)"
             title="ดึงเรทล่าสุดจากคลังเรทตาม POL / POD / DEL ของแต่ละแถว (เฉพาะเรทที่ยัง valid)">🔄 Sync Rate จากคลังเรท</button>
           <span style="font-size:9px;color:var(--muted);white-space:nowrap;line-height:1.3">ใส่ชื่อเรือ = ล็อกเรือนั้น<br>เว้นว่าง = เลือกเรือถูกสุดให้</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gold);white-space:nowrap;cursor:pointer"
+            title="ติ๊กเพื่อโชว์ FIX / FAK ในเมล · PDF · Excel ที่ส่งลูกค้า (ถ้ามีแถว FIX จะแนบ Subj to commodity ของ FIX ให้ด้วย)">
+            <input type="checkbox" id="q_show_src" onchange="qSaveShowSrc(this.checked);qPreview()"> โชว์ FIX/FAK ให้ลูกค้า</label>
         </div>
         <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
@@ -6926,10 +6929,13 @@ function qBuildEmail(){
   const globalValid = get('q_valid');
   const isLCL   = get('q_type')==='LCL';
 
-  // Group rows by carrier
+  // Group rows by carrier (+ ประเภทเรท ถ้าเลือกโชว์ให้ลูกค้า)
+  const _showSrc = qShowSrc();
   const groups = {};
   qRateRows.forEach(row=>{
-    const car = (row.carrier||get('q_carrier')||'').trim();
+    let car = (row.carrier||get('q_carrier')||'').trim();
+    const sc = qRowSrc(row);
+    if(_showSrc && sc) car = car + ' (' + sc + ')';
     if(!groups[car]) groups[car]=[];
     groups[car].push(row);
   });
@@ -6970,6 +6976,9 @@ function qBuildEmail(){
     const subjParts=['local charges both ends'];
     if(subjto) subjParts.unshift(subjto);
     lines.push(`  Subj to ${subjParts.join(', ')}`);
+    // เรท FIX ใช้ได้เฉพาะสินค้าตามรายการนี้
+    const _fixNote = window.qFixCommodityNote(rows);
+    if(_fixNote){ lines.push(''); lines.push('  '+_fixNote); }
     lines.push('');
     // Valid — use row-level valid if all same, else globalValid
     const valids=[...new Set(rows.map(r=>r.valid||globalValid).filter(Boolean))];
@@ -7005,6 +7014,33 @@ function qBuildEmail(){
 
 
 // ── Export Rate Sheet PDF ────────────────────────────────────
+// ── โชว์ประเภทเรท (FIX/FAK) ให้ลูกค้าเห็นหรือไม่ ─────────────────────────
+// ปกติปิดไว้ (เป็นข้อมูลภายใน) · ติ๊กเปิดเมื่อจะแจ้งลูกค้าว่าเป็นเรท FIX หรือ FAK
+function qShowSrc(){
+  const el = document.getElementById('q_show_src');
+  if(el) return el.checked;
+  return localStorage.getItem('sfp_q_show_src') === '1';
+}
+window.qShowSrc = qShowSrc;
+window.qSaveShowSrc = function(on){ try{ localStorage.setItem('sfp_q_show_src', on?'1':'0'); }catch(e){} };
+function qRowSrc(row){ return (row && (row.src || row._src)) || ''; }
+// commodity ที่ใช้เรท FIX ได้ — แนบท้ายเมื่อโชว์ FIX ให้ลูกค้า
+const Q_FIX_COMMODITY = [
+ 'Furniture','Retail Shelving','Auto parts','Tyre','Spare parts','Machinery and equipment','Forklift',
+ 'Excavator','Metal products','Hardware','Tools','Steel Product','Paper products','Disposable goods',
+ 'Hotel supplies','Commercial tissues and cleaning paper products','Medical supplies','Chemical goods',
+ 'Printed matter','Foodstuff','Apparel and Textile','Bedding','Home decoration','Toys','Pet products',
+ 'Home Appliances','Kitchenware','Sporting goods','Plastic products','Glassware','Bathroom supplies',
+ 'Outdoor products'].join(', ');
+// มีแถว FIX อยู่ไหม (ใช้ตัดสินว่าจะแนบรายการ commodity ไหม)
+function qHasFix(rows){
+  return (rows||qRateRows||[]).some(r=> String(qRowSrc(r)).toUpperCase()==='FIX');
+}
+window.qFixCommodityNote = function(rows){
+  if(!qShowSrc() || !qHasFix(rows)) return '';
+  return 'FIX rate subj to commodity: ' + Q_FIX_COMMODITY;
+};
+
 // ตัดข้อความ "EX BKK/LCB" ออกจากเอกสารที่ส่งลูกค้า (ทั้ง PDF และ Excel)
 // เผื่อใบเสนอราคาเก่าที่บันทึกข้อความนี้ไว้แล้ว
 function qStripEx(t){
@@ -7064,8 +7100,10 @@ window.qExportExcelSheet = async function(){
   const NOTE_ROWS = [];
   notes.forEach(n=>{ aoa.push([n]); NOTE_ROWS.push(aoa.length-1); });
   aoa.push([]);
-  const HEAD = ['PORT DESTINATION','POL',isLCL?'per CBM':"20'","40'","40'hc",'carrier name','sub to',
-               'DET','DEM','COMBINED','DIRECT OR T/S','TT','VALIDITY'];
+  const showSrc = qShowSrc();
+  const HEAD = ['PORT DESTINATION','POL',isLCL?'per CBM':"20'","40'","40'hc",'carrier name']
+    .concat(showSrc ? ['rate type'] : [])
+    .concat(['sub to','DET','DEM','COMBINED','DIRECT OR T/S','TT','VALIDITY']);
   aoa.push(HEAD);
   const HROW = aoa.length - 1;
 
@@ -7075,7 +7113,8 @@ window.qExportExcelSheet = async function(){
     const pol  = r.pol || gPol || '';
     if(r.na){
       // ไม่มีเรท → ใส่ N/A ทุกช่อง ยกเว้น PORT DESTINATION กับ POL ที่ล็อกไว้
-      aoa.push([dest, pol, 'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A']);
+      const na = Array(HEAD.length-2).fill('N/A');
+      aoa.push([dest, pol].concat(na));
       naRows.push(aoa.length-1);
       return;
     }
@@ -7084,14 +7123,20 @@ window.qExportExcelSheet = async function(){
       sell(r.r20, r.profit),
       isLCL ? '' : sell(r.r40, r.profit),
       isLCL ? '' : sell(r.r4h, r.profit),
-      r.carrier || '',
+      r.carrier || ''
+    ].concat(showSrc ? [qRowSrc(r)] : [])
+     .concat([
       subjto,                                     // ว่างถ้าไม่ได้กรอก
       r.det || '', r.dem || '', r.combined || '',
       r.direct || '', r.tt || '',
       r.valid || gValid || ''
-    ]);
+    ]));
   });
   const LASTROW = aoa.length - 1;
+  // FIX rate subj to commodity
+  const fixNote = window.qFixCommodityNote ? window.qFixCommodityNote(rows) : '';
+  let fixNoteRow = -1;
+  if(fixNote){ aoa.push([]); aoa.push([fixNote]); fixNoteRow = aoa.length-1; }
 
   // Local charges ต่อท้าย (ถ้ามี)
   const lc = (qLocalRows||[]).filter(x=>x.name && x.rate);
@@ -7104,8 +7149,9 @@ window.qExportExcelSheet = async function(){
   }
 
   const ws = XL.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:36},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14},{wch:34},
-                 {wch:7},{wch:7},{wch:11},{wch:15},{wch:9},{wch:16}];
+  ws['!cols'] = [{wch:36},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14}]
+    .concat(showSrc ? [{wch:10}] : [])
+    .concat([{wch:34},{wch:7},{wch:7},{wch:11},{wch:15},{wch:9},{wch:16}]);
   ws['!freeze'] = { xSplit:0, ySplit:HROW+1 };
   ws['!autofilter'] = { ref: XL.utils.encode_range({s:{r:HROW,c:0}, e:{r:LASTROW, c:HEAD.length-1}}) };
   ws['!merges'] = NOTE_ROWS.map(r=>({s:{r,c:0}, e:{r,c:HEAD.length-1}}));
@@ -7139,6 +7185,11 @@ window.qExportExcelSheet = async function(){
         if(isNA) st.fill = {fgColor:{rgb:'FFD9D9D9'}};
         put(r,c,st);
       }
+    }
+    // บรรทัด FIX commodity — merge เต็มความกว้าง ตัวเอียงเทา
+    if(fixNoteRow>=0){
+      put(fixNoteRow,0,{font:{italic:true, sz:9, color:{rgb:'FF555555'}}, alignment:{wrapText:true, vertical:'top'}});
+      (ws['!merges']=ws['!merges']||[]).push({s:{r:fixNoteRow,c:0}, e:{r:fixNoteRow,c:HEAD.length-1}});
     }
     // ตาราง Local charges
     if(lcHead>=0){
@@ -7224,6 +7275,14 @@ window.exportRateSheetXLSX = function(){
   T(subParts.join('   |   '), LM, y, 8.5, false, MUTED);
   const _rmk = qStripEx(remarks);
   if(_rmk){ T('Note: '+_rmk, LM, y+5, 8, false, MUTED); y+=5; }
+  // FIX rate subj to commodity — เฉพาะตอนติ๊กโชว์ FIX/FAK ให้ลูกค้า
+  const _fixNote = window.qFixCommodityNote ? window.qFixCommodityNote(rateRows) : '';
+  if(_fixNote){
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal'); doc.setTextColor(...MUTED);
+    const wrapped = doc.splitTextToSize(_fixNote, TW);
+    wrapped.forEach(ln=>{ y+=3.4; doc.text(ln, LM, y+3); });
+    y+=4;
+  }
   y += 7;
 
   /* ── RATE TABLE ── */
@@ -7274,7 +7333,8 @@ window.exportRateSheetXLSX = function(){
       fillR(LM,y,TW,ROW_H,bg);
       strokeR(LM,y,TW,ROW_H,[220,220,220],0.15);
 
-      const car = row.carrier||carrier;
+      const _sc = (typeof qShowSrc==='function' && qShowSrc()) ? qRowSrc(row) : '';
+      const car = (row.carrier||carrier) + (_sc ? ' ('+_sc+')' : '');
       const v   = row.valid||valid||'';
       const r20 = parseFloat(row.r20)||0;
       const r40 = parseFloat(row.r40)||0;
