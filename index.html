@@ -7006,13 +7006,28 @@ window.qStripEx = qStripEx;
 // คอลัมน์: PORT DESTINATION | POL | 20' | 40' | 40'hc | carrier name | sub to |
 //          DET | DEM | COMBINED | DIRECT OR T/S | TT | VALIDITY
 // ราคาที่ออกเป็น "ราคาขาย" (ต้นทุน + Profit) · ไม่มีป้าย FIX/FAK (ข้อมูลภายใน)
-window.qExportExcelSheet = function(){
-  if(!window.XLSX){ toast('⏳ กำลังโหลดตัวสร้าง Excel… ลองอีกครั้ง'); return; }
+// ใช้ xlsx-js-style เพื่อให้ใส่กรอบ/สีได้ (SheetJS ตัวปกติเขียนสีไม่ได้)
+function qLoadXlsxStyle(){
+  if(window.XLSXStyle) return Promise.resolve(window.XLSXStyle);
+  return new Promise((res, rej)=>{
+    const prev = window.XLSX;                     // กันไลบรารีใหม่ทับตัวเดิมของแอป
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    sc.onload = ()=>{ window.XLSXStyle = window.XLSX; window.XLSX = prev || window.XLSXStyle; res(window.XLSXStyle); };
+    sc.onerror = ()=>{ window.XLSX = prev; rej(new Error('โหลดตัวสร้าง Excel แบบมีสีไม่สำเร็จ')); };
+    document.head.appendChild(sc);
+  });
+}
+window.qExportExcelSheet = async function(){
   const rows = qRateRows || [];
   if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
+  let XL, styled = true;
+  try{ XL = await qLoadXlsxStyle(); }
+  catch(e){ XL = window.XLSX; styled = false; if(!XL){ toast('⏳ กำลังโหลดตัวสร้าง Excel… ลองอีกครั้ง'); return; } }
+
   const get = id => (document.getElementById(id)||{}).value || '';
   const cust    = get('q_customer') || 'Customer';
-  const subjto  = qStripEx(get('q_subjto'));
+  const subjto  = qStripEx(get('q_subjto'));      // ว่างไว้ถ้าผู้ใช้ไม่ได้พิมพ์
   const remarks = qStripEx(get('q_remarks'));
   const gValid  = get('q_valid');
   const gPol    = get('q_pol');
@@ -7027,57 +7042,105 @@ window.qExportExcelSheet = function(){
 
   const aoa = [];
   aoa.push([`RATE QUOTATION — ${cust}`, '', '', '', '', '', `DATE: ${today}`]);
-  // หมายเหตุด้านบน — ไม่ให้ซ้ำกับข้อความมาตรฐาน
-  const notes = ['** Freight all in (inclusive of EBS, CIC, PCS, LSS, PSS, HEA, ISD, EID, ETS etc. at destination) **',
+  const notes = ['** Freight should be all in (inclusive of EBS, CIC, PCS, LSS, PSS, HEA, ISD, EID, ETS etc. at destination) **',
                  'All in rate incl. of SBS'];
   const seen = new Set(notes.map(x=>x.toLowerCase().replace(/[^a-z0-9]/g,'')));
   remarks.split(/\s*·\s*/).forEach(seg=>{
     const k = seg.toLowerCase().replace(/[^a-z0-9]/g,'');
     if(seg.trim() && !seen.has(k)){ seen.add(k); notes.push(seg.trim()); }
   });
-  notes.forEach(n=> aoa.push([n]));
+  const NOTE_ROWS = [];
+  notes.forEach(n=>{ aoa.push([n]); NOTE_ROWS.push(aoa.length-1); });
   aoa.push([]);
-  const HEAD = ['PORT DESTINATION','POL',isLCL?"per CBM":"20'","40'","40'hc",'carrier name','sub to',
+  const HEAD = ['PORT DESTINATION','POL',isLCL?'per CBM':"20'","40'","40'hc",'carrier name','sub to',
                'DET','DEM','COMBINED','DIRECT OR T/S','TT','VALIDITY'];
   aoa.push(HEAD);
   const HROW = aoa.length - 1;
 
+  const naRows = [];
   rows.forEach(r=>{
     const dest = (r.pod||'') + (r.del ? ' / DEL: '+r.del : '');
+    const pol  = r.pol || gPol || '';
+    if(r.na){
+      // ไม่มีเรท → ใส่ N/A ทุกช่อง ยกเว้น PORT DESTINATION กับ POL ที่ล็อกไว้
+      aoa.push([dest, pol, 'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A']);
+      naRows.push(aoa.length-1);
+      return;
+    }
     aoa.push([
-      dest,
-      r.pol || gPol || '',
-      r.na ? 'N/A' : sell(r.r20, r.profit),
-      r.na ? 'N/A' : (isLCL ? '' : sell(r.r40, r.profit)),
-      r.na ? 'N/A' : (isLCL ? '' : sell(r.r4h, r.profit)),
+      dest, pol,
+      sell(r.r20, r.profit),
+      isLCL ? '' : sell(r.r40, r.profit),
+      isLCL ? '' : sell(r.r4h, r.profit),
       r.carrier || '',
-      subjto || 'local charges both ends',
+      subjto,                                     // ว่างถ้าไม่ได้กรอก
       r.det || '', r.dem || '', r.combined || '',
       r.direct || '', r.tt || '',
       r.valid || gValid || ''
     ]);
   });
+  const LASTROW = aoa.length - 1;
 
   // Local charges ต่อท้าย (ถ้ามี)
   const lc = (qLocalRows||[]).filter(x=>x.name && x.rate);
+  let lcHead = -1, lcLast = -1;
   if(lc.length){
-    aoa.push([]);
-    aoa.push(['LOCAL CHARGES']);
-    aoa.push(['Charge','Rate','Unit']);
+    aoa.push([]); aoa.push(['LOCAL CHARGES']);
+    aoa.push(['Charge','Rate','Unit']); lcHead = aoa.length-1;
     lc.forEach(x=> aoa.push([x.name, x.rate, x.unit||'']));
+    lcLast = aoa.length-1;
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:34},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14},{wch:30},
-                 {wch:7},{wch:7},{wch:11},{wch:14},{wch:8},{wch:16}];
+  const ws = XL.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:36},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14},{wch:34},
+                 {wch:7},{wch:7},{wch:11},{wch:15},{wch:9},{wch:16}];
   ws['!freeze'] = { xSplit:0, ySplit:HROW+1 };
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range(
-      {s:{r:HROW,c:0}, e:{r:HROW+rows.length, c:HEAD.length-1}}) };
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'RATE');
+  ws['!autofilter'] = { ref: XL.utils.encode_range({s:{r:HROW,c:0}, e:{r:LASTROW, c:HEAD.length-1}}) };
+  ws['!merges'] = NOTE_ROWS.map(r=>({s:{r,c:0}, e:{r,c:HEAD.length-1}}));
+
+  if(styled){
+    const B = {style:'thin', color:{rgb:'FF000000'}};
+    const BORDER = {top:B,bottom:B,left:B,right:B};
+    const put = (r,c,st)=>{
+      const ref = XL.utils.encode_cell({r,c});
+      if(!ws[ref]) ws[ref] = {t:'s', v:''};
+      ws[ref].s = Object.assign({}, ws[ref].s, st);
+    };
+    // หัวเรื่อง
+    put(0,0,{font:{bold:true, sz:13}});
+    put(0,6,{font:{bold:true}});
+    // บรรทัดหมายเหตุ — พื้นฟ้าอ่อน ตัวหนังสือแดงหนา (เหมือนต้นฉบับ)
+    NOTE_ROWS.forEach(r=>{
+      for(let c=0;c<HEAD.length;c++)
+        put(r,c,{fill:{fgColor:{rgb:'FFDEEBF7'}}, font:{bold:true, color:{rgb:'FFC00000'}}, alignment:{vertical:'center'}});
+    });
+    // หัวตาราง — PORT DESTINATION เหลือง ที่เหลือเทาอ่อน + กรอบ
+    for(let c=0;c<HEAD.length;c++)
+      put(HROW,c,{fill:{fgColor:{rgb: c===0 ? 'FFFFFF00' : 'FFF2F2F2'}},
+                  font:{bold:true}, border:BORDER,
+                  alignment:{horizontal: c===0?'left':'center', vertical:'center', wrapText:true}});
+    // ตัวตาราง — ตีกรอบทุกช่อง · แถว N/A พื้นเทาอ่อน
+    for(let r=HROW+1;r<=LASTROW;r++){
+      const isNA = naRows.includes(r);
+      for(let c=0;c<HEAD.length;c++){
+        const st = {border:BORDER, alignment:{horizontal:(c>=2&&c<=4)?'right':(c>=7?'center':'left'), vertical:'center'}};
+        if(isNA) st.fill = {fgColor:{rgb:'FFD9D9D9'}};
+        put(r,c,st);
+      }
+    }
+    // ตาราง Local charges
+    if(lcHead>=0){
+      for(let c=0;c<3;c++) put(lcHead-1,c,{font:{bold:true}});
+      for(let r=lcHead;r<=lcLast;r++)
+        for(let c=0;c<3;c++) put(r,c,{border:BORDER, font:{bold:r===lcHead}});
+    }
+  }
+
+  const wb = XL.utils.book_new();
+  XL.utils.book_append_sheet(wb, ws, 'RATE');
   const tag = (cust+'_'+today).replace(/[^\w\-]+/g,'-');
-  XLSX.writeFile(wb, `QUOTATION_${tag}.xlsx`);
-  toast('📗 Export Excel แล้ว — '+rows.length+' ปลายทาง');
+  XL.writeFile(wb, `QUOTATION_${tag}.xlsx`);
+  toast('📗 Export Excel แล้ว — '+rows.length+' ปลายทาง'+(styled?'':' (โหลดสีไม่ได้ ออกเป็นตารางเปล่า)'));
 };
 
 window.exportRateSheetXLSX = function(){
