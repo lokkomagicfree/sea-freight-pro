@@ -228,6 +228,19 @@ body{font-size:14px;font-weight:450}
   #saved_body tr:hover td[style*="position:sticky"] {
     background: var(--s2) !important;
   }
+
+/* Leads — แถบแท็บสถานะ */
+.ld-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+.ld-tab{flex:1 1 108px;min-width:96px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;cursor:pointer;
+  transition:.15s;border-left:3px solid var(--c);text-align:left}
+.ld-tab:hover{background:var(--s1);border-color:var(--c);transform:translateY(-1px)}
+.ld-tab.on{background:color-mix(in srgb, var(--c) 14%, transparent);border-color:var(--c);
+  box-shadow:0 0 0 1px var(--c) inset}
+.ld-tab-n{font-size:20px;font-weight:800;line-height:1;color:var(--c);font-family:var(--mono)}
+.ld-tab-l{font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.ld-tab.on .ld-tab-l{color:var(--text)}
+@media(max-width:900px){ .ld-tab{flex:1 1 80px;min-width:80px;padding:7px 9px} .ld-tab-n{font-size:16px} }
 </style>
 </head>
 <body>
@@ -6428,12 +6441,16 @@ function renderLeads(){
   const el = document.getElementById('leads_body');
   const opt = (v,cur)=>`<option value="${_le(v)}"${v===cur?' selected':''}>${_le(v||'ทั้งหมด')}</option>`;
 
+  const pill = (label, count, color, active, onclick)=>
+    `<button class="ld-tab${active?' on':''}" style="--c:${color}" onclick="${onclick}">
+       <span class="ld-tab-n">${count}</span><span class="ld-tab-l">${label}</span></button>`;
   document.getElementById('leads_stats').innerHTML =
-    `<div class="stat-card"><div class="stat-label">TOTAL LEADS</div><div class="stat-value">${LEADS.length}</div></div>`+
-    LEAD_STAGES.map(s=>`<div class="stat-card"><div class="stat-label">${s}</div>
-      <div class="stat-value" style="color:${LEAD_STAGE_COLOR[s]}">${byStage[s]||0}</div></div>`).join('')+
-    `<div class="stat-card"><div class="stat-label">ถึงกำหนดติดตาม</div>
-      <div class="stat-value" style="color:${due?'var(--red)':'var(--muted)'}">${due}</div></div>`;
+    `<div class="ld-tabs">` +
+    pill('ทั้งหมด', LEADS.length, 'var(--cyan)', (!_leadFilter.stage && !_leadFilter.due), "leadTab('')") +
+    LEAD_STAGES.map(st=> pill(st, byStage[st]||0, LEAD_STAGE_COLOR[st],
+        (_leadFilter.stage===st && !_leadFilter.due), `leadTab('${st}')`)).join('') +
+    pill('ถึงกำหนดติดตาม', due, 'var(--red)', _leadFilter.due, "leadTab('__due')") +
+    `</div>`;
 
   const fbar = document.getElementById('leads_filters');
   if(fbar && !fbar.dataset.built){
@@ -6443,12 +6460,8 @@ function renderLeads(){
         oninput="_leadFilter.q=this.value;renderLeads()">
       <select id="ld_lane" class="inp" style="width:130px" onchange="_leadFilter.lane=this.value;renderLeads()">
         <option value="">ทุก Trade lane</option>${LEAD_LANES.map(x=>`<option>${x}</option>`).join('')}</select>
-      <select id="ld_stage" class="inp" style="width:120px" onchange="_leadFilter.stage=this.value;renderLeads()">
-        <option value="">ทุกสถานะ</option>${LEAD_STAGES.map(x=>`<option>${x}</option>`).join('')}</select>
       <select id="ld_type" class="inp" style="width:130px" onchange="_leadFilter.type=this.value;renderLeads()">
-        <option value="">ทุกประเภท</option>${LEAD_TYPES.map(x=>`<option>${x}</option>`).join('')}</select>
-      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gold);white-space:nowrap;cursor:pointer">
-        <input type="checkbox" onchange="_leadFilter.due=this.checked;renderLeads()"> ถึงกำหนดติดตาม</label>`;
+        <option value="">ทุกประเภท</option>${LEAD_TYPES.map(x=>`<option>${x}</option>`).join('')}</select>`;
   }
 
   if(!list.length){
@@ -6486,6 +6499,12 @@ function renderLeads(){
 }
 window.renderLeads = renderLeads;
 window.render_leads = renderLeads;
+// คลิกแท็บ = กรองตามสถานะ (คลิกซ้ำเพื่อยกเลิก)
+window.leadTab = function(st){
+  if(st === '__due'){ _leadFilter.due = !_leadFilter.due; _leadFilter.stage=''; }
+  else { _leadFilter.due = false; _leadFilter.stage = (_leadFilter.stage===st ? '' : st); }
+  renderLeads();
+};
 
 window.leadSetField = function(i, f, v){ const l=LEADS[i]; if(!l) return; l[f]=v; l.updatedAt=new Date().toISOString(); leadsSave(true); renderLeads(); };
 window.leadSetStage = function(i, v){
