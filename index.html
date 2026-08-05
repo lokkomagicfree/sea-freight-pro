@@ -1033,11 +1033,12 @@ body{font-size:14px;font-weight:450}
         <button onclick="qAddLocal()" class="btn btn-ghost" style="font-size:11px;margin-top:8px;width:100%">+ Add Local Charge</button>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-top:12px">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px">
         <button id="quot_save_btn" onclick="qSave()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save</button>
         <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Email</button>
         <button onclick="qCopyLine()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.3);color:#00b4d8">💬 Copy LINE</button>
         <button onclick="exportRateSheetXLSX()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60">📊 Rate Sheet</button>
+        <button onclick="qExportExcelSheet()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(16,124,65,.12);border:1px solid rgba(16,124,65,.35);color:#2ecc71">📗 Excel</button>
         <button onclick="qClear()" class="btn btn-ghost" style="font-size:12px;padding:9px">✕ Clear</button>
       </div>
 
@@ -6310,7 +6311,7 @@ const QUOTE_TEMPLATES_BUILTIN = {
     pol: 'LAEM CHABANG',
     lockPol: true,
     subjto: 'EBS, CIC, PCS, LSS, PSS, HEA, ISD, EID, ETS at destination',
-    remarks: 'All in rate incl. of SBS · Freight all-in · EX BKK/LCB',
+    remarks: 'All in rate incl. of SBS · Freight all-in',
     rows: [{"pod":"Acajutla, El Salvador (SVAQJ)","del":"","dem":"","det":"","combined":"16","direct":"T/S","tt":"33-60"},{"pod":"GENOA, Italy (ITGOA)","del":"","dem":"","det":"","combined":"9","direct":"T/S","tt":"39-41"},{"pod":"Antwerp Sea Port, Belgium (BEANR)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Barcelona Sea Port, Spain (ESBCN)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Rotterdam, Netherlands (NLRTM)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Koper, Koper, Slovenia (SIKOP)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Southampton, UK (GBSOU)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"46"},{"pod":"Buenaventura, Colombia (COBUN)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Navegantes, Brazil (BRNVT)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Paranaguá, Brazil (BRPNG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"RIO GRANDE, RIO GRANDE, Brazil (BRRIG)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Santos, Brazil (BRSSZ)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"35-45"},{"pod":"Buenos Aires, Argentina (ARBUE)","del":"","dem":"","det":"","combined":"18","direct":"T/S","tt":"35-45"},{"pod":"La Guaira, Venezuela (VELAG)","del":"","dem":"","det":"","combined":"","direct":"","tt":""},{"pod":"Manzanillo, Manzanillo, Mexico (MXZLO)","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"40"},{"pod":"Burgas, Bulgaria (BGBOJ)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"57"},{"pod":"Cagayan de Oro, Philippines (PHCGY)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":""},{"pod":"Cat Lai Port, VICT, Ho Chi Minh City, Vietnam (VNOCL)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"4"},{"pod":"Long Beach, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"Los Angeles, USA (USLBH)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"27"},{"pod":"New York, USA (USNYC)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Norfolk, USA (USOFK)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Savannah, USA (USSAV)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Los Angeles, USA","del":"Chicago, IL","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"43"},{"pod":"Charleston, USA (USCST)","del":"","dem":"4","det":"10","combined":"","direct":"DIRECT","tt":"38"},{"pod":"Karachi, Pakistan (PKKHI)","del":"","dem":"","det":"","combined":"14","direct":"T/S","tt":"24"},{"pod":"Chennai, India (INMAA1)","del":"","dem":"","det":"","combined":"14","direct":"DIRECT","tt":"9"},{"pod":"Jeddah, Saudi Arabia","del":"","dem":"","det":"","combined":"21","direct":"T/S","tt":"30"}]
   }
 };
@@ -6992,6 +6993,93 @@ function qBuildEmail(){
 
 
 // ── Export Rate Sheet PDF ────────────────────────────────────
+// ตัดข้อความ "EX BKK/LCB" ออกจากเอกสารที่ส่งลูกค้า (ทั้ง PDF และ Excel)
+// เผื่อใบเสนอราคาเก่าที่บันทึกข้อความนี้ไว้แล้ว
+function qStripEx(t){
+  return String(t==null?'':t)
+    .replace(/\bEX\s*[-:]?\s*(BKK|LCB|LCH|LKB)(\s*\/\s*(BKK|LCB|LCH|LKB))*\b/gi,'')
+    .replace(/\s*·\s*·\s*/g,' · ').replace(/^[\s·,|-]+|[\s·,|-]+$/g,'')
+    .replace(/\s{2,}/g,' ').trim();
+}
+window.qStripEx = qStripEx;
+// ── Export ใบเสนอราคาเป็น Excel — เลย์เอาต์เดียวกับ WWL RATE REQUEST ──────
+// คอลัมน์: PORT DESTINATION | POL | 20' | 40' | 40'hc | carrier name | sub to |
+//          DET | DEM | COMBINED | DIRECT OR T/S | TT | VALIDITY
+// ราคาที่ออกเป็น "ราคาขาย" (ต้นทุน + Profit) · ไม่มีป้าย FIX/FAK (ข้อมูลภายใน)
+window.qExportExcelSheet = function(){
+  if(!window.XLSX){ toast('⏳ กำลังโหลดตัวสร้าง Excel… ลองอีกครั้ง'); return; }
+  const rows = qRateRows || [];
+  if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
+  const get = id => (document.getElementById(id)||{}).value || '';
+  const cust    = get('q_customer') || 'Customer';
+  const subjto  = qStripEx(get('q_subjto'));
+  const remarks = qStripEx(get('q_remarks'));
+  const gValid  = get('q_valid');
+  const gPol    = get('q_pol');
+  const isLCL   = get('q_type')==='LCL';
+  const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+  const sell = (base, profit)=>{
+    const b = parseFloat(base);
+    if(isNaN(b)) return String(base||'').toUpperCase()==='N/A' ? 'N/A' : '';
+    return b + (parseFloat(profit)||0);
+  };
+
+  const aoa = [];
+  aoa.push([`RATE QUOTATION — ${cust}`, '', '', '', '', '', `DATE: ${today}`]);
+  // หมายเหตุด้านบน — ไม่ให้ซ้ำกับข้อความมาตรฐาน
+  const notes = ['** Freight all in (inclusive of EBS, CIC, PCS, LSS, PSS, HEA, ISD, EID, ETS etc. at destination) **',
+                 'All in rate incl. of SBS'];
+  const seen = new Set(notes.map(x=>x.toLowerCase().replace(/[^a-z0-9]/g,'')));
+  remarks.split(/\s*·\s*/).forEach(seg=>{
+    const k = seg.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(seg.trim() && !seen.has(k)){ seen.add(k); notes.push(seg.trim()); }
+  });
+  notes.forEach(n=> aoa.push([n]));
+  aoa.push([]);
+  const HEAD = ['PORT DESTINATION','POL',isLCL?"per CBM":"20'","40'","40'hc",'carrier name','sub to',
+               'DET','DEM','COMBINED','DIRECT OR T/S','TT','VALIDITY'];
+  aoa.push(HEAD);
+  const HROW = aoa.length - 1;
+
+  rows.forEach(r=>{
+    const dest = (r.pod||'') + (r.del ? ' / DEL: '+r.del : '');
+    aoa.push([
+      dest,
+      r.pol || gPol || '',
+      r.na ? 'N/A' : sell(r.r20, r.profit),
+      r.na ? 'N/A' : (isLCL ? '' : sell(r.r40, r.profit)),
+      r.na ? 'N/A' : (isLCL ? '' : sell(r.r4h, r.profit)),
+      r.carrier || '',
+      subjto || 'local charges both ends',
+      r.det || '', r.dem || '', r.combined || '',
+      r.direct || '', r.tt || '',
+      r.valid || gValid || ''
+    ]);
+  });
+
+  // Local charges ต่อท้าย (ถ้ามี)
+  const lc = (qLocalRows||[]).filter(x=>x.name && x.rate);
+  if(lc.length){
+    aoa.push([]);
+    aoa.push(['LOCAL CHARGES']);
+    aoa.push(['Charge','Rate','Unit']);
+    lc.forEach(x=> aoa.push([x.name, x.rate, x.unit||'']));
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:34},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14},{wch:30},
+                 {wch:7},{wch:7},{wch:11},{wch:14},{wch:8},{wch:16}];
+  ws['!freeze'] = { xSplit:0, ySplit:HROW+1 };
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range(
+      {s:{r:HROW,c:0}, e:{r:HROW+rows.length, c:HEAD.length-1}}) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'RATE');
+  const tag = (cust+'_'+today).replace(/[^\w\-]+/g,'-');
+  XLSX.writeFile(wb, `QUOTATION_${tag}.xlsx`);
+  toast('📗 Export Excel แล้ว — '+rows.length+' ปลายทาง');
+};
+
 window.exportRateSheetXLSX = function(){
   if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
   const { jsPDF } = window.jspdf;
@@ -7059,7 +7147,8 @@ window.exportRateSheetXLSX = function(){
   if(comm) subParts.push('Commodity: '+comm);
   if(valid)subParts.push('Valid: '+valid);
   T(subParts.join('   |   '), LM, y, 8.5, false, MUTED);
-  if(remarks){ T('Note: '+remarks, LM, y+5, 8, false, MUTED); y+=5; }
+  const _rmk = qStripEx(remarks);
+  if(_rmk){ T('Note: '+_rmk, LM, y+5, 8, false, MUTED); y+=5; }
   y += 7;
 
   /* ── RATE TABLE ── */
