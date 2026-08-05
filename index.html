@@ -732,8 +732,8 @@ body{font-size:14px;font-weight:450}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="card-title" style="margin-bottom:0">📋 Shipment Details</div>
           <label style="cursor:pointer">
-            <input type="file" accept=".xlsx,.xls" style="display:none" onchange="extractExcelBooking(this)">
-            <span class="btn btn-ghost" style="font-size:11px;padding:4px 12px;pointer-events:none">📊 Upload Booking Excel</span>
+            <input type="file" accept=".xlsx,.xls,.pdf" style="display:none" onchange="extractBookingFile(this)">
+            <span class="btn btn-ghost" style="font-size:11px;padding:4px 12px;pointer-events:none">📄 Upload Booking PDF / Excel</span>
           </label>
         </div>
         <div class="four-col">
@@ -3380,6 +3380,16 @@ function initCtnRows(){
   renderCtnRows();
 }
 
+// ให้ตัวอ่าน PDF ตั้งจำนวนตู้ได้ (เพราะ _ctnRows อยู่ในขอบเขตไฟล์นี้)
+window.setCtnRowsFromPdfList = function(list){
+  if(!Array.isArray(list)||!list.length) return;
+  _ctnRows = list.map(x=>({type:String(x.type), qty:+x.qty||1}));
+  renderCtnRows(); buildCharges(); recalc();
+};
+window.setCtnRowsFromPdf = function(type, qty){
+  _ctnRows = [{type:String(type), qty:+qty||1}];
+  renderCtnRows(); buildCharges(); recalc();
+};
 function addCtnRow(){
   // Default to first type not yet used
   const used = _ctnRows.map(r=>r.type);
@@ -5406,6 +5416,329 @@ function csChipSave(idx){
 window.csChipSave = csChipSave;
 
 // ── PDF Booking Auto-Extract (AI) ──────────────────────────
+// ── อ่าน Booking Confirmation จากไฟล์ PDF ของสายเรือ แล้วเติมลงฟอร์ม ──────
+// รองรับ COSCO / WAN HAI (WHL) / ONE / EVERGREEN / MAERSK และแบบทั่วไป
+// เลือกไฟล์เดียวกันได้ทั้ง .xlsx และ .pdf — ระบบดูจากนามสกุลเอง
+window.extractBookingFile = function(input){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  if(/\.pdf$/i.test(f.name)) return extractPdfBooking(input);
+  return extractExcelBooking(input);
+};
+function loadPdfJs(){
+  if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{ try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
+      res(window.pdfjsLib); };
+    s.onerror=()=>rej(new Error('โหลดตัวอ่าน PDF ไม่สำเร็จ'));
+    document.head.appendChild(s);
+  });
+}
+// ดึงข้อความออกมาเป็นบรรทัด (จัดกลุ่มตามพิกัด y แล้วเรียงตาม x)
+async function pdfToLines(buf){
+  const pdfjsLib = await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  const lines=[];
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const rows = new Map();
+    tc.items.forEach(it=>{
+      const y = Math.round(it.transform[5]);
+      const key = Math.round(y/3)*3;               // รวมบรรทัดที่เหลื่อมกันเล็กน้อย
+      if(!rows.has(key)) rows.set(key, []);
+      rows.get(key).push({x: it.transform[4], s: it.str});
+    });
+    [...rows.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>{
+      arr.sort((a,b)=>a.x-b.x);
+      const txt = arr.map(o=>o.s).join(' ').replace(/\s+/g,' ').trim();
+      if(txt) lines.push(txt);
+    });
+  }
+  return lines;
+}
+function extractPdfBooking(input){
+  const file = input.files[0]; if(!file) return;
+  input.value='';
+  toast('📄 กำลังอ่าน PDF…');
+  const reader = new FileReader();
+  reader.onload = async e=>{
+    let lines;
+    try{ lines = await pdfToLines(new Uint8Array(e.target.result)); }
+    catch(err){ toast('❌ อ่าน PDF ไม่ได้: '+err.message); return; }
+    if(!lines.length){ toast('❌ ไฟล์นี้เป็น PDF แบบรูปภาพ (สแกน) อ่านข้อความไม่ได้'); return; }
+    try{
+      // ใบของเราเองก่อน ถ้าไม่ใช่ค่อยลองอ่านแบบใบ booking ของสายเรือ
+      if(isOwnBookingPdf(lines)) applyOwnBookingPdf(lines);
+      else applyPdfBooking(lines);
+    }catch(err){ toast('❌ แปลงข้อมูลไม่สำเร็จ: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+// ── อ่าน Booking Confirmation "ของเราเอง" (ที่ระบบ SFP ออก) กลับเข้าระบบ ──
+function isOwnBookingPdf(lines){
+  const t = lines.slice(0,12).join(' ').toLowerCase();
+  return /worldwide logistics services/.test(t) && /booking confirmation/.test(t);
+}
+function applyOwnBookingPdf(lines){
+  const L = lines.map(x=>String(x).replace(/\s+/g,' ').trim());
+  const OWN = ['Shipper Name','Shipping Line','VSL Name / Voy','MOTHER VSL Name','ETD','ETA',
+    'Port of Receive','Port of Discharge','Port of Loading','Final Destination','Port of Transit','Volume',
+    'SI Cut-Off time','Dead Line CFM BL','VGM Cut-Off time','Gate Closing Date','Paperless Code',
+    'Pick up Ref','Pick up Date','Pick up Place','Pick up PIC.','Turn-In Ref','Turn-In Date','Turn-In At',
+    'Turn-In PIC.','Commodity','Weight','HS. Code','Booking No.']
+    .sort((a,b)=>b.length-a.length)
+    .map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*'));
+  const RE = new RegExp('(?:^|\\s)('+OWN.join('|')+')\\s*[:：]','gi');
+  const map = {}; const seen = [];
+  L.forEach((line,idx)=>{
+    const ms=[]; let m; RE.lastIndex=0;
+    while((m=RE.exec(line))) ms.push({k:m[1].replace(/\s+/g,' ').trim().toLowerCase(), s:m.index, e:RE.lastIndex});
+    ms.forEach((x,i)=>{
+      const end = i+1<ms.length ? ms[i+1].s : line.length;
+      let v = line.slice(x.e, end).trim();
+      if(!v){
+        // ค่าที่อยู่คนละบรรทัดกับป้าย
+        // Booking No. / Shipping Line เป็นตัวใหญ่ อาจอยู่ห่างไป 1-3 บรรทัด
+        // ป้ายอื่นให้ดูเฉพาะบรรทัดถัดไปทันที และต้องไม่ใช่บรรทัดป้าย (เช่น Paperless Code ที่ว่างจริง)
+        const RE1 = new RegExp(RE.source, 'i');
+        const far = (x.k==='booking no.' || x.k==='shipping line');
+        const stop = far ? Math.min(idx+4, L.length) : Math.min(idx+2, L.length);
+        for(let j=idx+1;j<stop;j++){
+          const nx=L[j];
+          if(!nx) continue;
+          if(RE1.test(nx) || /^(Schedule|Conveyance|Special|Remark)/i.test(nx)){ if(far) continue; else break; }
+          v=nx; break;
+        }
+      }
+      if(v && map[x.k]===undefined) map[x.k]=v;
+      seen.push({idx, k:x.k, v});
+    });
+  });
+  // "Booking No." ในใบของเราไม่มีเครื่องหมาย : และค่าอยู่บรรทัดล่าง
+  if(!map['booking no.']){
+    const RE2 = new RegExp(RE.source, 'i');
+    for(let i=0;i<L.length;i++){
+      if(!/^booking\s*no\.?$/i.test(L[i])) continue;
+      for(let j=i+1;j<Math.min(i+5,L.length);j++){
+        const nx=L[j];
+        if(!nx || RE2.test(nx) || /^(Schedule|Conveyance|Special|Remark)/i.test(nx)) continue;
+        if(/^[A-Za-z]{2,6}\d{6,}$/.test(nx)) continue;      // อันนี้คือ REF ลูกค้า ไม่ใช่เลข booking
+        map['booking no.'] = nx; break;
+      }
+      if(map['booking no.']) break;
+    }
+  }
+  const g = k => map[k.toLowerCase()] || '';
+  // REF ของลูกค้า = บรรทัดรูปแบบ SBKKxxxx / ตัวอักษร+ตัวเลข ที่อยู่ใกล้ Shipper Name
+  let ref='';
+  { const m = L.join('\n').match(/\b([A-Z]{2,6}\d{6,})\b/); if(m) ref = m[1]; }
+  const bkg = (g('Booking No.')||'').replace(/[^\w-]/g,'');
+  if(ref && ref===bkg) ref='';
+  // วันที่ → YYYY-MM-DD
+  const MO={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt = s=>{
+    s=String(s||'').trim(); if(!s) return '';
+    let m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+    m=s.match(/(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})/);
+    if(m){ const mo=MO[m[2].slice(0,3).toLowerCase()]; if(mo!=null) return m[3]+'-'+pad(mo+1)+'-'+pad(+m[1]); }
+    return '';
+  };
+  // เรือ / เที่ยว  "EVER MATCH / 1469E"
+  let vessel='', voyage='';
+  { const v=g('VSL Name / Voy');
+    const m=v.match(/^(.*?)\s*\/\s*(\S+)\s*$/);
+    if(m){ vessel=m[1].trim(); voyage=m[2].trim(); } else vessel=v; }
+  let mVessel='', mVoy='';
+  { const v=g('MOTHER VSL Name');
+    const m=v.match(/^(.*?)\s*\/\s*(\S+)\s*$/);
+    if(m){ mVessel=m[1].trim(); mVoy=m[2].trim(); } else mVessel=v; }
+  // ตู้  "1x40HC"  หรือ "1x20GP + 2x40HC"
+  const volRaw = g('Volume');
+  const ctn = [];
+  volRaw.replace(/(\d+)\s*[xX×]\s*(\d{2})\s*(GP|HC|HQ|DC|RF|RH|NOR|OT|FR)/gi, (a,q,sz,tp)=>{
+    ctn.push({qty:+q, type: sz + (tp.toUpperCase()==='HQ'?'HC':(tp.toUpperCase()==='DC'?'GP':tp.toUpperCase()))}); return a; });
+
+  const set=(id,v,force)=>{ const e=document.getElementById(id); if(!e||!v) return 0;
+    if(e.value && !force) return 0; e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); return 1; };
+  let n=0;
+  n+=set('s_bkgno', bkg);
+  n+=set('s_refno', ref);
+  n+=set('s_shipper', g('Shipper Name'));
+  n+=set('s_carrier', g('Shipping Line'));
+  n+=set('s_vessel', vessel);      n+=set('s_voyage', voyage);
+  n+=set('s_mother_vessel', mVessel); n+=set('s_mother_voy', mVoy);
+  n+=set('s_etd', fmt(g('ETD')));  n+=set('s_eta', fmt(g('ETA')));
+  n+=set('s_commodity', g('Commodity'));
+  n+=set('s_si_cutoff', fmt(g('SI Cut-Off time')));
+  n+=set('s_doc_cutoff', fmt(g('Dead Line CFM BL')));
+  n+=set('s_vgm_cutoff', fmt(g('VGM Cut-Off time')));
+  n+=set('s_gate_closing', fmt(g('Gate Closing Date')));
+  n+=set('s_cy_date', fmt(g('Pick up Date')));
+  n+=set('s_rtn_date', fmt(g('Turn-In Date')));
+  n+=set('s_hscode', /please advise/i.test(g('HS. Code'))?'':g('HS. Code'));
+  const por=g('Port of Receive'), pol=g('Port of Loading'), pod=g('Port of Discharge'), dest=g('Final Destination');
+  if(pol||por){ window._selPol = pol||por; n+=set('r_pol_sel', pol||por); n+=set('rate_pol', pol||por); }
+  if(pod){ window._selPod = pod; n+=set('r_pod_sel', pod); n+=set('rate_pod', pod); }
+  if(dest && pod && dest.toUpperCase()!==pod.toUpperCase()){ window._selDel = dest; n+=set('s_del', dest); }
+  if(ctn.length && typeof window.setCtnRowsFromPdfList==='function') window.setCtnRowsFromPdfList(ctn);
+  // เก็บข้อมูลของฟอร์ม Booking PDF ไว้ให้ครบ จะได้ออก PDF ใบเดิมซ้ำได้
+  window._ownPdfBpdf = {
+    shipper:g('Shipper Name'), shipper_ref:ref, bkgno:bkg, carrier:g('Shipping Line'),
+    vsl:g('VSL Name / Voy'), mother_vsl:g('MOTHER VSL Name'),
+    etd:fmt(g('ETD')), eta:fmt(g('ETA')),
+    port_receive:por, port_loading:pol, port_discharge:pod, final_dest:dest, port_transit:g('Port of Transit'),
+    volume:volRaw, si_cutoff:g('SI Cut-Off time'), cfm_bl:g('Dead Line CFM BL'),
+    vgm_cutoff:g('VGM Cut-Off time'), gate_closing:g('Gate Closing Date'), paperless:g('Paperless Code'),
+    pu_ref:g('Pick up Ref'), pu_date:g('Pick up Date'), pu_place:g('Pick up Place'), pu_pic:g('Pick up PIC.'),
+    ti_ref:g('Turn-In Ref'), ti_date:g('Turn-In Date'), ti_at:g('Turn-In At'), ti_pic:g('Turn-In PIC.'),
+    commodity:g('Commodity'), weight:g('Weight'), hs_code:g('HS. Code')
+  };
+  const miss=[]; if(!bkg) miss.push('Booking No.'); if(!fmt(g('ETD'))) miss.push('ETD'); if(!ctn.length) miss.push('Volume');
+  toast('📄 อ่าน Booking Confirmation ของเราแล้ว — เติม '+n+' ช่อง'+(miss.length?(' · ยังไม่พบ: '+miss.join(', ')):''));
+  if(ctn.length) toast('📦 '+ctn.map(c=>c.qty+'x'+c.type).join(' + ')+(g('Commodity')?(' · '+g('Commodity')):''));
+  return true;
+}
+
+function applyPdfBooking(lines){
+  const ALL = lines.join('\n');
+  const U = ALL.toUpperCase();
+  // ── ตัดแต่ละบรรทัดเป็นคู่ "ป้าย : ค่า" (บางสายเรือใส่ 2 คู่ในบรรทัดเดียว)
+  // ใช้รายชื่อป้ายที่รู้จัก (เรียงยาว→สั้น) กันการตัดผิดกลางค่า เช่น "EVER MATCH 1469E ETD:"
+  const VOCAB = ['TOTAL BOOKING CONTAINER QTY SIZE/TYPE','BOOKING QTY SIZE/TYPE','QTY SIZE/TYPE',
+   'INTENDED VESSEL/VOYAGE','INTENDED VGM CUT-OFF','INTENDED SI CUT-OFF','INTENDED FCL CY CUT-OFF',
+   'EMPTY PICK UP DATE/TIME','EMPTY PICK UP TELEPHONE','EMPTY PICK UP LOCATION','EMPTY PICK UP ADDRESS',
+   'FULL RETURN TELEPHONE','FULL RETURN LOCATION','FULL RETURN ADDRESS',
+   'OUTBOUND DELIVERY MODE','INBOUND DELIVERY MODE','RATE AGREEMENT REFERENCE',
+   'PLACE OF RECEIPT','PLACE OF RECEIVE','PORT OF RECEIPT','PORT OF LOADING','PORT OF DISCHARGE',
+   'FINAL DESTINATION','PLACE OF DELIVERY','DESCRIPTION OF GOODS','CARGO DESCRIPTION','CARGO WEIGHT',
+   'CARGO NATURE','GROSS WEIGHT','TRAFFIC MODE','SOC INDICATOR','BOOKING NUMBER','BOOKING NO.','BOOKING NO',
+   'BOOKING PARTY','REQUIRED DOCUMENT','RESPONSIBLE PARTIES','SERVICE CODE','VESSEL FLAG','BLOCK NUMBER',
+   'BERTH CODE','VESSEL NAME/VOY','VESSEL/VOYAGE','VESSEL NAME','OCEAN VESSEL','FEEDER VESSEL',
+   'SI CUT-OFF TIME','VGM CUT-OFF TIME','SI CUT-OFF','VGM CUT-OFF','CY CUT-OFF','DOC CUT-OFF',
+   'DOCUMENT CUT-OFF','GATE CLOSING','CLOSING TIME','SAILING DATE','DUE DATE','SHIPPER','CONSIGNEE',
+   'FORWARDER','COMMODITY','VOYAGE NO','VOYAGE','VOLUME','WEIGHT','VESSEL','VOY','ETD','ETA','LTD','POL','POD']
+   .sort((a,b)=>b.length-a.length)
+   .map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/-/g,'-?').replace(/\//g,'\\s*/\\s*'));
+  const LBLRE = new RegExp('(?:^|\\s)('+VOCAB.join('|')+')\\s*[:：]','gi');
+  const SEGS = [];                       // [{labels:{LABEL:value}, order:[...]}, ...]
+  lines.forEach(line=>{
+    const ms=[]; let m; LBLRE.lastIndex=0;
+    while((m=LBLRE.exec(line))) ms.push({lbl:m[1].trim().toUpperCase().replace(/\s+/g,' '), s:m.index, e:LBLRE.lastIndex});
+    if(!ms.length) return;
+    const obj={};
+    ms.forEach((x,i)=>{
+      const end = i+1<ms.length ? ms[i+1].s : line.length;
+      obj[x.lbl] = line.slice(x.e, end).trim().replace(/\s+/g,' ');
+    });
+    SEGS.push(obj);
+  });
+  const norm = t=>String(t).toUpperCase().replace(/\s+/g,' ').trim();
+  // ค่าแรกที่เจอของป้ายนี้
+  const grab = (...labels)=>{
+    for(const lb of labels){ const L=norm(lb);
+      for(const o of SEGS){ if(o[L]) return o[L]; } }
+    for(const lb of labels){ const L=norm(lb);
+      for(const o of SEGS){ for(const k in o){ if(k.includes(L) && o[k]) return o[k]; } } }
+    return '';
+  };
+  // ค่าของป้าย A ที่อยู่บรรทัดเดียวกับป้าย B (เช่น ETA ที่อยู่บรรทัด PORT OF DISCHARGE)
+  const grabWith = (want, withLbl)=>{
+    const W=norm(want), B=norm(withLbl);
+    for(const o of SEGS){
+      const keys=Object.keys(o);
+      if(keys.some(k=>k.includes(B)) && keys.some(k=>k===W||k.includes(W))){
+        const k = keys.find(k=>k===W) || keys.find(k=>k.includes(W));
+        if(o[k]) return o[k];
+      }
+    }
+    return '';
+  };
+  // ── สายเรือ
+  let carrier='';
+  if(/COSCO/.test(U)) carrier='COSCO';
+  else if(/WAN\s*HAI/.test(U)) carrier='WHL';
+  else if(/OCEAN NETWORK EXPRESS|\bONEY\b/.test(U)) carrier='ONE';
+  else if(/EVERGREEN MARINE|EVERGREEN LINE/.test(U)) carrier='EMC';
+  else if(/MAERSK/.test(U)) carrier='MAERSK';
+  else if(/YANG MING/.test(U)) carrier='YML';
+  else if(/\bOOCL\b/.test(U)) carrier='OOCL';
+  else if(/HAPAG/.test(U)) carrier='HPL';
+  else if(/\bMSC\b|MEDITERRANEAN SHIPPING/.test(U)) carrier='MSC';
+  else if(/CMA\s*CGM/.test(U)) carrier='CMA';
+  else if(/PACIFIC INTERNATIONAL LINES|\bPIL\b/.test(U)) carrier='PIL';
+  else if(/\bSITC\b/.test(U)) carrier='SITC';
+  // ── booking no
+  let bkg = grab('BOOKING NUMBER','BOOKING NO.','BOOKING NO','BOOKING REF NO','S/O NO','SO NO');
+  if(!bkg){ const m = ALL.match(/\b((?:COSU|WHLC|ONEY|OOLU|MAEU|MSCU|HLCU|YMLU|ZIMU|EGLV|CMDU|SITC)\s?\d{6,})\b/i); if(m) bkg=m[1]; }
+  bkg = bkg.replace(/^(COSU|WHLC|ONEY|OOLU|MAEU|MSCU|HLCU|YMLU|ZIMU|EGLV|CMDU|SITC)\s*/i,'').trim();
+  // ── เรือ / เที่ยว
+  const vsl = grab('INTENDED VESSEL/VOYAGE','VESSEL/VOYAGE','VESSEL NAME/VOY','VESSEL & VOYAGE','OCEAN VESSEL','FEEDER VESSEL','VESSEL');
+  let vessel=vsl, voyage='';
+  { let m = vsl.match(/^(.*?)\s+V\.?\s*([A-Z0-9]{2,10})$/i) || vsl.match(/^(.*?)\s+(\d{2,4}[A-Z]{0,2})$/);
+    if(m){ vessel=m[1].trim(); voyage=m[2].trim(); }
+    if(!voyage){ const v2=grab('VOYAGE NO','VOYAGE','VOY NO','VOY'); if(v2) voyage=v2; } }
+  // ── ท่าเรือ
+  const por  = grab('PLACE OF RECEIPT','PLACE OF RECEIVE','PORT OF RECEIPT');
+  const pol  = grab('PORT OF LOADING','LOADING PORT','POL');
+  const pod  = grab('PORT OF DISCHARGE','DISCHARGE PORT','POD');
+  const dest = grab('FINAL DESTINATION','PLACE OF DELIVERY');
+  // ตัดชื่อท่าเทียบเรือที่ต่อท้ายหลัง "/" เช่น "Los Angeles / Evergreen Container Terminal"
+  const clean = t => String(t||'').split(/\s\/\s/)[0].replace(/[,\s]+$/,'').trim();
+  // ── วันที่
+  const MO={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const fmt = s=>{
+    if(!s) return '';
+    s=String(s).replace(/\(.*?\)/g,' ').trim();
+    const pad=n=>String(n).padStart(2,'0');
+    let m=s.match(/(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4})/);
+    if(m){ const mo=MO[m[2].slice(0,3).toLowerCase()]; if(mo!=null)
+      return m[3]+'-'+pad(mo+1)+'-'+pad(+m[1]); }
+    m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+    m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if(m) return m[3]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');
+    return '';
+  };
+  const etd = fmt(grabWith('ETD','VESSEL') || grab('ETD','SAILING DATE','ESTIMATED TIME OF DEPARTURE'));
+  const eta = fmt(grabWith('ETA','PORT OF DISCHARGE') || grab('ETA','ESTIMATED TIME OF ARRIVAL'));
+  // ── ตู้
+  const volRaw = grab('TOTAL BOOKING CONTAINER QTY SIZE/TYPE','BOOKING QTY SIZE/TYPE','QTY SIZE/TYPE','CONTAINER QTY','VOLUME') || ALL;
+  const vm = volRaw.match(/(\d+)\s*[xX×]\s*(\d{2})\s*'?\s*-?\s*(HI-?\s?CUBE|HIGH\s?CUBE|HC|HQ|GP|DC|DV|RF|RH|NOR|OT|FR|ST)/i);
+  let ctnQty='', ctnType='';
+  if(vm){ ctnQty=vm[1]; const t=vm[3].toUpperCase().replace(/[\s-]/g,'');
+    ctnType = vm[2] + (/(HICUBE|HIGHCUBE|HC|HQ)/.test(t) ? 'HC' : ((t==='DC'||t==='DV'||t==='ST')?'GP':t)); }
+  // ── สินค้า / น้ำหนัก
+  const commodity = grab('CARGO DESCRIPTION','COMMODITY DESCRIPTION','COMMODITY','DESCRIPTION OF GOODS');
+  const weightRaw = grab('CARGO WEIGHT','GROSS WEIGHT','WEIGHT');
+  // ── cut-off
+  const si  = fmt(grab('INTENDED SI CUT-OFF','SI CUT-OFF TIME','SI CUT-OFF','S/I CLOSING','DOCUMENT CUT-OFF','DOC CUT-OFF'));
+  const vgm = fmt(grab('INTENDED VGM CUT-OFF','VGM CUT-OFF TIME','VGM CUT-OFF','VGM CLOSING'));
+  const cy  = fmt(grab('INTENDED FCL CY CUT-OFF','FCL CY CUT-OFF','CY CUT-OFF','GATE CLOSING','CY CLOSING'));
+  const puDt= fmt(grab('EMPTY PICK UP DATE/TIME','EMPTY PICKUP DATE','PICK UP DATE'));
+  // ── เติมลงฟอร์ม (ไม่ทับค่าที่กรอกไว้แล้ว)
+  const set=(id,v)=>{ const e=document.getElementById(id); if(!e||!v||e.value) return 0;
+    e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); return 1; };
+  let n=0;
+  n+=set('s_bkgno',bkg); n+=set('s_carrier',carrier);
+  n+=set('s_vessel',vessel); n+=set('s_voyage',voyage);
+  n+=set('s_etd',etd); n+=set('s_eta',eta);
+  n+=set('s_commodity',commodity);
+  n+=set('s_si_cutoff',si); n+=set('s_doc_cutoff',si);
+  n+=set('s_vgm_cutoff',vgm); n+=set('s_gate_closing',cy); n+=set('s_cy_date',puDt);
+  const polC=clean(pol)||clean(por), podC=clean(pod);
+  if(polC){ window._selPol=polC; n+=set('r_pol_sel',polC); n+=set('rate_pol',polC); }
+  if(podC){ window._selPod=podC; n+=set('r_pod_sel',podC); n+=set('rate_pod',podC); }
+  if(ctnQty && ctnType && typeof window.setCtnRowsFromPdf==='function') window.setCtnRowsFromPdf(ctnType,+ctnQty);
+  const miss=[]; if(!bkg) miss.push('Booking No.'); if(!etd) miss.push('ETD'); if(!ctnQty) miss.push('จำนวนตู้');
+  window._pdfBkgPreview={carrier,bkg,vessel,voyage,etd,eta,por:clean(por),pol:polC,pod:podC,dest:clean(dest),
+    ctnQty,ctnType,commodity,weight:weightRaw,si,vgm,cy,puDt};
+  toast('📄 อ่าน PDF แล้ว — เติม '+n+' ช่อง'+(carrier?(' · '+carrier):'')+(miss.length?(' · ยังไม่พบ: '+miss.join(', ')):''));
+  if(ctnQty&&ctnType) toast('📦 '+ctnQty+' x '+ctnType+(commodity?(' · '+commodity):'')+(weightRaw?(' · '+weightRaw):''));
+}
 function extractExcelBooking(input){
   const file = input.files[0]; if(!file) return;
   input.value='';
