@@ -6753,7 +6753,7 @@ function leadsFiltered(){
     if(f.lane  && !(l.lanes||[]).includes(f.lane)) return false;
     if(f.due   && !leadDueSoon(l)) return false;
     if(q){
-      const hay = [l.company,l.contact,l.email,l.phone,l.website,l.country,l.commodity,l.notes,(l.lanes||[]).join(' ')]
+      const hay = [l.company,l.contact,l.email,l.phone,l.website,l.country,l.commodity,l.notes,l.approach,(l.lanes||[]).join(' ')]
         .join(' ').toLowerCase();
       if(!hay.includes(q)) return false;
     }
@@ -6798,7 +6798,7 @@ function renderLeads(){
   }
 
   if(!list.length){
-    el.innerHTML = `<tr><td colspan="9" style="padding:26px;text-align:center;color:var(--muted)">
+    el.innerHTML = `<tr><td colspan="10" style="padding:26px;text-align:center;color:var(--muted)">
       ${LEADS.length? 'ไม่พบ lead ตามเงื่อนไข' : 'ยังไม่มี lead — กด + เพิ่ม หรือ 📥 Import จาก Excel/CSV'}</td></tr>`;
   } else {
     el.innerHTML = list.map(l=>{
@@ -6814,6 +6814,11 @@ function renderLeads(){
           ${l.email?`<div>${_le(l.email)}</div>`:''}${l.phone?`<div style="color:var(--muted)">${_le(l.phone)}</div>`:''}</td>
         <td style="padding:5px 8px;font-size:11px">${_le(l.type||'')}</td>
         <td style="padding:5px 8px;max-width:190px">${lanes||'<span style="color:var(--muted);font-size:10px">—</span>'}</td>
+        <td style="padding:5px 8px;max-width:300px">
+          <div title="${_le(l.approach||'')}" onclick="leadEditApproach(${i})"
+            style="font-size:10.5px;line-height:1.45;color:${l.approach?'var(--text)':'var(--muted)'};cursor:pointer;
+                   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">
+            ${_le(l.approach||'')||'+ เพิ่มวิธีเข้าหา'}</div></td>
         <td style="padding:5px 8px">
           <select class="inp" style="font-size:10px;padding:2px 4px;color:${LEAD_STAGE_COLOR[l.stage||'New']}"
             onchange="leadSetStage(${i},this.value)">${LEAD_STAGES.map(s=>`<option${s===(l.stage||'New')?' selected':''}>${s}</option>`).join('')}</select></td>
@@ -6839,6 +6844,13 @@ window.leadTab = function(st){
   renderLeads();
 };
 
+// คลิกที่ช่องวิธีเข้าหาในตารางเพื่อแก้เร็ว
+window.leadEditApproach = function(i){
+  const l = LEADS[i]; if(!l) return;
+  const v = prompt('วิธีการเข้าหา — '+(l.company||''), l.approach||'');
+  if(v===null) return;
+  if((l.approach||'') !== v){ l.approach = v.trim(); leadLog(l,'แก้วิธีเข้าหา'); leadsSave(); renderLeads(); }
+};
 window.leadSetField = function(i, f, v){ const l=LEADS[i]; if(!l) return; l[f]=v; l.updatedAt=new Date().toISOString(); leadsSave(true); renderLeads(); };
 window.leadSetStage = function(i, v){
   const l=LEADS[i]; if(!l) return;
@@ -6881,6 +6893,8 @@ window.leadEdit = function(i){
           ${LEAD_LANES.map(x=>`<label style="display:flex;align-items:center;gap:3px;font-size:11px;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;cursor:pointer">
             <input type="checkbox" value="${x}"${(l.lanes||[]).includes(x)?' checked':''}> ${x}</label>`).join('')}
         </div></div>
+      <div class="inp-group" style="margin-top:8px"><label class="inp-lbl">วิธีการเข้าหา (แผนบุกลูกค้ารายนี้)</label>
+        <textarea id="lf_approach" class="inp" rows="3" placeholder="เช่น ตอนนี้จองผ่าน XXX → เข้าทางฝ่ายส่งออก · มีงานอเมริกา → ยื่น FAK/FIX · ปริมาณสูง → ขอ allocation">${_le(l.approach||'')}</textarea></div>
       <div class="inp-group" style="margin-top:8px"><label class="inp-lbl">โน้ต</label>
         <textarea id="lf_notes" class="inp" rows="3" placeholder="เช่น เคยคุยเมื่อไหร่ / ใช้เจ้าไหนอยู่ / ปริมาณต่อเดือน">${_le(l.notes||'')}</textarea></div>
       <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--red);margin-top:8px;cursor:pointer">
@@ -6906,7 +6920,8 @@ window.leadSave = function(i){
     company, contact:g2('lf_contact').trim(), email:g2('lf_email').trim(), phone:g2('lf_phone').trim(),
     website:g2('lf_website').trim(), country:g2('lf_country').trim(), type:g2('lf_type'),
     stage:g2('lf_stage'), commodity:g2('lf_commodity').trim(), nextFollow:g2('lf_next'),
-    notes:g2('lf_notes').trim(), dnc:(document.getElementById('lf_dnc')||{}).checked||false,
+    notes:g2('lf_notes').trim(), approach:g2('lf_approach').trim(),
+    dnc:(document.getElementById('lf_dnc')||{}).checked||false,
     lanes, updatedAt:new Date().toISOString()
   });
   if(isNew){ leadLog(l,'สร้าง lead'); LEADS.push(l); }
@@ -6980,7 +6995,8 @@ window.leadsImport = function(){
           country: pick(o,'country','city','จังหวัด','ประเทศ'),
           type:    (()=>{ const t=pick(o,'type','ประเภท'); return LEAD_TYPES.find(x=>norm(x)===norm(t)) || (/forward/i.test(t)?'Freight Forwarder':(t?'Other':'Shipper')); })(),
           commodity: pick(o,'commodity','product','สินค้า','cargo'),
-          notes:   pick(o,'note','remark','หมายเหตุ','วิธี','approach'),
+          approach: pick(o,'วิธีการเข้าหา','วิธีเข้าหา','วิธีเข้า','approach','วิธี','how','แผน','pitch'),
+          notes:   pick(o,'note','remark','หมายเหตุ','โน้ต'),
           lanes, stage:'New', dnc:false, createdAt:new Date().toISOString(), log:[]
         };
         // คอลัมน์ที่ไม่ได้แม็ปเข้าช่องไหน เก็บต่อท้ายโน้ตไว้ ไม่ให้ข้อมูลหาย
@@ -7003,10 +7019,10 @@ window.leadsImport = function(){
 // เทมเพลตไฟล์ import
 window.leadsTemplate = function(){
   if(!window.XLSX) return toast('⏳ กำลังโหลดตัวสร้าง Excel…');
-  const aoa = [['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','Note'],
-    ['ABC Trading Co., Ltd.','K.Somchai (Export Mgr)','somchai@abc.co.th','02-123-4567','www.abc.co.th','Thailand','Shipper','USWC, USEC','Auto parts','เจอจากงาน TILOG']];
+  const aoa = [['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','วิธีการเข้าหา','Note'],
+    ['ABC Trading Co., Ltd.','K.Somchai (Export Mgr)','somchai@abc.co.th','02-123-4567','www.abc.co.th','Thailand','Shipper','USWC, USEC','Auto parts','ตอนนี้จองผ่าน XXX → เข้าทางฝ่ายส่งออก · ยื่น FAK USWC ก่อน','เจอจากงาน TILOG']];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:30},{wch:22},{wch:26},{wch:16},{wch:20},{wch:14},{wch:16},{wch:18},{wch:18},{wch:26}];
+  ws['!cols']=[{wch:30},{wch:22},{wch:26},{wch:16},{wch:20},{wch:14},{wch:16},{wch:18},{wch:18},{wch:52},{wch:26}];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'LEADS');
   XLSX.writeFile(wb, 'LEADS_import_template.xlsx');
   toast('📄 ดาวน์โหลดเทมเพลตแล้ว');
@@ -7015,9 +7031,9 @@ window.leadsExport = function(){
   if(!window.XLSX) return toast('⏳ กำลังโหลดตัวสร้าง Excel…');
   const list = leadsFiltered();
   if(!list.length) return toast('ไม่มี lead ตามเงื่อนไข');
-  const head = ['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','Stage','Next follow','Last contact','DNC','Note'];
+  const head = ['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','วิธีการเข้าหา','Stage','Next follow','Last contact','DNC','Note'];
   const aoa = [head, ...list.map(l=>[l.company,l.contact,l.email,l.phone,l.website,l.country,l.type,
-    (l.lanes||[]).join(', '),l.commodity,l.stage,l.nextFollow,l.lastContact,l.dnc?'YES':'',l.notes])];
+    (l.lanes||[]).join(', '),l.commodity,l.approach,l.stage,l.nextFollow,l.lastContact,l.dnc?'YES':'',l.notes])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=head.map(()=>({wch:18})); ws['!freeze']={xSplit:0,ySplit:1};
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'LEADS');
@@ -7058,6 +7074,7 @@ function leadMerge(tpl, l){
     .replace(/\{\{lane\}\}/g,    (l.lanes||[]).join(' / ') || 'your trade lane')
     .replace(/\{\{commodity\}\}/g, l.commodity||'your cargo')
     .replace(/\{\{country\}\}/g, l.country||'')
+    .replace(/\{\{approach\}\}/g, l.approach||'')
     .replace(/\{\{sender\}\}/g,  sender);
 }
 function leadSubject(l){
@@ -7150,7 +7167,7 @@ window.leadEditTpl = function(){
     <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:760px;width:100%;padding:18px">
       <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:6px">⚙️ เทมเพลตเมลหา Lead</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">ตัวแปรที่ใช้ได้:
-        <code>{{contact}} {{company}} {{lane}} {{commodity}} {{country}} {{sender}}</code></div>
+        <code>{{contact}} {{company}} {{lane}} {{commodity}} {{country}} {{approach}} {{sender}}</code></div>
       <textarea id="ldtpl_text" class="inp" rows="18" style="font-family:var(--mono);font-size:11px;line-height:1.6">${_le(cur)}</textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button onclick="localStorage.removeItem('${LS_LEAD_TPL}');document.getElementById('ldtpl_modal').remove();toast('คืนค่าเริ่มต้นแล้ว')" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">คืนค่าเริ่มต้น</button>
@@ -9339,6 +9356,7 @@ function clearImgExtract(){
           <th style="text-align:left">อีเมล / เบอร์</th>
           <th style="text-align:left">ประเภท</th>
           <th style="text-align:left">Trade lane</th>
+          <th style="text-align:left">วิธีเข้าหา</th>
           <th style="text-align:left">สถานะ</th>
           <th style="text-align:left">นัดติดตาม</th>
           <th style="text-align:left">ติดต่อล่าสุด</th>
