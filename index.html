@@ -246,6 +246,7 @@ body{font-size:14px;font-weight:450}
     <button class="nav-tab" onclick="showPage('sop');renderSOP()">📂 SOP</button>
     <button class="nav-tab" onclick="showPage('sc');renderSCPage()">📄 SC</button>
     <button class="nav-tab" onclick="showPage('prebooking');renderPreBooking()">📋 Pre-Bkg</button>
+    <button class="nav-tab" id="nav_leads_tab" style="display:none" onclick="showPage('leads');renderLeads()">🎯 Leads</button>
   </div>
   <div class="topbar-right">
     <div id="rate_cache_badge" style="display:none;font-size:9px;color:#fff;font-family:var(--mono);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 5px;cursor:pointer;white-space:nowrap" onclick="clearRatesCache()">💾<span id="rate_cache_count">0</span></div>
@@ -6317,6 +6318,451 @@ function qRenderRateRows(){
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
 }
 
+// ════════════════════════════════════════════════════════════
+// LEADS — หาลูกค้าใหม่ (Shipper / Freight Forwarder)
+// เห็นเฉพาะเจ้าของระบบ (LEADS_OWNER) เท่านั้น
+// เก็บใน Firestore data/leads + cache localStorage
+// กติกา: ไม่ส่งเมลเอง — สร้างข้อความรายบุคคลให้ แล้วผู้ใช้กดส่งเอง
+// ════════════════════════════════════════════════════════════
+const LEADS_OWNER = 'thmunpukdee@gmail.com';
+const LS_LEADS = 'sfp_leads_v1';
+const LEAD_STAGES = ['New','Contacted','Replied','Quoted','Won','Lost'];
+const LEAD_STAGE_COLOR = {New:'var(--muted)',Contacted:'var(--cyan)',Replied:'var(--gold)',
+  Quoted:'var(--accent2)',Won:'var(--green)',Lost:'var(--red)'};
+const LEAD_LANES = ['USWC','USEC','IPI','CANADA','EU','MED','ISC','ME','LATAM','ECSA','INTRA-ASIA','AU/NZ','AFRICA'];
+const LEAD_TYPES = ['Shipper','Freight Forwarder','Trading','Agent','Other'];
+let LEADS = [];
+let _leadFilter = { q:'', lane:'', stage:'', due:false, type:'' };
+
+function leadsAllowed(){
+  const em = (window._currentUser && window._currentUser.email || '').toLowerCase();
+  return em === LEADS_OWNER;
+}
+function leadsApplyVisibility(){
+  const tab = document.getElementById('nav_leads_tab');
+  if(tab) tab.style.display = leadsAllowed() ? '' : 'none';
+  if(!leadsAllowed()){
+    const pg = document.getElementById('page-leads');
+    if(pg && pg.classList.contains('active')) showPage('shipments');
+  }
+}
+window.leadsApplyVisibility = leadsApplyVisibility;
+
+function leadsLoad(){
+  try{ LEADS = JSON.parse(localStorage.getItem(LS_LEADS)||'[]')||[]; }catch(e){ LEADS=[]; }
+}
+async function leadsPull(){
+  if(!leadsAllowed() || !window.fbGet) return;
+  try{
+    const snap = await window.fbGet('data/leads');
+    if(snap && Array.isArray(snap.leads)){
+      LEADS = snap.leads;
+      try{ localStorage.setItem(LS_LEADS, JSON.stringify(LEADS)); }catch(e){}
+      if(document.getElementById('page-leads')?.classList.contains('active')) renderLeads();
+    }
+  }catch(e){ console.warn('leadsPull', e); }
+}
+async function leadsSave(silent){
+  try{ localStorage.setItem(LS_LEADS, JSON.stringify(LEADS)); }catch(e){}
+  if(window.fbSet){
+    try{ await window.fbSet('data/leads', {leads: LEADS, updatedAt:new Date().toISOString()}); }
+    catch(e){ if(!silent) toast('⚠ บันทึกขึ้น cloud ไม่สำเร็จ (เก็บในเครื่องแล้ว)'); }
+  }
+}
+function leadUid(){ return 'ld_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function leadLog(l, what){
+  l.log = l.log || [];
+  l.log.unshift({at:new Date().toISOString(), what});
+  l.log = l.log.slice(0,50);
+  l.updatedAt = new Date().toISOString();
+}
+const _le = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function leadDueSoon(l){
+  if(!l.nextFollow) return false;
+  return l.nextFollow <= new Date().toISOString().slice(0,10);
+}
+function leadsFiltered(){
+  const f = _leadFilter, q = (f.q||'').toLowerCase();
+  return LEADS.filter(l=>{
+    if(f.stage && l.stage !== f.stage) return false;
+    if(f.type  && l.type  !== f.type)  return false;
+    if(f.lane  && !(l.lanes||[]).includes(f.lane)) return false;
+    if(f.due   && !leadDueSoon(l)) return false;
+    if(q){
+      const hay = [l.company,l.contact,l.email,l.phone,l.website,l.country,l.commodity,l.notes,(l.lanes||[]).join(' ')]
+        .join(' ').toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b)=>{
+    const ad = leadDueSoon(a)?0:1, bd = leadDueSoon(b)?0:1;
+    if(ad!==bd) return ad-bd;
+    return String(a.company||'').localeCompare(String(b.company||''),'th');
+  });
+}
+
+// ── render ─────────────────────────────────────────────
+function renderLeads(){
+  if(!leadsAllowed()) return;
+  const list = leadsFiltered();
+  const due  = LEADS.filter(leadDueSoon).length;
+  const byStage = {}; LEADS.forEach(l=> byStage[l.stage||'New'] = (byStage[l.stage||'New']||0)+1);
+  const el = document.getElementById('leads_body');
+  const opt = (v,cur)=>`<option value="${_le(v)}"${v===cur?' selected':''}>${_le(v||'ทั้งหมด')}</option>`;
+
+  document.getElementById('leads_stats').innerHTML =
+    `<div class="stat-card"><div class="stat-label">TOTAL LEADS</div><div class="stat-value">${LEADS.length}</div></div>`+
+    LEAD_STAGES.map(s=>`<div class="stat-card"><div class="stat-label">${s}</div>
+      <div class="stat-value" style="color:${LEAD_STAGE_COLOR[s]}">${byStage[s]||0}</div></div>`).join('')+
+    `<div class="stat-card"><div class="stat-label">ถึงกำหนดติดตาม</div>
+      <div class="stat-value" style="color:${due?'var(--red)':'var(--muted)'}">${due}</div></div>`;
+
+  const fbar = document.getElementById('leads_filters');
+  if(fbar && !fbar.dataset.built){
+    fbar.dataset.built='1';
+    fbar.innerHTML = `
+      <input id="ld_q" class="inp" placeholder="ค้นหา บริษัท / ผู้ติดต่อ / เมล / เบอร์…" style="flex:1;min-width:180px"
+        oninput="_leadFilter.q=this.value;renderLeads()">
+      <select id="ld_lane" class="inp" style="width:130px" onchange="_leadFilter.lane=this.value;renderLeads()">
+        <option value="">ทุก Trade lane</option>${LEAD_LANES.map(x=>`<option>${x}</option>`).join('')}</select>
+      <select id="ld_stage" class="inp" style="width:120px" onchange="_leadFilter.stage=this.value;renderLeads()">
+        <option value="">ทุกสถานะ</option>${LEAD_STAGES.map(x=>`<option>${x}</option>`).join('')}</select>
+      <select id="ld_type" class="inp" style="width:130px" onchange="_leadFilter.type=this.value;renderLeads()">
+        <option value="">ทุกประเภท</option>${LEAD_TYPES.map(x=>`<option>${x}</option>`).join('')}</select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gold);white-space:nowrap;cursor:pointer">
+        <input type="checkbox" onchange="_leadFilter.due=this.checked;renderLeads()"> ถึงกำหนดติดตาม</label>`;
+  }
+
+  if(!list.length){
+    el.innerHTML = `<tr><td colspan="9" style="padding:26px;text-align:center;color:var(--muted)">
+      ${LEADS.length? 'ไม่พบ lead ตามเงื่อนไข' : 'ยังไม่มี lead — กด + เพิ่ม หรือ 📥 Import จาก Excel/CSV'}</td></tr>`;
+  } else {
+    el.innerHTML = list.map(l=>{
+      const i = LEADS.indexOf(l);
+      const lanes = (l.lanes||[]).map(x=>`<span style="display:inline-block;background:rgba(41,128,185,.14);color:var(--cyan);border:1px solid rgba(41,128,185,.3);border-radius:4px;font-size:9px;font-family:var(--mono);padding:1px 5px;margin:1px 2px 1px 0">${_le(x)}</span>`).join('');
+      const dueFlag = leadDueSoon(l);
+      return `<tr style="border-bottom:1px solid rgba(30,48,80,.3)${l.dnc?';opacity:.45':''}">
+        <td style="padding:5px 8px"><input type="checkbox" class="ld-chk" data-i="${i}"></td>
+        <td style="padding:5px 8px;font-size:12px">
+          <div style="font-weight:700">${_le(l.company||'—')}${l.dnc?' <span style="color:var(--red);font-size:9px">⛔ ห้ามติดต่อ</span>':''}</div>
+          <div style="font-size:10px;color:var(--muted)">${_le(l.contact||'')}${l.country?(' · '+_le(l.country)):''}</div></td>
+        <td style="padding:5px 8px;font-size:11px;font-family:var(--mono)">
+          ${l.email?`<div>${_le(l.email)}</div>`:''}${l.phone?`<div style="color:var(--muted)">${_le(l.phone)}</div>`:''}</td>
+        <td style="padding:5px 8px;font-size:11px">${_le(l.type||'')}</td>
+        <td style="padding:5px 8px;max-width:190px">${lanes||'<span style="color:var(--muted);font-size:10px">—</span>'}</td>
+        <td style="padding:5px 8px">
+          <select class="inp" style="font-size:10px;padding:2px 4px;color:${LEAD_STAGE_COLOR[l.stage||'New']}"
+            onchange="leadSetStage(${i},this.value)">${LEAD_STAGES.map(s=>`<option${s===(l.stage||'New')?' selected':''}>${s}</option>`).join('')}</select></td>
+        <td style="padding:5px 8px">
+          <input type="date" class="inp" value="${_le(l.nextFollow||'')}" onchange="leadSetField(${i},'nextFollow',this.value)"
+            style="font-size:10px;padding:2px 4px;color:${dueFlag?'var(--red)':'var(--muted)'};width:120px"></td>
+        <td style="padding:5px 8px;font-size:10px;color:var(--muted);white-space:nowrap">${_le(l.lastContact||'—')}</td>
+        <td style="padding:5px 6px;text-align:right;white-space:nowrap">
+          <button onclick="leadCompose(${i})" title="สร้างเมลหา lead นี้" class="btn btn-ghost" style="font-size:10px;padding:2px 7px">✉️</button>
+          <button onclick="leadEdit(${i})" title="แก้ไข" class="btn btn-ghost" style="font-size:10px;padding:2px 7px">✏️</button>
+          <button onclick="leadDelete(${i})" title="ลบ" class="btn btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--red)">🗑</button></td>
+      </tr>`;
+    }).join('');
+  }
+  document.getElementById('leads_count').textContent = list.length+' / '+LEADS.length+' lead';
+}
+window.renderLeads = renderLeads;
+window.render_leads = renderLeads;
+
+window.leadSetField = function(i, f, v){ const l=LEADS[i]; if(!l) return; l[f]=v; l.updatedAt=new Date().toISOString(); leadsSave(true); renderLeads(); };
+window.leadSetStage = function(i, v){
+  const l=LEADS[i]; if(!l) return;
+  if(l.stage!==v){ leadLog(l,'เปลี่ยนสถานะ '+(l.stage||'New')+' → '+v); l.stage=v; }
+  leadsSave(true); renderLeads();
+};
+window.leadDelete = function(i){
+  const l=LEADS[i]; if(!l) return;
+  if(!confirm('ลบ lead "'+(l.company||'')+'"?')) return;
+  LEADS.splice(i,1); leadsSave(); renderLeads(); toast('🗑 ลบแล้ว');
+};
+
+// ── ฟอร์มเพิ่ม / แก้ไข lead ─────────────────────────────
+window.leadEdit = function(i){
+  const l = (i>=0 ? LEADS[i] : {id:leadUid(), stage:'New', lanes:[], log:[]});
+  document.getElementById('lead_modal')?.remove();
+  const F = (lbl,id,val,ph,type)=>`<div class="inp-group"><label class="inp-lbl">${lbl}</label>
+    <input id="${id}" class="inp" type="${type||'text'}" value="${_le(val||'')}" placeholder="${_le(ph||'')}"></div>`;
+  document.body.insertAdjacentHTML('beforeend', `
+   <div id="lead_modal" style="position:fixed;inset:0;background:rgba(8,14,24,.6);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:720px;width:100%;max-height:86vh;overflow:auto;padding:18px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:12px">
+        ${i>=0?'✏️ แก้ไข Lead':'➕ เพิ่ม Lead ใหม่'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${F('บริษัท *','lf_company',l.company,'e.g. ABC Trading Co., Ltd.')}
+        ${F('ผู้ติดต่อ','lf_contact',l.contact,'ชื่อ + ตำแหน่ง')}
+        ${F('อีเมล','lf_email',l.email,'name@company.com')}
+        ${F('เบอร์โทร','lf_phone',l.phone,'02-xxx-xxxx / 08x-xxx-xxxx')}
+        ${F('เว็บไซต์','lf_website',l.website,'www.company.com')}
+        ${F('ประเทศ / จังหวัด','lf_country',l.country,'Thailand / Bangkok')}
+        <div class="inp-group"><label class="inp-lbl">ประเภท</label>
+          <select id="lf_type" class="inp">${LEAD_TYPES.map(t=>`<option${t===l.type?' selected':''}>${t}</option>`).join('')}</select></div>
+        <div class="inp-group"><label class="inp-lbl">สถานะ</label>
+          <select id="lf_stage" class="inp">${LEAD_STAGES.map(t=>`<option${t===(l.stage||'New')?' selected':''}>${t}</option>`).join('')}</select></div>
+        ${F('สินค้า / Commodity','lf_commodity',l.commodity,'e.g. Rice, Auto parts')}
+        ${F('นัดติดตามครั้งถัดไป','lf_next',l.nextFollow,'','date')}
+      </div>
+      <div class="inp-group" style="margin-top:8px"><label class="inp-lbl">Trade lane ที่ลูกค้าไป (เลือกได้หลายอัน)</label>
+        <div id="lf_lanes" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
+          ${LEAD_LANES.map(x=>`<label style="display:flex;align-items:center;gap:3px;font-size:11px;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;cursor:pointer">
+            <input type="checkbox" value="${x}"${(l.lanes||[]).includes(x)?' checked':''}> ${x}</label>`).join('')}
+        </div></div>
+      <div class="inp-group" style="margin-top:8px"><label class="inp-lbl">โน้ต</label>
+        <textarea id="lf_notes" class="inp" rows="3" placeholder="เช่น เคยคุยเมื่อไหร่ / ใช้เจ้าไหนอยู่ / ปริมาณต่อเดือน">${_le(l.notes||'')}</textarea></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--red);margin-top:8px;cursor:pointer">
+        <input type="checkbox" id="lf_dnc"${l.dnc?' checked':''}> ⛔ ห้ามติดต่อ (ลูกค้าขอไม่ให้ส่งเมลอีก)</label>
+      ${(l.log&&l.log.length)?`<div style="margin-top:12px"><div class="inp-lbl">ประวัติการติดต่อ</div>
+        <div style="max-height:120px;overflow:auto;font-size:10px;font-family:var(--mono);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:6px">
+        ${l.log.map(x=>`<div>${_le((x.at||'').slice(0,16).replace('T',' '))} · ${_le(x.what)}</div>`).join('')}</div></div>`:''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button onclick="document.getElementById('lead_modal').remove()" class="btn btn-ghost" style="font-size:12px;padding:7px 14px">ยกเลิก</button>
+        <button onclick="leadSave(${i})" class="btn btn-cyan" style="font-size:12px;padding:7px 18px">💾 บันทึก</button>
+      </div>
+    </div></div>`);
+  setTimeout(()=>document.getElementById('lf_company')?.focus(),50);
+};
+window.leadSave = function(i){
+  const g2 = id => (document.getElementById(id)||{}).value || '';
+  const company = g2('lf_company').trim();
+  if(!company){ toast('❌ ใส่ชื่อบริษัทก่อนครับ'); return; }
+  const lanes = [...document.querySelectorAll('#lf_lanes input:checked')].map(x=>x.value);
+  const isNew = i<0;
+  const l = isNew ? {id:leadUid(), createdAt:new Date().toISOString(), log:[]} : LEADS[i];
+  Object.assign(l, {
+    company, contact:g2('lf_contact').trim(), email:g2('lf_email').trim(), phone:g2('lf_phone').trim(),
+    website:g2('lf_website').trim(), country:g2('lf_country').trim(), type:g2('lf_type'),
+    stage:g2('lf_stage'), commodity:g2('lf_commodity').trim(), nextFollow:g2('lf_next'),
+    notes:g2('lf_notes').trim(), dnc:(document.getElementById('lf_dnc')||{}).checked||false,
+    lanes, updatedAt:new Date().toISOString()
+  });
+  if(isNew){ leadLog(l,'สร้าง lead'); LEADS.push(l); }
+  document.getElementById('lead_modal')?.remove();
+  leadsSave(); renderLeads();
+  toast(isNew?'✅ เพิ่ม lead แล้ว':'💾 บันทึกแล้ว');
+};
+window.leadAdd = function(){ leadEdit(-1); };
+
+// ── Import Excel / CSV ─────────────────────────────────
+window.leadsImport = function(){
+  if(!window.XLSX){ toast('⏳ กำลังโหลดตัวอ่าน Excel… ลองอีกครั้ง'); return; }
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.xlsx,.xls,.xlsm,.csv';
+  inp.onchange = function(){
+    const f=this.files&&this.files[0]; if(!f) return;
+    const fr=new FileReader();
+    fr.onload = e=>{
+      let rows;
+      try{
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      }catch(err){ return toast('❌ อ่านไฟล์ไม่ได้: '+err.message); }
+      if(!rows.length) return toast('❌ ไม่พบข้อมูลในไฟล์');
+      const pick = (o, ...keys)=>{
+        for(const k of Object.keys(o)){
+          const kk = k.toLowerCase().replace(/[^a-z]/g,'');
+          if(keys.some(x=>kk.includes(x))) { const v=String(o[k]||'').trim(); if(v) return v; }
+        }
+        return '';
+      };
+      const norm = s => String(s||'').toLowerCase().trim();
+      const byEmail = new Map(LEADS.filter(l=>l.email).map(l=>[norm(l.email), l]));
+      const byComp  = new Map(LEADS.map(l=>[norm(l.company), l]));
+      let added=0, dup=0;
+      rows.forEach(o=>{
+        const company = pick(o,'company','ชื่อบริษัท','name','บริษัท');
+        const email   = pick(o,'email','mail','อีเมล');
+        if(!company && !email) return;
+        const k1=norm(email), k2=norm(company);
+        if((k1 && byEmail.has(k1)) || (k2 && byComp.has(k2))){ dup++; return; }   // กันซ้ำ
+        const laneRaw = pick(o,'lane','trade','route','เส้นทาง');
+        const lanes = laneRaw ? laneRaw.toUpperCase().split(/[,\/|;]+/).map(s=>s.trim())
+                        .filter(s=>LEAD_LANES.includes(s)) : [];
+        const l = { id:leadUid(), company, email,
+          contact: pick(o,'contact','person','ผู้ติดต่อ','attn'),
+          phone:   pick(o,'phone','tel','mobile','เบอร์'),
+          website: pick(o,'website','web','url','เว็บ'),
+          country: pick(o,'country','city','จังหวัด','ประเทศ'),
+          type:    (()=>{ const t=pick(o,'type','ประเภท'); return LEAD_TYPES.find(x=>norm(x)===norm(t)) || (/forward/i.test(t)?'Freight Forwarder':(t?'Other':'Shipper')); })(),
+          commodity: pick(o,'commodity','product','สินค้า','cargo'),
+          notes:   pick(o,'note','remark','หมายเหตุ'),
+          lanes, stage:'New', dnc:false, createdAt:new Date().toISOString(), log:[]
+        };
+        leadLog(l,'import จากไฟล์ '+f.name);
+        LEADS.push(l);
+        if(k1) byEmail.set(k1,l); if(k2) byComp.set(k2,l);
+        added++;
+      });
+      leadsSave(); renderLeads();
+      toast('📥 นำเข้า '+added+' lead'+(dup?(' · ข้ามซ้ำ '+dup):''));
+    };
+    fr.readAsArrayBuffer(f);
+  };
+  inp.click();
+};
+// เทมเพลตไฟล์ import
+window.leadsTemplate = function(){
+  if(!window.XLSX) return toast('⏳ กำลังโหลดตัวสร้าง Excel…');
+  const aoa = [['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','Note'],
+    ['ABC Trading Co., Ltd.','K.Somchai (Export Mgr)','somchai@abc.co.th','02-123-4567','www.abc.co.th','Thailand','Shipper','USWC, USEC','Auto parts','เจอจากงาน TILOG']];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:30},{wch:22},{wch:26},{wch:16},{wch:20},{wch:14},{wch:16},{wch:18},{wch:18},{wch:26}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'LEADS');
+  XLSX.writeFile(wb, 'LEADS_import_template.xlsx');
+  toast('📄 ดาวน์โหลดเทมเพลตแล้ว');
+};
+window.leadsExport = function(){
+  if(!window.XLSX) return toast('⏳ กำลังโหลดตัวสร้าง Excel…');
+  const list = leadsFiltered();
+  if(!list.length) return toast('ไม่มี lead ตามเงื่อนไข');
+  const head = ['Company','Contact','Email','Phone','Website','Country','Type','Trade lane','Commodity','Stage','Next follow','Last contact','DNC','Note'];
+  const aoa = [head, ...list.map(l=>[l.company,l.contact,l.email,l.phone,l.website,l.country,l.type,
+    (l.lanes||[]).join(', '),l.commodity,l.stage,l.nextFollow,l.lastContact,l.dnc?'YES':'',l.notes])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=head.map(()=>({wch:18})); ws['!freeze']={xSplit:0,ySplit:1};
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'LEADS');
+  XLSX.writeFile(wb, 'LEADS_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('📊 Export '+list.length+' lead');
+};
+
+// ── เมลหา lead — สร้างข้อความรายบุคคล ไม่ส่งเอง ─────────
+const LS_LEAD_TPL = 'sfp_lead_tpl_v1';
+const LEAD_TPL_DEFAULT =
+`Dear {{contact}},
+
+This is {{sender}} from Worldwide Logistics Services (Thailand) Co., Ltd.
+We are a freight forwarder in Bangkok handling FCL/LCL export from Laem Chabang, Lat Krabang and Bangkok port.
+
+I noticed {{company}} ships to {{lane}} — we have competitive space and rates on this trade this month and I would be glad to send you our rate sheet.
+
+May I know:
+  1. Your usual volume per month and container type
+  2. Your current sailing schedule requirement
+  3. Incoterm / port pair you normally use
+
+Happy to arrange a call at your convenience.
+
+Thank you & Best Regards ;
+{{sender}}
+Sale Executive
+Worldwide Logistics Services (Thailand) Co.,Ltd.
+
+— If you prefer not to receive further emails from us, just reply "unsubscribe" and we will remove you from our list.`;
+
+function leadTpl(){ try{ return localStorage.getItem(LS_LEAD_TPL) || LEAD_TPL_DEFAULT; }catch(e){ return LEAD_TPL_DEFAULT; } }
+function leadMerge(tpl, l){
+  const sender = (window._currentUser && (window._currentUser.displayName)) || 'Theerapong Munpukdee (Pae)';
+  return String(tpl)
+    .replace(/\{\{contact\}\}/g, (l.contact||'Sir/Madam').split('(')[0].trim())
+    .replace(/\{\{company\}\}/g, l.company||'your company')
+    .replace(/\{\{lane\}\}/g,    (l.lanes||[]).join(' / ') || 'your trade lane')
+    .replace(/\{\{commodity\}\}/g, l.commodity||'your cargo')
+    .replace(/\{\{country\}\}/g, l.country||'')
+    .replace(/\{\{sender\}\}/g,  sender);
+}
+function leadSubject(l){
+  const lane = (l.lanes||[]).join('/') || 'Export';
+  return `Ocean freight rate ${lane} — Worldwide Logistics (Thailand) for ${l.company||''}`.trim();
+}
+// เปิดหน้าต่างร่างเมล (ทีละราย หรือหลายรายเรียงกัน)
+window.leadCompose = function(i){ leadComposeMany([i]); };
+window.leadComposeSelected = function(){
+  const idx = [...document.querySelectorAll('.ld-chk:checked')].map(x=>+x.dataset.i);
+  if(!idx.length) return toast('ติ๊กเลือก lead ก่อนครับ');
+  leadComposeMany(idx);
+};
+let _ldQueue = [], _ldPos = 0;
+function leadComposeMany(idxs){
+  const usable = idxs.filter(i=>{
+    const l=LEADS[i];
+    if(!l) return false;
+    if(l.dnc){ return false; }
+    if(!l.email){ return false; }
+    return true;
+  });
+  const skipped = idxs.length - usable.length;
+  if(!usable.length){ toast('❌ ไม่มี lead ที่ส่งได้ (ไม่มีอีเมล หรือ ติดห้ามติดต่อ)'); return; }
+  _ldQueue = usable; _ldPos = 0;
+  if(skipped) toast('⚠ ข้าม '+skipped+' ราย (ไม่มีอีเมล / ห้ามติดต่อ)');
+  leadShowCompose();
+}
+function leadShowCompose(){
+  const i = _ldQueue[_ldPos], l = LEADS[i];
+  document.getElementById('ldmail_modal')?.remove();
+  const subject = leadSubject(l);
+  const body = leadMerge(leadTpl(), l);
+  document.body.insertAdjacentHTML('beforeend', `
+   <div id="ldmail_modal" style="position:fixed;inset:0;background:rgba(8,14,24,.6);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:820px;width:100%;max-height:88vh;overflow:auto;padding:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--gold)">✉️ ร่างเมลหา Lead
+          <span style="color:var(--muted);font-weight:400">(${_ldPos+1}/${_ldQueue.length})</span></div>
+        <button onclick="document.getElementById('ldmail_modal').remove()" class="btn btn-ghost" style="font-size:12px;padding:3px 10px">✕</button></div>
+      <div style="background:rgba(183,128,10,.1);border:1px solid rgba(183,128,10,.3);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--gold);margin-bottom:10px">
+        ระบบไม่ส่งเมลเอง — คัดลอกไปวางในเมล หรือกด "เปิดโปรแกรมเมล" แล้วตรวจก่อนกด Send เองทุกครั้ง</div>
+      <div class="inp-group"><label class="inp-lbl">ถึง</label>
+        <input id="ldm_to" class="inp" value="${_le(l.email)}"></div>
+      <div class="inp-group" style="margin-top:6px"><label class="inp-lbl">Subject</label>
+        <input id="ldm_sub" class="inp" value="${_le(subject)}"></div>
+      <div class="inp-group" style="margin-top:6px"><label class="inp-lbl">เนื้อหา</label>
+        <textarea id="ldm_body" class="inp" rows="16" style="font-family:var(--mono);font-size:11px;line-height:1.6">${_le(body)}</textarea></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button onclick="leadCopyMail()" class="btn btn-cyan" style="font-size:12px;padding:7px 14px">📋 คัดลอกเนื้อหา</button>
+        <button onclick="leadOpenMailto()" class="btn btn-gold" style="font-size:12px;padding:7px 14px">✉️ เปิดโปรแกรมเมล</button>
+        <button onclick="leadMarkSent(${i})" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--green);border-color:var(--green)">✓ ส่งแล้ว — บันทึก</button>
+        <button onclick="leadEditTpl()" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">⚙️ แก้เทมเพลต</button>
+        <div style="flex:1"></div>
+        ${_ldPos>0?`<button onclick="_ldPos--;leadShowCompose()" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">← ก่อนหน้า</button>`:''}
+        ${_ldPos<_ldQueue.length-1?`<button onclick="_ldPos++;leadShowCompose()" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">ถัดไป →</button>`:''}
+      </div>
+    </div></div>`);
+}
+window.leadShowCompose = leadShowCompose;
+window.leadCopyMail = function(){
+  const t = document.getElementById('ldm_body').value;
+  navigator.clipboard?.writeText(t).then(()=>toast('📋 คัดลอกแล้ว'),()=>{
+    const ta=document.getElementById('ldm_body'); ta.select(); document.execCommand('copy'); toast('📋 คัดลอกแล้ว'); });
+};
+window.leadOpenMailto = function(){
+  const to=document.getElementById('ldm_to').value, s=document.getElementById('ldm_sub').value, b=document.getElementById('ldm_body').value;
+  window.open('mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(s)+'&body='+encodeURIComponent(b), '_blank');
+};
+window.leadMarkSent = function(i){
+  const l = LEADS[i]; if(!l) return;
+  const today = new Date().toISOString().slice(0,10);
+  l.lastContact = today;
+  if(l.stage==='New') l.stage='Contacted';
+  if(!l.nextFollow || l.nextFollow <= today){
+    const d = new Date(); d.setDate(d.getDate()+7);
+    l.nextFollow = d.toISOString().slice(0,10);          // นัดตามอีก 7 วัน
+  }
+  leadLog(l,'ส่งเมลแนะนำบริษัท');
+  leadsSave(); renderLeads();
+  toast('✓ บันทึกแล้ว — นัดติดตาม '+l.nextFollow);
+  if(_ldPos < _ldQueue.length-1){ _ldPos++; leadShowCompose(); }
+  else document.getElementById('ldmail_modal')?.remove();
+};
+window.leadEditTpl = function(){
+  const cur = leadTpl();
+  document.getElementById('ldtpl_modal')?.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+   <div id="ldtpl_modal" style="position:fixed;inset:0;background:rgba(8,14,24,.7);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:760px;width:100%;padding:18px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:6px">⚙️ เทมเพลตเมลหา Lead</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">ตัวแปรที่ใช้ได้:
+        <code>{{contact}} {{company}} {{lane}} {{commodity}} {{country}} {{sender}}</code></div>
+      <textarea id="ldtpl_text" class="inp" rows="18" style="font-family:var(--mono);font-size:11px;line-height:1.6">${_le(cur)}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button onclick="localStorage.removeItem('${LS_LEAD_TPL}');document.getElementById('ldtpl_modal').remove();toast('คืนค่าเริ่มต้นแล้ว')" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">คืนค่าเริ่มต้น</button>
+        <button onclick="document.getElementById('ldtpl_modal').remove()" class="btn btn-ghost" style="font-size:12px;padding:7px 12px">ยกเลิก</button>
+        <button onclick="localStorage.setItem('${LS_LEAD_TPL}',document.getElementById('ldtpl_text').value);document.getElementById('ldtpl_modal').remove();leadShowCompose();toast('💾 บันทึกเทมเพลตแล้ว')" class="btn btn-cyan" style="font-size:12px;padding:7px 16px">💾 บันทึก</button>
+      </div></div></div>`);
+};
+window.leadSelectAll = function(on){ document.querySelectorAll('.ld-chk').forEach(c=>c.checked=on); };
+
 // ── Quotation Templates (ลูกค้าประจำ) ──────────────────────
 // INDORAMA: จาก WWL RATE REQUEST — POL ล็อกเป็น LAEM CHABANG ทุกแถว
 // เก็บ DEM/DET/COMBINED/DIRECT-T\u2044S/TT ตามที่ลูกค้าระบุมาในฟอร์ม
@@ -8473,6 +8919,40 @@ function clearImgExtract(){
 </div>
 
 <!-- ═══ PRE-BOOKING PAGE ═══ -->
+<div id="page-leads" class="page">
+  <div class="stat-grid" id="leads_stats" style="margin-bottom:12px"></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="card-title" style="margin:0">🎯 Leads — หาลูกค้าใหม่ (Shipper / Freight Forwarder)</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="leadAdd()" class="btn btn-cyan" style="font-size:11px;padding:5px 12px">➕ เพิ่ม Lead</button>
+        <button onclick="leadsImport()" class="btn btn-ghost" style="font-size:11px;padding:5px 12px">📥 Import Excel/CSV</button>
+        <button onclick="leadsTemplate()" class="btn btn-ghost" style="font-size:11px;padding:5px 10px" title="ดาวน์โหลดไฟล์ตัวอย่างสำหรับกรอก">📄 เทมเพลต</button>
+        <button onclick="leadsExport()" class="btn btn-ghost" style="font-size:11px;padding:5px 10px">📊 Export</button>
+        <button onclick="leadComposeSelected()" class="btn btn-gold" style="font-size:11px;padding:5px 12px">✉️ ร่างเมลที่เลือก</button>
+      </div>
+    </div>
+    <div id="leads_filters" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div>
+    <div id="leads_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px"></div>
+    <div style="overflow-x:auto">
+      <table class="tbl" style="width:100%">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="width:28px"><input type="checkbox" onchange="leadSelectAll(this.checked)"></th>
+          <th style="text-align:left">บริษัท / ผู้ติดต่อ</th>
+          <th style="text-align:left">อีเมล / เบอร์</th>
+          <th style="text-align:left">ประเภท</th>
+          <th style="text-align:left">Trade lane</th>
+          <th style="text-align:left">สถานะ</th>
+          <th style="text-align:left">นัดติดตาม</th>
+          <th style="text-align:left">ติดต่อล่าสุด</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="leads_body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div id="page-prebooking" class="page">
   <div style="max-width:1000px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -8789,6 +9269,7 @@ onAuthStateChanged(auth, async user=>{
     const fsBtn = document.getElementById('fb_force_sync');
     if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
+    try{ leadsApplyVisibility(); leadsLoad(); leadsPull(); }catch(e){}
     await initFirestoreSync();
     // Push current jobs to Firestore so CS Portal can read them —
     // but ONLY if local differs from what we just loaded from cloud.
@@ -8968,6 +9449,7 @@ onAuthStateChanged(auth, async user=>{
     }, ()=>{});
   } else {
     _currentUser = null;
+    try{ leadsApplyVisibility(); }catch(e){}
     if(overlay) overlay.style.display='flex';
     if(badge)   badge.style.display='none';
   }
