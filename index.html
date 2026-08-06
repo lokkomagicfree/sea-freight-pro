@@ -2138,6 +2138,10 @@ function srcLabel(s,r){
 // ── LCL helpers ────────────────────────────────────────────
 // เรท LCL เก็บเป็น "ต้นทุน USD/CBM (รวม LSS แล้ว)" ในช่อง cbm — ไม่ใช่ราคาขาย
 // ค่าติดลบ = REFUND (สายเรือคืนเงินให้เรา) ห้ามโชว์ลูกค้าเด็ดขาด
+// LCL ออกจาก "ท่าเรือกรุงเทพ" เสมอ — CFS ของ co-loader อยู่ที่คลัง 14 ท่าเรือกรุงเทพ (PAT)
+// ไม่ใช่แหลมฉบัง (FCL ถึงจะออกแหลมฉบัง)
+const LCL_POL = 'BANGKOK';
+window.LCL_POL = LCL_POL;
 function isLclRate(r){ return !!(r && (r.container_type==='LCL' || r.source==='LCL')); }
 window.isLclRate = isLclRate;
 function lclCost(r){ const v = parseFloat(r && r.cbm); return isNaN(v) ? null : v; }
@@ -2180,23 +2184,23 @@ window.lclRowCost=lclRowCost; window.lclRowSell=lclRowSell; window.lclRowMargin=
 //        ห้ามโชว์ลูกค้าตรงๆ — ต้องผ่านช่อง +Profit ในหน้า Quotation ก่อนเสมอ
 // ════════════════════════════════════════════════════════════
 const LCL_SEED_GZ =
-  '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';
+  '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';
 
 async function _lclUnpack(){
   const bin = Uint8Array.from(atob(LCL_SEED_GZ), c=>c.charCodeAt(0));
@@ -6919,8 +6923,8 @@ function qRenderRateRowsLCL(body){
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ONE"
         oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:88px">
         ${row.country?`<div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:2px">${row.country}</div>`:''}</td>
-      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="Laem Chabang"
-        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:100px"></td>
+      <td style="padding:3px 4px" title="LCL ออกจากท่าเรือกรุงเทพเสมอ (CFS คลัง 14 ท่าเรือกรุงเทพ)"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="BANGKOK"
+        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:100px;color:${row.pol&&!/bangkok|bkk|กรุงเทพ/i.test(row.pol)?'var(--red)':'var(--text)'}"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. Los Angeles"
         oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:130px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="—"
@@ -7523,7 +7527,7 @@ function qBuildLclTemplatesFrom(rows){
   const tpl = {};
   const mk = (name, list, note)=>{
     if(!list.length) return;
-    tpl[name] = { customer:'', pol:'LAEM CHABANG', lockPol:false, type:'LCL',
+    tpl[name] = { customer:'', pol: LCL_POL, lockPol:true, type:'LCL',
       subjto:'local charges at destination',
       remarks: note || 'LCL W/M min 1 CBM · rate incl. LSS',
       builtin:true, lcl:true, rows:list.map(_lclTplRow) };
@@ -7655,7 +7659,7 @@ window.qImportTemplateXlsx = function(){
       const key = name.trim();
       if(QUOTE_TEMPLATES_BUILTIN[key]) return toast('❌ ชื่อนี้เป็นเทมเพลตของระบบ ใช้ชื่ออื่นครับ');
       if(QUOTE_TEMPLATES_USER[key] && !confirm('มีเทมเพลต "'+key+'" อยู่แล้ว — เขียนทับ?')) return;
-      const pol = prompt('ล็อก POL เป็น:', 'LAEM CHABANG');
+      const pol = prompt('ล็อก POL เป็น:', isLcl ? LCL_POL : 'LAEM CHABANG');
       QUOTE_TEMPLATES_USER[key] = {
         customer: isLcl ? '' : key, pol: (pol||'').trim(), lockPol: !!(pol||'').trim(),
         type: isLcl ? 'LCL' : 'FCL', lcl: isLcl,
@@ -8032,7 +8036,7 @@ window.qSyncRatesLCL = function(){
     toast('คลังยังไม่มีเรท LCL — ไปหน้า Rates กด "🧊 โหลดเรท LCL" ก่อน');
     return;
   }
-  const fallbackPol = (document.getElementById('q_pol')||{}).value || 'Laem Chabang';
+  const fallbackPol = (document.getElementById('q_pol')||{}).value || LCL_POL;
   let hit=0, na=0, skip=0; const naList=[], refunds=[];
   qRateRows.forEach(row=>{
     row._synced = true;
@@ -8159,7 +8163,7 @@ window.qRefreshRowRate = function(id, mode){
   if(qIsLCL()){                                   // โหมด LCL — เช็คกับคลัง LCL
     const pod0 = String(row.pod||'').trim();
     if(!pod0){ row.na=true; row.cost=''; row.valid='N/A'; qRenderRateRows(); qPreview(); return; }
-    const r = qFindLclRate(row, (document.getElementById('q_pol')||{}).value || 'Laem Chabang');
+    const r = qFindLclRate(row, (document.getElementById('q_pol')||{}).value || LCL_POL);
     if(!r){ row.na=true; row.cost=''; row.valid='N/A'; row.tt=''; row.etdCfs=''; row.routing=''; }
     else{
       row.na=false;
@@ -8320,6 +8324,18 @@ window.qTypeChange = function(){
   if(pdfBtn) pdfBtn.textContent = isLCL ? '📄 LCL Rate Sheet' : '📊 Rate Sheet';
   const bulk = document.getElementById('q_lcl_bulk');
   if(bulk) bulk.style.display = isLCL ? 'flex' : 'none';
+  // LCL ออกจากท่าเรือกรุงเทพเสมอ — กันกรอก LAEM CHABANG ค้างมาจากโหมด FCL
+  if(isLCL){
+    const polEl = document.getElementById('q_pol');
+    if(polEl){
+      const cur = String(polEl.value||'').trim();
+      if(!cur){ polEl.value = LCL_POL; }
+      else if(!/bangkok|bkk|กรุงเทพ/i.test(cur)){
+        polEl.value = LCL_POL;
+        toast('ℹ️ LCL ออกจากท่าเรือกรุงเทพ — เปลี่ยน POL เป็น '+LCL_POL+' ให้แล้ว (เดิม: '+cur+')');
+      }
+    }
+  }
   qRenderRateRows();
   qLclCheck();
   qPreview();
@@ -8353,9 +8369,11 @@ function qLclCheck(){
   if(!el) return;
   if(!qIsLCL()){ el.textContent=''; return; }
   const bad = qRateRows.filter(r=>{ const v = lclRowSell(r); return v!=null && v <= 0; });
-  el.textContent = bad.length
-    ? '⚠ '+bad.length+' แถวราคาขาย ≤ 0 ('+bad.slice(0,3).map(r=>r.pod).join(', ')+(bad.length>3?' …':'')+') — ใบเสนอราคาจะขึ้น ON REQUEST'
-    : '';
+  const wrongPol = qRateRows.filter(r=> String(r.pol||'').trim() && !/bangkok|bkk|กรุงเทพ/i.test(r.pol));
+  const msgs = [];
+  if(bad.length) msgs.push('⚠ '+bad.length+' แถวราคาขาย ≤ 0 ('+bad.slice(0,3).map(r=>r.pod).join(', ')+(bad.length>3?' …':'')+') — ใบเสนอราคาจะขึ้น ON REQUEST');
+  if(wrongPol.length) msgs.push('⚠ '+wrongPol.length+' แถว POL ไม่ใช่ '+LCL_POL+' — LCL ต้องออกจากท่าเรือกรุงเทพ');
+  el.textContent = msgs.join('  ·  ');
 }
 window.qLclCheck = qLclCheck;
 
@@ -8726,7 +8744,7 @@ window.qExportLclPdf = function(){
   const { jsPDF } = window.jspdf;
   const get = id => (document.getElementById(id)||{}).value||'';
   const cust    = get('q_customer') || 'Customer';
-  const polG    = get('q_pol') || 'LAEM CHABANG, THAILAND';
+  const polG    = get('q_pol') || (LCL_POL+', THAILAND');
   const inco    = get('q_incoterm')||'';
   const comm    = get('q_commodity')||'';
   const validG  = get('q_valid')||'';
