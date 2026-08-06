@@ -1080,7 +1080,7 @@ body{font-size:14px;font-weight:450}
         <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Email</button>
         <button onclick="qCopyLine()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.3);color:#00b4d8">💬 Copy LINE</button>
         <button id="q_pdf_btn" onclick="exportRateSheetXLSX()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60">📊 Rate Sheet</button>
-        <button onclick="qExportExcelSheet()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(16,124,65,.12);border:1px solid rgba(16,124,65,.35);color:#2ecc71">📗 Excel</button>
+        <button id="q_xl_btn" onclick="qExportExcelSheet()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(16,124,65,.12);border:1px solid rgba(16,124,65,.35);color:#2ecc71">📗 Excel</button>
         <button onclick="qClear()" class="btn btn-ghost" style="font-size:12px;padding:9px">✕ Clear</button>
       </div>
 
@@ -8322,6 +8322,8 @@ window.qTypeChange = function(){
     : '📦 Sell Rates (USD)';
   const pdfBtn = document.getElementById('q_pdf_btn');
   if(pdfBtn) pdfBtn.textContent = isLCL ? '📄 LCL Rate Sheet' : '📊 Rate Sheet';
+  const xlBtn = document.getElementById('q_xl_btn');
+  if(xlBtn) xlBtn.textContent = isLCL ? '📗 LCL Excel' : '📗 Excel';
   const bulk = document.getElementById('q_lcl_bulk');
   if(bulk) bulk.style.display = isLCL ? 'flex' : 'none';
   // LCL ออกจากท่าเรือกรุงเทพเสมอ — กันกรอก LAEM CHABANG ค้างมาจากโหมด FCL
@@ -8594,7 +8596,161 @@ function qLoadXlsxStyle(){
     document.head.appendChild(sc);
   });
 }
+// ════════════════════════════════════════════════════════════
+// LCL RATE SHEET (Excel) — เลย์เอาต์เดียวกับใบ DIRECT ROUTING SERVICES
+// ไม่มีคอลัมน์ 20'/40'/40HC (LCL คิดต่อ CBM) · โชว์เฉพาะราคาขาย ไม่มีต้นทุน
+// ════════════════════════════════════════════════════════════
+window.qExportLclExcel = async function(){
+  const rows = (qRateRows||[]).filter(r=> String(r.pod||'').trim());
+  if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
+  let XL, styled = true;
+  try{ XL = await qLoadXlsxStyle(); }
+  catch(e){ XL = window.XLSX; styled = false; if(!XL){ toast('⏳ กำลังโหลดตัวสร้าง Excel… ลองอีกครั้ง'); return; } }
+
+  const get = id => (document.getElementById(id)||{}).value || '';
+  const cust    = get('q_customer') || 'Customer';
+  const gPol    = get('q_pol') || LCL_POL;
+  const gValid  = get('q_valid') || '';
+  const inco    = get('q_incoterm') || '';
+  const comm    = get('q_commodity') || '';
+  const subjto  = qStripEx(get('q_subjto'));
+  const remarks = qStripEx(get('q_remarks'));
+  const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+  const HEAD = ['PORT OF DESTINATION','RATE (USD/CBM)','T/T (DAYS)','ETD / CFS','CARRIER','ROUTING','VALIDITY'];
+  const NC   = HEAD.length;
+
+  // จัดกลุ่มตามประเทศ เหมือนใบเรทต้นฉบับ
+  const groups = new Map();
+  rows.forEach(r=>{
+    const k = (r.country || 'OTHER DESTINATION').toUpperCase();
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  });
+  const order = [...groups.keys()].sort((a,b)=>
+    (a==='OTHER DESTINATION') - (b==='OTHER DESTINATION') || a.localeCompare(b));
+
+  const aoa = [], NOTE_ROWS = [], GRP_ROWS = [], NA_ROWS = [], DATA_ROWS = [];
+  aoa.push([`LCL RATE SHEET — ${cust}`,'','','','','',`DATE: ${today}`]);
+  aoa.push([`DIRECT ROUTING SERVICES · LCL CONSOLIDATION · POL: ${gPol}`]);   NOTE_ROWS.push(aoa.length-1);
+  const sub = ['W/M · MIN 1 CBM · RATE INCLUDES LSS'];
+  if(gValid) sub.push('TARIFF EFFECTIVE: '+gValid);
+  if(inco)   sub.push('INCOTERM: '+inco);
+  if(comm)   sub.push('COMMODITY: '+comm);
+  aoa.push([sub.join('   |   ')]);                                            NOTE_ROWS.push(aoa.length-1);
+  if(remarks){ aoa.push(['Note: '+remarks]); NOTE_ROWS.push(aoa.length-1); }
+  aoa.push([]);
+  aoa.push(HEAD);
+  const HROW = aoa.length - 1;
+
+  let shown = 0, naCount = 0;
+  order.forEach(gname=>{
+    aoa.push([gname]); GRP_ROWS.push(aoa.length-1);
+    groups.get(gname).slice()
+      .sort((a,b)=>String(a.pod||'').localeCompare(String(b.pod||'')))
+      .forEach(r=>{
+        const s   = lclRowSell(r);
+        const na  = (s == null);
+        const bad = (s != null && s <= 0);          // refund ที่ยังไม่ตั้ง Min
+        const ts  = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
+        if(na) naCount++; else shown++;
+        aoa.push([
+          (r.pod||'') + (r.del ? ' / DEL: '+r.del : ''),
+          na ? 'N/A' : (bad ? 'ON REQUEST' : s),      // ตัวเลขจริง = จัดรูปแบบเป็นเงินได้
+          na ? 'N/A' : (r.tt || '-'),
+          na ? 'N/A' : (r.etdCfs || '-'),
+          na ? 'N/A' : (r.carrier || '-'),
+          na ? 'N/A' : (ts ? 'T/S' : 'DIRECT'),
+          r.valid || gValid || ''
+        ]);
+        (na ? NA_ROWS : DATA_ROWS).push(aoa.length-1);
+      });
+  });
+  const LASTROW = aoa.length - 1;
+
+  // เงื่อนไขท้ายใบ
+  const terms = [];
+  if(subjto) terms.push('Subject to '+subjto+'.');
+  terms.push('Rate is per CBM on W/M basis, minimum 1 CBM, and already includes LSS.');
+  terms.push('Rate is subject to space availability and vessel schedule at time of booking.');
+  terms.push('Rate excludes local charges at destination, customs clearance, duty, tax and inland haulage unless stated above.');
+  terms.push('Dangerous goods, personal effects, reefer and out-of-gauge cargo are quoted separately.');
+  terms.push('Transit time (T/T) is an estimate from the carrier and is not guaranteed.');
+  if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0))
+    terms.push('Ports marked T/S are served via transhipment.');
+  aoa.push([]); aoa.push(['TERMS & CONDITIONS']);
+  const TERM_HEAD = aoa.length-1, TERM_ROWS = [];
+  terms.forEach(t=>{ aoa.push(['•  '+t]); TERM_ROWS.push(aoa.length-1); });
+
+  // Local charges
+  const lc = (qLocalRows||[]).filter(x=>x.name && x.rate);
+  let lcHead = -1, lcLast = -1;
+  if(lc.length){
+    aoa.push([]); aoa.push(['LOCAL CHARGES']);
+    aoa.push(['Charge','Rate','Unit']); lcHead = aoa.length-1;
+    lc.forEach(x=> aoa.push([x.name, x.rate, x.unit||'']));
+    lcLast = aoa.length-1;
+  }
+
+  const ws = XL.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:42},{wch:16},{wch:12},{wch:14},{wch:20},{wch:11},{wch:18}];
+  ws['!freeze'] = { xSplit:0, ySplit:HROW+1 };
+  ws['!merges'] = NOTE_ROWS.concat(GRP_ROWS, TERM_ROWS, [TERM_HEAD])
+    .map(r=>({s:{r,c:0}, e:{r,c:NC-1}}));
+  ws['!merges'].push({s:{r:0,c:0}, e:{r:0,c:5}});
+
+  if(styled){
+    const B = {style:'thin', color:{rgb:'FFBFBFBF'}};
+    const BORDER = {top:B,bottom:B,left:B,right:B};
+    const put = (r,c,st)=>{
+      const ref = XL.utils.encode_cell({r,c});
+      if(!ws[ref]) ws[ref] = {t:'s', v:''};
+      ws[ref].s = Object.assign({}, ws[ref].s, st);
+    };
+    put(0,0,{font:{bold:true, sz:14, color:{rgb:'FF1A5276'}}});
+    put(0,6,{font:{bold:true}, alignment:{horizontal:'right'}});
+    NOTE_ROWS.forEach(r=>{ for(let c=0;c<NC;c++)
+      put(r,c,{fill:{fgColor:{rgb:'FFDEEBF7'}}, font:{bold:true, sz:10, color:{rgb:'FF1A5276'}}, alignment:{vertical:'center'}}); });
+    // หัวตาราง — น้ำเงินเข้ม ตัวขาว
+    for(let c=0;c<NC;c++)
+      put(HROW,c,{fill:{fgColor:{rgb:'FF37474F'}}, font:{bold:true, color:{rgb:'FFFFFFFF'}}, border:BORDER,
+                  alignment:{horizontal: c===0?'left':'center', vertical:'center', wrapText:true}});
+    // แถบชื่อประเทศ
+    GRP_ROWS.forEach(r=>{ for(let c=0;c<NC;c++)
+      put(r,c,{fill:{fgColor:{rgb:'FFE1ECF5'}}, font:{bold:true, sz:10, color:{rgb:'FF1A5276'}}, border:BORDER}); });
+    // แถวข้อมูล
+    const styleRow = (r, na)=>{
+      for(let c=0;c<NC;c++){
+        const st = {border:BORDER, alignment:{horizontal: c===0?'left':(c===1?'right':'center'), vertical:'center'}};
+        if(na) st.fill = {fgColor:{rgb:'FFF2F2F2'}};
+        if(c===1) st.font = {bold:true, color:{rgb: na?'FF888888':'FF1A7842'}};
+        put(r,c,st);
+      }
+      // ช่องราคา — ใส่รูปแบบเงิน USD เฉพาะที่เป็นตัวเลขจริง
+      const ref = XL.utils.encode_cell({r,c:1});
+      if(ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '"USD "#,##0.00';
+    };
+    DATA_ROWS.forEach(r=> styleRow(r,false));
+    NA_ROWS.forEach(r=> styleRow(r,true));
+    put(TERM_HEAD,0,{font:{bold:true, sz:10, color:{rgb:'FF1A5276'}}});
+    TERM_ROWS.forEach(r=> put(r,0,{font:{sz:9, color:{rgb:'FF555555'}}, alignment:{wrapText:true, vertical:'top'}}));
+    if(lcHead>=0){
+      for(let c=0;c<3;c++) put(lcHead-1,c,{font:{bold:true}});
+      for(let r=lcHead;r<=lcLast;r++)
+        for(let c=0;c<3;c++) put(r,c,{border:BORDER, font:{bold:r===lcHead}});
+    }
+  }
+
+  const wb = XL.utils.book_new();
+  XL.utils.book_append_sheet(wb, ws, 'LCL RATE');
+  const tag = (cust+'_'+today).replace(/[^\w\-]+/g,'-');
+  XL.writeFile(wb, `LCL_QUOTATION_${tag}.xlsx`);
+  toast('📗 Export Excel (LCL) — '+shown+' เส้นทาง'+(naCount?(' · N/A '+naCount):'')+' · '+order.length+' ประเทศ'
+    +(styled?'':' (โหลดสีไม่ได้ ออกเป็นตารางเปล่า)'));
+};
+
 window.qExportExcelSheet = async function(){
+  if(typeof qIsLCL==='function' && qIsLCL()) return window.qExportLclExcel();
   const rows = qRateRows || [];
   if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
   let XL, styled = true;
