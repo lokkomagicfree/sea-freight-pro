@@ -8627,11 +8627,183 @@ function qLoadXlsxStyle(){
     document.head.appendChild(sc);
   });
 }
+// โหลด ExcelJS — จำเป็นสำหรับฝัง "โลโก้" ลงไฟล์ Excel (xlsx-js-style ใส่รูปไม่ได้)
+function qLoadExcelJS(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return new Promise((res, rej)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    sc.onload  = ()=> window.ExcelJS ? res(window.ExcelJS) : rej(new Error('ExcelJS ไม่พร้อม'));
+    sc.onerror = ()=> rej(new Error('โหลด ExcelJS ไม่สำเร็จ'));
+    document.head.appendChild(sc);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// LCL RATE SHEET (Excel + โลโก้) — หัวกระดาษชุดเดียวกับ PDF
+// โชว์เฉพาะราคาขาย · ไม่มีคอลัมน์ 20'/40'/40HC · ไม่มีต้นทุน/REFUND หลุด
+// ════════════════════════════════════════════════════════════
+window.qExportLclExcelJS = async function(){
+  const ExcelJS = await qLoadExcelJS();
+  const rows = (qRateRows||[]).filter(r=> String(r.pod||'').trim());
+  if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
+
+  const get = id => (document.getElementById(id)||{}).value || '';
+  const cust   = get('q_customer') || 'Customer';
+  const gPol   = get('q_pol') || LCL_POL;
+  const gValid = get('q_valid') || '';
+  const inco   = get('q_incoterm') || '';
+  const comm   = get('q_commodity') || '';
+  const subjto = qStripEx(get('q_subjto'));
+  const remarks= qStripEx(get('q_remarks'));
+  const today  = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+  const NAVY='FF1A5276', DKGRAY='FF37474F', BAND='FFE1ECF5', NOTEBG='FFDEEBF7';
+  const HEAD=['PORT OF DESTINATION','RATE (USD/CBM)','T/T (DAYS)','ETD / CFS','CARRIER','ROUTING','VALIDITY'];
+  const NC=HEAD.length;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Worldwide Logistics Services (Thailand)';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('LCL RATE', { views:[{state:'frozen', ySplit:0}] });
+  ws.columns = [{width:42},{width:16},{width:12},{width:14},{width:22},{width:11},{width:18}];
+
+  const thin  = {style:'thin', color:{argb:'FFBFBFBF'}};
+  const BORDER= {top:thin,left:thin,bottom:thin,right:thin};
+  const fillOf= argb => ({type:'pattern', pattern:'solid', fgColor:{argb}});
+  const merge = r => ws.mergeCells(r,1,r,NC);
+
+  // ── แถบหัวกระดาษ: โลโก้ซ้าย + ชื่อใบเสนอราคาบนพื้นน้ำเงิน (เหมือน PDF) ──
+  const BANNER_H = 4;                         // ใช้ 4 แถวเป็นความสูงแบนเนอร์
+  for(let r=1;r<=BANNER_H;r++){
+    ws.getRow(r).height = 17;
+    for(let c=1;c<=NC;c++){
+      const cell = ws.getCell(r,c);
+      cell.fill = fillOf(c<=1 ? 'FFFFFFFF' : NAVY);   // คอลัมน์แรกขาวไว้วางโลโก้
+    }
+  }
+  ws.mergeCells(1,1,BANNER_H,1);                                   // ช่องโลโก้
+  ws.mergeCells(1,2,2,NC);  ws.mergeCells(3,2,3,NC);  ws.mergeCells(4,2,4,NC);
+  const put = (r,c,v,st)=>{ const cell=ws.getCell(r,c); cell.value=v; Object.assign(cell, st||{}); return cell; };
+  put(1,2,'LCL RATE SHEET',{font:{bold:true,size:16,color:{argb:'FFFFFFFF'}},alignment:{vertical:'middle'}});
+  put(3,2,cust.toUpperCase(),{font:{size:10,color:{argb:'FFB4D7FF'}},alignment:{vertical:'middle'}});
+  put(4,2,today+'          W/M · MIN 1 CBM',{font:{size:9,color:{argb:'FF96C8FF'}},alignment:{vertical:'middle'}});
+
+  try{
+    // ตัดหัว data:image/... ออกก่อน (ExcelJS รับได้ทั้งสองแบบ แต่ตัดไว้ชัวร์กว่า)
+    const raw = String(WWL_LOGO_B64).replace(/^data:[^,]*,/, '');
+    const id = wb.addImage({ base64: raw, extension:'jpeg' });
+    // ทับพอดีช่องขาวคอลัมน์ A แถว 1-4
+    ws.addImage(id, { tl:{col:0.08, row:0.12}, ext:{ width:186, height:62 } });
+  }catch(e){ /* ไม่มีโลโก้ก็ยังออกไฟล์ได้ */ }
+
+  let R = BANNER_H + 1;
+  const noteRow = txt => { merge(R); put(R,1,txt,{fill:fillOf(NOTEBG),
+      font:{bold:true,size:10,color:{argb:NAVY}}, alignment:{vertical:'middle'}}); R++; };
+  noteRow('DIRECT ROUTING SERVICES · LCL CONSOLIDATION · POL: '+gPol);
+  const sub=['W/M · MIN 1 CBM · RATE INCLUDES LSS'];
+  if(gValid) sub.push('TARIFF EFFECTIVE: '+gValid);
+  if(inco)   sub.push('INCOTERM: '+inco);
+  if(comm)   sub.push('COMMODITY: '+comm);
+  noteRow(sub.join('   |   '));
+  if(remarks) noteRow('Note: '+remarks);
+  R++;
+
+  // ── หัวตาราง ──
+  const HROW = R;
+  HEAD.forEach((h,i)=> put(R,i+1,h,{fill:fillOf(DKGRAY), border:BORDER,
+    font:{bold:true,color:{argb:'FFFFFFFF'},size:10},
+    alignment:{horizontal:i===0?'left':'center', vertical:'middle', wrapText:true}}));
+  ws.getRow(R).height = 20;
+  R++;
+
+  // ── ข้อมูล จัดกลุ่มตามประเทศ ──
+  const groups=new Map();
+  rows.forEach(r=>{ const k=(r.country||'OTHER DESTINATION').toUpperCase();
+    if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); });
+  const order=[...groups.keys()].sort((a,b)=>
+    (a==='OTHER DESTINATION')-(b==='OTHER DESTINATION') || a.localeCompare(b));
+
+  let shown=0, naCount=0;
+  order.forEach(gname=>{
+    merge(R);
+    put(R,1,gname,{fill:fillOf(BAND), font:{bold:true,size:10,color:{argb:NAVY}}, border:BORDER});
+    for(let c=2;c<=NC;c++){ const x=ws.getCell(R,c); x.fill=fillOf(BAND); x.border=BORDER; }
+    R++;
+    groups.get(gname).slice().sort((a,b)=>String(a.pod||'').localeCompare(String(b.pod||''))).forEach(r=>{
+      const s   = lclRowSell(r);
+      const na  = (s==null);
+      const bad = (s!=null && s<=0);              // refund ที่ยังไม่ตั้ง Min
+      const ts  = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
+      if(na) naCount++; else shown++;
+      const vals=[
+        (r.pod||'')+(r.del?' / DEL: '+r.del:''),
+        na?'N/A':(bad?'ON REQUEST':s),
+        na?'N/A':(r.tt||'-'), na?'N/A':(r.etdCfs||'-'),
+        na?'N/A':(r.carrier||'-'), na?'N/A':(ts?'T/S':'DIRECT'),
+        r.valid||gValid||''
+      ];
+      vals.forEach((v,i)=>{
+        const cell=put(R,i+1,v,{border:BORDER,
+          alignment:{horizontal:i===0?'left':(i===1?'right':'center'), vertical:'middle'}});
+        if(na) cell.fill=fillOf('FFF2F2F2');
+        if(i===1){
+          cell.font={bold:true,color:{argb: na?'FF888888':'FF1A7842'}};
+          if(typeof v==='number') cell.numFmt = Number.isInteger(v) ? '"USD "#,##0' : '"USD "#,##0.00';
+        }
+      });
+      R++;
+    });
+  });
+  const LASTROW = R-1;
+  ws.autoFilter = { from:{row:HROW, column:1}, to:{row:LASTROW, column:NC} };
+  ws.views = [{ state:'frozen', ySplit:HROW }];
+
+  // ── เงื่อนไข ──
+  R++;
+  merge(R); put(R,1,'TERMS & CONDITIONS',{font:{bold:true,size:10,color:{argb:NAVY}}}); R++;
+  const terms=[];
+  if(subjto) terms.push('Subject to '+subjto+'.');
+  terms.push('Rate is per CBM on W/M basis, minimum 1 CBM, and already includes LSS.');
+  terms.push('Rate is subject to space availability and vessel schedule at time of booking.');
+  terms.push('Rate excludes local charges at destination, customs clearance, duty, tax and inland haulage unless stated above.');
+  terms.push('Dangerous goods, personal effects, reefer and out-of-gauge cargo are quoted separately.');
+  terms.push('Transit time (T/T) is an estimate from the carrier and is not guaranteed.');
+  if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0))
+    terms.push('Ports marked T/S are served via transhipment.');
+  terms.forEach(t=>{ merge(R);
+    put(R,1,'•  '+t,{font:{size:9,color:{argb:'FF555555'}}, alignment:{wrapText:true,vertical:'top'}}); R++; });
+
+  // ── Local charges ──
+  const lc=(qLocalRows||[]).filter(x=>x.name&&x.rate);
+  if(lc.length){
+    R++; merge(R); put(R,1,'LOCAL CHARGES',{font:{bold:true,size:10,color:{argb:NAVY}}}); R++;
+    ['Charge','Rate','Unit'].forEach((h,i)=> put(R,i+1,h,{font:{bold:true},border:BORDER,
+      fill:fillOf('FFF2F2F2'), alignment:{horizontal:'center'}}));
+    R++;
+    lc.forEach(x=>{ [x.name,x.rate,x.unit||''].forEach((v,i)=> put(R,i+1,v,{border:BORDER})); R++; });
+  }
+  R++; merge(R);
+  put(R,1,'WORLDWIDE LOGISTICS SERVICES (THAILAND) CO., LTD.',{font:{bold:true,size:8,color:{argb:'FF888888'}}});
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'LCL_QUOTATION_'+(cust+'_'+today).replace(/[^\w\-]+/g,'-')+'.xlsx';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  toast('📗 Export Excel (LCL + โลโก้) — '+shown+' เส้นทาง'+(naCount?(' · N/A '+naCount):'')+' · '+order.length+' ประเทศ');
+};
+
 // ════════════════════════════════════════════════════════════
 // LCL RATE SHEET (Excel) — เลย์เอาต์เดียวกับใบ DIRECT ROUTING SERVICES
 // ไม่มีคอลัมน์ 20'/40'/40HC (LCL คิดต่อ CBM) · โชว์เฉพาะราคาขาย ไม่มีต้นทุน
 // ════════════════════════════════════════════════════════════
 window.qExportLclExcel = async function(){
+  // พยายามออกแบบมีโลโก้ก่อน (ExcelJS) · โหลดไลบรารีไม่ได้ค่อยถอยไปแบบไม่มีรูป
+  try{ return await window.qExportLclExcelJS(); }
+  catch(e){ toast('⚠ ใส่โลโก้ไม่ได้ ('+e.message+') — ออกไฟล์แบบไม่มีรูปแทน'); }
   const rows = (qRateRows||[]).filter(r=> String(r.pod||'').trim());
   if(!rows.length){ toast('ยังไม่มีรายการเรท — เพิ่ม POD ก่อนครับ'); return; }
   let XL, styled = true;
