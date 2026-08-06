@@ -8666,7 +8666,7 @@ window.qExportLclExcelJS = async function(){
   wb.creator = 'Worldwide Logistics Services (Thailand)';
   wb.created = new Date();
   const ws = wb.addWorksheet('LCL RATE', { views:[{state:'frozen', ySplit:0}] });
-  ws.columns = [{width:42},{width:16},{width:12},{width:14},{width:22},{width:11},{width:18}];
+  ws.columns = [{width:46},{width:19},{width:14},{width:16},{width:24},{width:13},{width:20}];
 
   const thin  = {style:'thin', color:{argb:'FFBFBFBF'}};
   const BORDER= {top:thin,left:thin,bottom:thin,right:thin};
@@ -8674,32 +8674,35 @@ window.qExportLclExcelJS = async function(){
   const merge = r => ws.mergeCells(r,1,r,NC);
 
   // ── แถบหัวกระดาษ: โลโก้ซ้าย + ชื่อใบเสนอราคาบนพื้นน้ำเงิน (เหมือน PDF) ──
-  const BANNER_H = 4;                         // ใช้ 4 แถวเป็นความสูงแบนเนอร์
+  const BANNER_H = 6, BANNER_ROW_PT = 26;     // 6 แถว × 26pt ≈ 208px — สูงพอให้โลโก้ใหญ่
   for(let r=1;r<=BANNER_H;r++){
-    ws.getRow(r).height = 17;
+    ws.getRow(r).height = BANNER_ROW_PT;
     for(let c=1;c<=NC;c++){
       const cell = ws.getCell(r,c);
       cell.fill = fillOf(c<=1 ? 'FFFFFFFF' : NAVY);   // คอลัมน์แรกขาวไว้วางโลโก้
     }
   }
   ws.mergeCells(1,1,BANNER_H,1);                                   // ช่องโลโก้
-  ws.mergeCells(1,2,2,NC);  ws.mergeCells(3,2,3,NC);  ws.mergeCells(4,2,4,NC);
+  ws.mergeCells(1,2,3,NC);  ws.mergeCells(4,2,5,NC);  ws.mergeCells(6,2,6,NC);
   const put = (r,c,v,st)=>{ const cell=ws.getCell(r,c); cell.value=v; Object.assign(cell, st||{}); return cell; };
-  put(1,2,'LCL RATE SHEET',{font:{bold:true,size:16,color:{argb:'FFFFFFFF'}},alignment:{vertical:'middle'}});
-  put(3,2,cust.toUpperCase(),{font:{size:10,color:{argb:'FFB4D7FF'}},alignment:{vertical:'middle'}});
-  put(4,2,today+'          W/M · MIN 1 CBM',{font:{size:9,color:{argb:'FF96C8FF'}},alignment:{vertical:'middle'}});
+  put(1,2,'LCL RATE SHEET',{font:{bold:true,size:24,color:{argb:'FFFFFFFF'}},alignment:{vertical:'middle'}});
+  put(4,2,cust.toUpperCase(),{font:{bold:true,size:14,color:{argb:'FFB4D7FF'}},alignment:{vertical:'middle'}});
+  put(6,2,today+'          W/M · MIN 1 CBM',{font:{size:11,color:{argb:'FF96C8FF'}},alignment:{vertical:'middle'}});
 
   try{
     // ตัดหัว data:image/... ออกก่อน (ExcelJS รับได้ทั้งสองแบบ แต่ตัดไว้ชัวร์กว่า)
     const raw = String(WWL_LOGO_B64).replace(/^data:[^,]*,/, '');
     const id = wb.addImage({ base64: raw, extension:'jpeg' });
-    // ทับพอดีช่องขาวคอลัมน์ A แถว 1-4
-    ws.addImage(id, { tl:{col:0.08, row:0.12}, ext:{ width:186, height:62 } });
+    // รูปจริง 236×138 px (อัตราส่วน 1.71) — ต้องคงสัดส่วนไม่งั้นโลโก้จะแบน
+    const LOGO_H = Math.round(BANNER_H * BANNER_ROW_PT * (4/3)) - 22;   // pt → px แล้วเผื่อขอบ
+    const LOGO_W = Math.round(LOGO_H * (236/138));
+    ws.addImage(id, { tl:{col:0.10, row:0.10}, ext:{ width:LOGO_W, height:LOGO_H } });
   }catch(e){ /* ไม่มีโลโก้ก็ยังออกไฟล์ได้ */ }
 
   let R = BANNER_H + 1;
-  const noteRow = txt => { merge(R); put(R,1,txt,{fill:fillOf(NOTEBG),
-      font:{bold:true,size:10,color:{argb:NAVY}}, alignment:{vertical:'middle'}}); R++; };
+  const noteRow = txt => { merge(R); ws.getRow(R).height = 19;
+    put(R,1,txt,{fill:fillOf(NOTEBG),
+      font:{bold:true,size:12,color:{argb:NAVY}}, alignment:{vertical:'middle'}}); R++; };
   noteRow('DIRECT ROUTING SERVICES · LCL CONSOLIDATION · POL: '+gPol);
   const sub=['W/M · MIN 1 CBM · RATE INCLUDES LSS'];
   if(gValid) sub.push('TARIFF EFFECTIVE: '+gValid);
@@ -8712,9 +8715,9 @@ window.qExportLclExcelJS = async function(){
   // ── หัวตาราง ──
   const HROW = R;
   HEAD.forEach((h,i)=> put(R,i+1,h,{fill:fillOf(DKGRAY), border:BORDER,
-    font:{bold:true,color:{argb:'FFFFFFFF'},size:10},
+    font:{bold:true,color:{argb:'FFFFFFFF'},size:12},
     alignment:{horizontal:i===0?'left':'center', vertical:'middle', wrapText:true}}));
-  ws.getRow(R).height = 20;
+  ws.getRow(R).height = 26;
   R++;
 
   // ── ข้อมูล จัดกลุ่มตามประเทศ ──
@@ -8727,7 +8730,8 @@ window.qExportLclExcelJS = async function(){
   let shown=0, naCount=0;
   order.forEach(gname=>{
     merge(R);
-    put(R,1,gname,{fill:fillOf(BAND), font:{bold:true,size:10,color:{argb:NAVY}}, border:BORDER});
+    ws.getRow(R).height = 20;
+    put(R,1,gname,{fill:fillOf(BAND), font:{bold:true,size:12,color:{argb:NAVY}}, border:BORDER});
     for(let c=2;c<=NC;c++){ const x=ws.getCell(R,c); x.fill=fillOf(BAND); x.border=BORDER; }
     R++;
     groups.get(gname).slice().sort((a,b)=>String(a.pod||'').localeCompare(String(b.pod||''))).forEach(r=>{
@@ -8743,12 +8747,13 @@ window.qExportLclExcelJS = async function(){
         na?'N/A':(r.carrier||'-'), na?'N/A':(ts?'T/S':'DIRECT'),
         r.valid||gValid||''
       ];
+      ws.getRow(R).height = 18;
       vals.forEach((v,i)=>{
-        const cell=put(R,i+1,v,{border:BORDER,
+        const cell=put(R,i+1,v,{border:BORDER, font:{size:11},
           alignment:{horizontal:i===0?'left':(i===1?'right':'center'), vertical:'middle'}});
         if(na) cell.fill=fillOf('FFF2F2F2');
         if(i===1){
-          cell.font={bold:true,color:{argb: na?'FF888888':'FF1A7842'}};
+          cell.font={bold:true,size:12,color:{argb: na?'FF888888':'FF1A7842'}};
           if(typeof v==='number') cell.numFmt = Number.isInteger(v) ? '"USD "#,##0' : '"USD "#,##0.00';
         }
       });
@@ -8761,7 +8766,7 @@ window.qExportLclExcelJS = async function(){
 
   // ── เงื่อนไข ──
   R++;
-  merge(R); put(R,1,'TERMS & CONDITIONS',{font:{bold:true,size:10,color:{argb:NAVY}}}); R++;
+  merge(R); put(R,1,'TERMS & CONDITIONS',{font:{bold:true,size:12,color:{argb:NAVY}}}); R++;
   const terms=[];
   if(subjto) terms.push('Subject to '+subjto+'.');
   terms.push('Rate is per CBM on W/M basis, minimum 1 CBM, and already includes LSS.');
@@ -8772,19 +8777,19 @@ window.qExportLclExcelJS = async function(){
   if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0))
     terms.push('Ports marked T/S are served via transhipment.');
   terms.forEach(t=>{ merge(R);
-    put(R,1,'•  '+t,{font:{size:9,color:{argb:'FF555555'}}, alignment:{wrapText:true,vertical:'top'}}); R++; });
+    put(R,1,'•  '+t,{font:{size:10,color:{argb:'FF555555'}}, alignment:{wrapText:true,vertical:'top'}}); R++; });
 
   // ── Local charges ──
   const lc=(qLocalRows||[]).filter(x=>x.name&&x.rate);
   if(lc.length){
-    R++; merge(R); put(R,1,'LOCAL CHARGES',{font:{bold:true,size:10,color:{argb:NAVY}}}); R++;
-    ['Charge','Rate','Unit'].forEach((h,i)=> put(R,i+1,h,{font:{bold:true},border:BORDER,
+    R++; merge(R); put(R,1,'LOCAL CHARGES',{font:{bold:true,size:12,color:{argb:NAVY}}}); R++;
+    ['Charge','Rate','Unit'].forEach((h,i)=> put(R,i+1,h,{font:{bold:true,size:11},border:BORDER,
       fill:fillOf('FFF2F2F2'), alignment:{horizontal:'center'}}));
     R++;
-    lc.forEach(x=>{ [x.name,x.rate,x.unit||''].forEach((v,i)=> put(R,i+1,v,{border:BORDER})); R++; });
+    lc.forEach(x=>{ [x.name,x.rate,x.unit||''].forEach((v,i)=> put(R,i+1,v,{border:BORDER,font:{size:11}})); R++; });
   }
   R++; merge(R);
-  put(R,1,'WORLDWIDE LOGISTICS SERVICES (THAILAND) CO., LTD.',{font:{bold:true,size:8,color:{argb:'FF888888'}}});
+  put(R,1,'WORLDWIDE LOGISTICS SERVICES (THAILAND) CO., LTD.',{font:{bold:true,size:10,color:{argb:'FF888888'}}});
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
