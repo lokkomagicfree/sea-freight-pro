@@ -1047,7 +1047,9 @@ body{font-size:14px;font-weight:450}
         </div>
         <div id="q_lcl_bulk" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:7px 9px;border:1px dashed rgba(255,140,0,.4);border-radius:8px;background:rgba(255,140,0,.05)">
           <span style="font-size:10px;font-family:var(--mono);color:#ff9f43;white-space:nowrap">🧊 ตั้งค่าทุกแถว</span>
-          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px">กำไร /CBM
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="บวกกำไรเป็น % ของต้นทุน — เส้นทางที่ต้นทุนติดลบ (REFUND) จะไม่คิด % ให้ใช้ช่องขั้นต่ำแทน">Margin %
+            <input type="text" inputmode="decimal" id="q_lcl_pct_all" class="inp" placeholder="เช่น 20" style="width:62px;font-size:11px;padding:3px 6px;text-align:right;color:var(--accent2)"></label>
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="บวกกำไรเป็นจำนวนเงินต่อ CBM (บวกทับหลังคิด % แล้ว)">กำไร /CBM
             <input type="text" inputmode="decimal" id="q_lcl_profit_all" class="inp" placeholder="เช่น 15" style="width:70px;font-size:11px;padding:3px 6px;text-align:right;color:var(--gold)"></label>
           <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="ราคาขายขั้นต่ำต่อ CBM — กันเส้นทางที่ต้นทุนติดลบ (REFUND) หลุดออกไปเป็นราคาติดลบ">ขั้นต่ำ /CBM
             <input type="text" inputmode="decimal" id="q_lcl_min_all" class="inp" placeholder="เช่น 25" style="width:70px;font-size:11px;padding:3px 6px;text-align:right"></label>
@@ -2140,15 +2142,36 @@ function isLclRate(r){ return !!(r && (r.container_type==='LCL' || r.source==='L
 window.isLclRate = isLclRate;
 function lclCost(r){ const v = parseFloat(r && r.cbm); return isNaN(v) ? null : v; }
 window.lclCost = lclCost;
-// ราคาขายต่อ CBM = ต้นทุน + กำไรที่ตั้งไว้ · ไม่ต่ำกว่าขั้นต่ำที่กำหนด (กันเรท refund ติดลบหลุดไปหาลูกค้า)
-function lclSell(cost, profit, floor){
+// ราคาขายต่อ CBM = ต้นทุน × (1 + margin%) + กำไรบาท/USD ต่อ CBM
+// แล้วยกขึ้นให้ไม่ต่ำกว่าขั้นต่ำที่กำหนด (กันเรท refund ติดลบหลุดไปหาลูกค้า)
+// หมายเหตุ: % คิดจากต้นทุน — ถ้าต้นทุนติดลบ (REFUND) % จะไม่มีความหมาย ต้องพึ่ง Min เท่านั้น
+function lclSell(cost, profit, floor, pct){
   const c = parseFloat(cost)||0, p = parseFloat(profit)||0;
+  const m = (pct==null || pct==='') ? 0 : (parseFloat(pct)||0);
   const f = (floor==null || floor==='') ? null : parseFloat(floor);
-  let s = c + p;
+  let s = c + (c>0 ? c*m/100 : 0) + p;     // ต้นทุน ≤ 0 → ไม่คิด % (จะได้ไม่ยิ่งติดลบ)
   if(f!=null && !isNaN(f) && s < f) s = f;
   return Math.round(s*100)/100;
 }
 window.lclSell = lclSell;
+// อ่านค่าจากแถวโดยตรง — ให้ทุกที่ (ตาราง / อีเมล / PDF) คิดเลขชุดเดียวกัน
+function lclRowCost(row){
+  if(!row) return null;
+  const c = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
+  return (c==null || isNaN(c)) ? null : c;
+}
+function lclRowSell(row){
+  const c = lclRowCost(row);
+  if(!row || row.na || c==null) return null;
+  return lclSell(c, row.profit, row.minSell, row.mpct);
+}
+// margin ที่ได้จริงเทียบกับราคาขาย (%) — ใช้เช็คว่ากำไรพอไหม
+function lclRowMargin(row){
+  const c = lclRowCost(row), s = lclRowSell(row);
+  if(c==null || s==null || s===0) return null;
+  return Math.round((s-c)/s*1000)/10;
+}
+window.lclRowCost=lclRowCost; window.lclRowSell=lclRowSell; window.lclRowMargin=lclRowMargin;
 
 // ════════════════════════════════════════════════════════════
 // LCL RATES — เรทเหมาส่วน (USD/CBM, W/M min 1)
@@ -6887,8 +6910,9 @@ function qRenderRateRows(){
 // ช่อง SELL ที่ออกไปหาลูกค้า = cost + profit แต่ไม่ต่ำกว่า Min (กันเรท refund ติดลบหลุด)
 function qRenderRateRowsLCL(body){
   body.innerHTML = qRateRows.map(row=>{
-    const cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
-    const sell = row.na ? null : lclSell(cost, row.profit, row.minSell);
+    const cost = lclRowCost(row);
+    const sell = lclRowSell(row);
+    const mgn  = lclRowMargin(row);
     const refund = cost!=null && cost < 0;
     return `
     <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}">
@@ -6908,7 +6932,12 @@ function qRenderRateRowsLCL(body){
           style="font-size:11px;padding:3px 6px;text-align:right;color:${refund?'#ff9f43':'var(--muted)'};width:66px">
         ${refund?'<div style="font-size:8px;color:#ff9f43;font-family:var(--mono);text-align:right">↩ refund</div>':''}</td>
 
-      <td style="padding:3px 4px" title="กำไรที่บวกต่อ CBM">
+      <td style="padding:3px 4px" title="บวกกำไรเป็น % ของต้นทุน (ต้นทุนติดลบ/REFUND จะไม่คิด % — ใช้ Min แทน)">
+        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="mpct" class="inp" value="${row.mpct||''}" placeholder="%"
+          oninput="qUpdateRate(${row.id},'mpct',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--accent2);width:52px"></td>
+
+      <td style="padding:3px 4px" title="บวกกำไรเป็นจำนวนเงินต่อ CBM (บวกทับหลังคิด % แล้ว)">
         <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="profit" class="inp" value="${row.profit||''}" placeholder="+0"
           oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
           style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:56px"></td>
@@ -6921,7 +6950,7 @@ function qRenderRateRowsLCL(body){
       <td style="padding:3px 4px;text-align:right" title="ราคาที่ลูกค้าจะเห็น">
         <span id="lclsell_${row.id}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${row.na?'var(--red)':'var(--green)'}">
           ${row.na?'N/A':(sell==null?'—':'$'+sell.toLocaleString())}</span>
-        <div style="font-size:8px;color:var(--muted);font-family:var(--mono)">/CBM</div></td>
+        <div id="lclmgn_${row.id}" style="font-size:8.5px;font-family:var(--mono);color:var(--muted)">${mgn==null?'/CBM':(mgn+'% margin')}</div></td>
 
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="tt" class="inp" value="${row.tt||''}" placeholder="30"
         oninput="qUpdateRate(${row.id},'tt',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:52px"></td>
@@ -7565,16 +7594,31 @@ window.qSaveTemplate = async function(){
   const polFromRows = [...new Set(qRateRows.map(r=>(r.pol||'').trim()).filter(Boolean))];
   const pol = gv('q_pol') || polFromRows[0] || '';
   const lockPol = confirm('ล็อก POL เป็น "'+(pol||'(ว่าง)')+'" ทุกแถวไหม?\n\nOK = ล็อก   |   Cancel = แก้ POL ได้อิสระ');
+  const isLcl = qIsLCL();
+  // เทมเพลต LCL: เก็บ margin % / กำไร / ขั้นต่ำ ที่ตั้งไว้เป็นค่าตั้งต้น
+  // ถ้าทุกแถวใช้ค่าเดียวกัน → เก็บเป็นค่ากลางของเทมเพลต · ต่างกัน → เก็บรายแถว
+  const uniq = f => [...new Set(qRateRows.map(r=>String(r[f]==null?'':r[f]).trim()))];
+  const one  = f => { const u=uniq(f).filter(Boolean); return (u.length===1 && uniq(f).length===1) ? u[0] : ''; };
   QUOTE_TEMPLATES_USER[key] = {
     customer: gv('q_customer'), pol, lockPol,
+    type: isLcl ? 'LCL' : 'FCL', lcl: isLcl,
     subjto: gv('q_subjto'), remarks: gv('q_remarks'),
-    rows: qRateRows.map(r=>({ pod:r.pod||'', del:r.del||'', dem:r.dem||'', det:r.det||'',
-                              combined:r.combined||'', direct:r.direct||'', tt:r.tt||'' }))
+    defMpct: isLcl ? one('mpct')    : '',
+    defProfit: isLcl ? one('profit')  : '',
+    defMin:  isLcl ? one('minSell') : '',
+    rows: qRateRows.map(r=> isLcl
+      ? { pod:r.pod||'', del:r.del||'', carrier:r.carrier||'', country:r.country||'',
+          tt:r.tt||'', etdCfs:r.etdCfs||'', routing:r.routing||'', valid:r.valid||'',
+          mpct:r.mpct||'', profit:r.profit||'', minSell:r.minSell||'' }
+      : { pod:r.pod||'', del:r.del||'', dem:r.dem||'', det:r.det||'',
+          combined:r.combined||'', direct:r.direct||'', tt:r.tt||'' })
   };
   await qPersistUserTemplates();
   qFillTemplateSelect();
   const selEl = document.getElementById('q_template_sel'); if(selEl) selEl.value = key;
-  toast('💾 บันทึกเทมเพลต "'+key+'" แล้ว — '+qRateRows.length+' POD'+(lockPol?' (POL ล็อก)':''));
+  const mg = QUOTE_TEMPLATES_USER[key].defMpct;
+  toast('💾 บันทึกเทมเพลต'+(isLcl?' LCL':'')+' "'+key+'" แล้ว — '+qRateRows.length+' POD'
+    +(mg?(' · margin '+mg+'%'):'')+(lockPol?' (POL ล็อก)':''));
 };
 window.qDeleteTemplate = async function(){
   const key = (document.getElementById('q_template_sel')||{}).value || '';
@@ -7772,17 +7816,24 @@ window.qLoadTemplate = function(name){
     if(tsel){ tsel.value = 'LCL'; }
     const vd = [...new Set(t.rows.map(r=>r.valid).filter(Boolean))];
     if(vd.length===1) set('q_valid', vd[0]);
+    // margin/กำไร/ขั้นต่ำ: ใช้ค่ารายแถวก่อน · ไม่มีก็ใช้ค่ากลางของเทมเพลต
+    const dM = t.defMpct||'', dP = t.defProfit||'', dN = t.defMin||'';
     qRateRows = t.rows.map(r=>({
       id: Date.now()+Math.random(),
       carrier: r.carrier||'', pol: t.pol, pod: r.pod||'', del: r.del||'',
-      cost:'', profit:'', minSell:'',
+      cost:'', mpct: (r.mpct||dM), profit: (r.profit||dP), minSell: (r.minSell||dN),
       tt: r.tt||'', etdCfs: r.etdCfs||'', routing: r.routing||'', country: r.country||'',
       valid: r.valid||'', polLock: !!t.lockPol, _synced: true
     }));
+    // เติมช่องตั้งค่าทุกแถวให้ตรงกับเทมเพลต จะได้เห็นว่าใช้ค่าอะไรอยู่
+    const sv=(id,val)=>{ const el=document.getElementById(id); if(el && val) el.value=val; };
+    sv('q_lcl_pct_all', dM); sv('q_lcl_profit_all', dP); sv('q_lcl_min_all', dN);
     qTypeChange();                                       // วาดหัวตาราง LCL + โชว์แถบตั้งกำไร
     try{ window.qSyncRatesLCL(); }catch(e){ qPreview(); } // ดึงต้นทุนที่ยัง valid ให้ทันที
     const nC = new Set(t.rows.map(r=>r.country).filter(Boolean)).size;
-    toast('🧊 โหลดเทมเพลต LCL — '+t.rows.length+' ปลายทาง'+(nC?(' / '+nC+' ประเทศ'):'')+' · อย่าลืมตั้งกำไร + ขั้นต่ำ');
+    const hasM = dM || t.rows.some(r=>r.mpct) || dP || dN;
+    toast('🧊 โหลดเทมเพลต LCL — '+t.rows.length+' ปลายทาง'+(nC?(' / '+nC+' ประเทศ'):'')
+      +(dM?(' · margin '+dM+'%'):'')+(hasM?'':' · อย่าลืมตั้ง Margin % + ขั้นต่ำ'));
     return;
   }
 
@@ -8075,7 +8126,7 @@ function qUpdateRate(id, field, val){
   // พิมพ์ราคาเองทับ N/A → ถือว่าไม่ใช่ N/A แล้ว
   if((field==='r20'||field==='r40'||field==='r4h'||field==='cost') && val && !isNaN(parseFloat(val))) row.na = false;
   // โหมด LCL: แก้ cost / profit / min แล้วอัปเดตราคาขายทันที ไม่ต้องไปยุ่งคลัง
-  if(qIsLCL() && (field==='cost'||field==='profit'||field==='minSell')){ qLclCheck(); qPreview(); return; }
+  if(qIsLCL() && (field==='cost'||field==='profit'||field==='minSell'||field==='mpct')){ qLclCheck(); qPreview(); return; }
   // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
   if(field==='carrier' || field==='pol' || field==='pod' || field==='del'){
     row.src = '';                                    // เส้นทาง/สายเรือเปลี่ยน → เลือกประเภทเรทใหม่
@@ -8146,15 +8197,24 @@ function qUpdateRateDisplay(id){
   // โหมด LCL — คำนวณราคาขาย/CBM ใหม่ (cost + profit แต่ไม่ต่ำกว่า Min)
   const lclEl = document.getElementById('lclsell_'+id);
   if(lclEl){
-    const cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
-    if(row.na || cost==null || isNaN(cost)){
+    const mEl  = document.getElementById('lclmgn_'+id);
+    const cost = lclRowCost(row);
+    const sell = lclRowSell(row);
+    if(sell==null){
       lclEl.textContent = row.na ? 'N/A' : '—';
       lclEl.style.color = row.na ? 'var(--red)' : 'var(--muted)';
+      if(mEl){ mEl.textContent='/CBM'; mEl.style.color='var(--muted)'; }
     }else{
-      const s = lclSell(cost, row.profit, row.minSell);
-      lclEl.textContent = '$'+s.toLocaleString();
-      lclEl.style.color = s<=0 ? 'var(--red)' : 'var(--green)';
-      lclEl.title = s<=0 ? '⚠ ราคาขาย ≤ 0 — ตั้งช่อง Min ก่อนส่งลูกค้า' : '';
+      lclEl.textContent = '$'+sell.toLocaleString();
+      lclEl.style.color = sell<=0 ? 'var(--red)' : 'var(--green)';
+      lclEl.title = sell<=0 ? '⚠ ราคาขาย ≤ 0 — ตั้งช่อง Min ก่อนส่งลูกค้า' : '';
+      const mg = lclRowMargin(row);
+      if(mEl){
+        mEl.textContent = mg==null ? '/CBM' : (mg+'% margin');
+        // margin บาง = เตือน (ต่ำกว่า 10% เหลือง · ติดลบ แดง)
+        mEl.style.color = mg==null ? 'var(--muted)' : (mg<0 ? 'var(--red)' : (mg<10 ? 'var(--gold)' : 'var(--muted)'));
+        mEl.title = (cost!=null && cost<=0) ? 'ต้นทุนติดลบ (REFUND) — % ไม่มีผล ราคามาจากช่อง Min' : '';
+      }
     }
     return;
   }
@@ -8232,6 +8292,7 @@ const Q_LCL_HEAD = [
   ['POD','left','var(--muted)',130],
   ['DEL','left','var(--muted)',90],
   ['COST/CBM','right','#ff9f43',70],
+  ['+ Margin %','right','var(--accent2)',54],
   ['+ Profit','right','var(--gold)',58],
   ['Min','right','var(--muted)',54],
   ['SELL /CBM','right','var(--green)',82],
@@ -8264,17 +8325,26 @@ window.qTypeChange = function(){
   qPreview();
 };
 
-// ตั้งกำไร / ราคาขั้นต่ำ ให้ทุกแถวรวดเดียว
+// ตั้ง Margin % / กำไร / ราคาขั้นต่ำ ให้ทุกแถวในตารางเรครวดเดียว
 window.qLclApplyBulk = function(){
-  const p = (document.getElementById('q_lcl_profit_all')||{}).value;
-  const m = (document.getElementById('q_lcl_min_all')||{}).value;
-  if(!String(p).trim() && !String(m).trim()) return toast('ใส่กำไรหรือราคาขั้นต่ำก่อนครับ');
+  const gv = id => String(((document.getElementById(id)||{}).value)||'').trim();
+  const pct = gv('q_lcl_pct_all'), p = gv('q_lcl_profit_all'), m = gv('q_lcl_min_all');
+  if(!pct && !p && !m) return toast('ใส่ Margin % หรือกำไร หรือราคาขั้นต่ำก่อนครับ');
+  if(pct && isNaN(parseFloat(pct))) return toast('❌ Margin % ต้องเป็นตัวเลข');
   qRateRows.forEach(r=>{
-    if(String(p).trim()!=='') r.profit  = p;
-    if(String(m).trim()!=='') r.minSell = m;
+    if(pct!=='') r.mpct    = pct;
+    if(p  !=='') r.profit  = p;
+    if(m  !=='') r.minSell = m;
   });
   qRenderRateRows(); qLclCheck(); qPreview();
-  toast('✓ ตั้งค่าให้ '+qRateRows.length+' แถวแล้ว');
+  const parts=[];
+  if(pct) parts.push('margin '+pct+'%');
+  if(p)   parts.push('กำไร $'+p+'/CBM');
+  if(m)   parts.push('ขั้นต่ำ $'+m+'/CBM');
+  // เตือนเส้นทาง REFUND ที่ % ช่วยไม่ได้
+  const refundRows = qRateRows.filter(r=>{ const c=lclRowCost(r); return c!=null && c<=0; });
+  toast('✓ ใส่ '+parts.join(' · ')+' ให้ '+qRateRows.length+' แถวแล้ว'
+    + (pct && refundRows.length ? ' · ⚠ '+refundRows.length+' เส้นต้นทุนติดลบ % ไม่มีผล ต้องตั้งขั้นต่ำ' : ''));
 };
 
 // เตือนถ้ายังมีแถวที่ราคาขายออกไปแล้ว ≤ 0 (มักเกิดกับเส้นทาง REFUND)
@@ -8282,11 +8352,7 @@ function qLclCheck(){
   const el = document.getElementById('q_lcl_warn');
   if(!el) return;
   if(!qIsLCL()){ el.textContent=''; return; }
-  const bad = qRateRows.filter(r=>{
-    const c = (r.cost===''||r.cost==null) ? null : parseFloat(r.cost);
-    if(r.na || c==null || isNaN(c)) return false;
-    return lclSell(c, r.profit, r.minSell) <= 0;
-  });
+  const bad = qRateRows.filter(r=>{ const v = lclRowSell(r); return v!=null && v <= 0; });
   el.textContent = bad.length
     ? '⚠ '+bad.length+' แถวราคาขาย ≤ 0 ('+bad.slice(0,3).map(r=>r.pod).join(', ')+(bad.length>3?' …':'')+') — ใบเสนอราคาจะขึ้น ON REQUEST'
     : '';
@@ -8387,9 +8453,8 @@ function qBuildEmail(){
       const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
       if(isLCL){
         // LCL: ราคาที่ส่งลูกค้า = cost + profit (ไม่ต่ำกว่า Min) — ห้ามใช้ตัวเลข cost ตรงๆ
-        const _cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
-        const _na   = row.na || _cost==null || isNaN(_cost);
-        const _sell = _na ? null : lclSell(_cost, row.profit, row.minSell);
+        const _sell = lclRowSell(row);
+        const _na   = (_sell == null);
         lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}${String(row.routing||'').toUpperCase().indexOf('TRANSHIP')>=0?' (T/S)':''}`);
         if(_na)              lines.push('  N/A');
         else if(_sell<=0)    lines.push('  ON REQUEST');
@@ -8765,9 +8830,8 @@ window.qExportLclPdf = function(){
 
     groups.get(gname).sort((a,b)=>String(a.pod||'').localeCompare(String(b.pod||''))).forEach((r,ri)=>{
       pageBreak();
-      const cost = (r.cost===''||r.cost==null) ? null : parseFloat(r.cost);
-      const na   = r.na || cost==null || isNaN(cost);
-      const sell = na ? null : lclSell(cost, r.profit, r.minSell);
+      const sell = lclRowSell(r);
+      const na   = (sell == null);
       const bad  = sell!=null && sell<=0;                     // กันเรทติดลบหลุด
       if(na) naCount++; else shown++;
 
