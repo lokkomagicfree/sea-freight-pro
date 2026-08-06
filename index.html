@@ -665,6 +665,16 @@ body{font-size:14px;font-weight:450}
         <input type="date" id="etd_to_filter" oninput="renderShipments();saveFilterPrefs()" title="ETD ถึง" style="background:transparent;border:none;color:var(--cyan);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:108px">
         <button onclick="clearEtdFilter()" title="ล้าง ETD" class="btn btn-ghost" style="font-size:10px;padding:2px 7px;margin-left:2px">✕</button>
       </div>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(155,89,182,.09);border:1px solid rgba(155,89,182,.35);border-radius:6px;padding:3px 8px">
+        <span style="font-size:10px;color:var(--purple);white-space:nowrap" title="กรองตามวันที่เพิ่ม shipment เข้าระบบ">🕒 Added</span>
+        <input type="date" id="add_from_filter" oninput="renderShipments();saveFilterPrefs()" title="เพิ่มเข้าระบบตั้งแต่" style="background:transparent;border:none;color:var(--purple);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:108px">
+        <span style="font-size:10px;color:var(--muted)">→</span>
+        <input type="date" id="add_to_filter" oninput="renderShipments();saveFilterPrefs()" title="เพิ่มเข้าระบบถึง" style="background:transparent;border:none;color:var(--purple);font-size:11px;font-family:var(--mono);outline:none;color-scheme:dark;width:108px">
+        <button onclick="addedQuick('today')" class="btn btn-ghost" style="font-size:10px;padding:2px 7px" title="เพิ่มวันนี้">วันนี้</button>
+        <button onclick="addedQuick('7')" class="btn btn-ghost" style="font-size:10px;padding:2px 7px" title="7 วันล่าสุด">7 วัน</button>
+        <button onclick="addedQuick('month')" class="btn btn-ghost" style="font-size:10px;padding:2px 7px" title="เดือนนี้">เดือนนี้</button>
+        <button onclick="addedQuick('')" title="ล้าง" class="btn btn-ghost" style="font-size:10px;padding:2px 7px">✕</button>
+      </div>
       <button onclick="exportCSV()" class="btn btn-ghost" style="font-size:11px">📥 Export CSV</button>
       <button onclick="showGroupEmail()" class="btn btn-cyan" style="font-size:11px">✉️ Group Email</button>
       <div style="display:flex;align-items:center;gap:4px;background:rgba(245,197,66,.08);border:1px solid rgba(245,197,66,.3);border-radius:6px;padding:3px 8px">
@@ -697,6 +707,7 @@ body{font-size:14px;font-weight:450}
           <th style="text-align:right;color:var(--red)">Cost</th>
           <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
           <th style="text-align:right">Comm USD</th><th style="text-align:right">Comm THB</th>
+          <th style="min-width:112px" title="วัน-เวลาที่เพิ่ม shipment นี้เข้าระบบ">🕒 Added</th>
           <th>Status</th><th style="min-width:160px">Remarks</th><th style="text-align:center">Actions</th>
         </tr></thead>
         <tbody id="saved_body"></tbody>
@@ -1861,7 +1872,7 @@ function storageSave(){
 function storageLoad(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ savedJobs = JSON.parse(raw); }
+    if(raw){ savedJobs = JSON.parse(raw); try{ backfillCreatedAt(); }catch(e){} }
     const cfg = localStorage.getItem(SETTINGS_KEY);
     if(cfg){
       const s = JSON.parse(cfg);
@@ -4203,7 +4214,9 @@ function saveShipment(){
     // its revision history, and checklist state — so saving/editing the
     // shipment here never wipes out work done in the Booking PDF modal or
     // CS Ops Hub.
-    const PRESERVE_FIELDS = ['bpdfData','revisions','_revisedFields','_bpdfFinalized','checklist','cutoffs'];
+    const PRESERVE_FIELDS = ['bpdfData','revisions','_revisedFields','_bpdfFinalized','checklist','cutoffs',
+                             'createdAt','createdAtEst'];   // วันที่เพิ่มเข้าระบบ ต้องไม่เปลี่ยนตอนแก้ไข
+    jobData.updatedAt = new Date().toISOString();
     PRESERVE_FIELDS.forEach(f=>{ if(prev[f]!==undefined) jobData[f]=prev[f]; });
     if(jobData.status==='confirmed' && !wasConfirmed) queueConfirmedForWeeklyReport(jobData);
     savedJobs[window._editIdx]=jobData;window._editIdx=null;
@@ -4211,8 +4224,9 @@ function saveShipment(){
     toast('✅ Shipment updated!');
   } else {
     window._editIdx=null; // ensure this is treated as a brand-new shipment
-    jobData.statusHistory=[{status:jobData.status,date:new Date().toISOString(),note:'Created'}];
-    if(jobData.csAssigned) jobData.assignedAt = new Date().toISOString();
+    jobData.createdAt = new Date().toISOString();      // 🕒 วัน-เวลาที่เพิ่ม shipment นี้เข้าระบบ
+    jobData.statusHistory=[{status:jobData.status,date:jobData.createdAt,note:'Created'}];
+    if(jobData.csAssigned) jobData.assignedAt = jobData.createdAt;
     savedJobs.push(jobData);
     const btn2=g('save_btn');if(btn2){btn2.textContent='💾 Save Shipment';btn2.className='btn btn-cyan';btn2.style.background='';}
     toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
@@ -4359,6 +4373,68 @@ function clearForm(){
 }
 
 // ── Render Shipments ───────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// วัน-เวลาที่เพิ่ม shipment เข้าระบบ
+// งานเก่าที่ยังไม่มี createdAt → เดาจาก statusHistory แถวแรก
+// เดาไม่ได้จริงๆ ค่อยตีตราวันที่เห็นครั้งแรก แล้วทำเครื่องหมาย ~ ไว้ว่าเป็นค่าประมาณ
+// ══════════════════════════════════════════════════════════
+function addedISO(j){
+  if(!j) return '';
+  if(j.createdAt) return j.createdAt;
+  const h = Array.isArray(j.statusHistory) ? j.statusHistory : [];
+  const first = h.map(x=>x&&x.date).filter(Boolean).sort()[0];
+  return first || j.assignedAt || '';
+}
+// คืน YYYY-MM-DD ตามเวลาเครื่อง (ไม่ใช้ toISOString เพราะจะเพี้ยนข้ามวัน)
+function addedDay(j){
+  const iso = addedISO(j); if(!iso) return '';
+  const d = new Date(iso); if(isNaN(d)) return '';
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function addedCell(j){
+  const iso = addedISO(j);
+  if(!iso) return '<span style="font-size:10px;color:var(--muted)">—</span>';
+  const d = new Date(iso);
+  if(isNaN(d)) return '<span style="font-size:10px;color:var(--muted)">—</span>';
+  const est  = !j.createdAt || !!j.createdAtEst;  // ไม่ใช่ค่าที่บันทึกไว้จริง = ค่าประมาณ
+  const date = d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
+  const time = d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false});
+  const days = Math.floor((Date.now()-d.getTime())/86400000);
+  const ago  = days<=0 ? 'วันนี้' : (days===1?'เมื่อวาน':days+' วันก่อน');
+  const tip  = (est?'ประมาณจากประวัติสถานะ (งานเก่าที่ยังไม่ได้เก็บเวลาไว้) · ':'')+d.toLocaleString('th-TH');
+  return `<div title="${tip}" style="line-height:1.3">
+    <div style="font-family:var(--mono);font-size:10.5px;color:${est?'var(--muted)':'var(--text)'}">${est?'~':''}${date}</div>
+    <div style="font-family:var(--mono);font-size:9.5px;color:var(--muted)">${time} · ${ago}</div></div>`;
+}
+window.addedISO=addedISO; window.addedDay=addedDay; window.addedCell=addedCell;
+// ปุ่มลัดช่วงวันที่
+window.addedQuick = function(kind){
+  const f=g('add_from_filter'), t=g('add_to_filter');
+  if(!f||!t) return;
+  const fmt = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const now = new Date();
+  if(kind==='today'){ f.value=t.value=fmt(now); }
+  else if(kind==='7'){ const s=new Date(now); s.setDate(s.getDate()-6); f.value=fmt(s); t.value=fmt(now); }
+  else if(kind==='month'){ f.value=fmt(new Date(now.getFullYear(),now.getMonth(),1)); t.value=fmt(now); }
+  else { f.value=''; t.value=''; }
+  renderShipments(); try{ saveFilterPrefs(); }catch(e){}
+};
+// ตีตรา createdAt ให้งานเก่าที่ยังไม่มี — เฉพาะที่ "เดาได้จากหลักฐานจริง" เท่านั้น
+// งานที่ไม่มีอะไรให้เดาเลย ปล่อยว่างไว้ (ขึ้น "—") ดีกว่าใส่วันที่มั่วให้เข้าใจผิด
+function backfillCreatedAt(){
+  let n=0;
+  (window.savedJobs||[]).forEach(j=>{
+    if(!j || j.createdAt) return;
+    const guess = addedISO(j);
+    if(!guess) return;
+    j.createdAt = guess;
+    j.createdAtEst = true;                         // ค่าประมาณ — ตารางจะขึ้น ~ นำหน้า
+    n++;
+  });
+  return n;
+}
+window.backfillCreatedAt = backfillCreatedAt;
+
 function renderShipments(){
   if(commMode==='tiered' && typeof applyTieredRate==='function') applyTieredRate();
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
@@ -4385,6 +4461,8 @@ function renderShipments(){
   const mthFilt=v('month_filter')||'';
   const etdFrom=v('etd_from_filter')||'';
   const etdTo=v('etd_to_filter')||'';
+  const addFrom=v('add_from_filter')||'';
+  const addTo=v('add_to_filter')||'';
   const jobs=savedJobs.filter((j,i)=>{
     j._idx=i;
     if(bkg&&!(j.no||'').toLowerCase().includes(bkg))return false;
@@ -4395,6 +4473,7 @@ function renderShipments(){
     if(stFilt&&j.status!==stFilt)return false;
     if(mthFilt){const jm=j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'');if(jm!==mthFilt)return false;}
     if(etdFrom||etdTo){const d=j.etd||'';if(!d)return false;if(etdFrom&&d<etdFrom)return false;if(etdTo&&d>etdTo)return false;}
+    if(addFrom||addTo){const d=addedDay(j);if(!d)return false;if(addFrom&&d<addFrom)return false;if(addTo&&d>addTo)return false;}
     return true;
   });
   // Group by month
@@ -4421,7 +4500,7 @@ function renderShipments(){
       return s+(isActive?(j.comm||0):0);
     },0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
-    html+=`<tr><td colspan="19" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
+    html+=`<tr><td colspan="23" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
       html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
@@ -4444,6 +4523,7 @@ function renderShipments(){
         <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:7px 10px">${j.status==='cancelled'?'—':j.margin.toFixed(1)+'%'}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">${j.status==='cancelled'?'—':'$'+j.comm.toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.status==='cancelled'?'—':j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'}</td>
+        <td style="padding:6px 8px;white-space:nowrap">${addedCell(j)}</td>
         <td style="padding:5px 8px;min-width:110px">${statusSel(j.status,j._idx)}</td>
         <td style="padding:4px 8px;min-width:190px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value;storageSave()" oninput="this.style.background=this.value.trim()?'rgba(255,235,59,.5)':'transparent'" style="width:100%;background:${(j.remarks||'').trim()?'rgba(255,235,59,.5)':'transparent'};border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;font-weight:700;padding:3px 6px;border-radius:4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
         <td style="padding:7px 6px;text-align:center;white-space:nowrap">
@@ -4463,10 +4543,10 @@ function renderShipments(){
       <td></td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">$${mComm.toFixed(2)}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">${mCommThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
-      <td colspan="3"></td>
+      <td colspan="4"></td>
     </tr>`;
   });
-  if(!jobs.length)html='<tr><td colspan="19" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
+  if(!jobs.length)html='<tr><td colspan="23" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
   // Total all — use filtered jobs
   const totP=jobs.reduce((s,j)=>{
@@ -6239,8 +6319,10 @@ function exportWeekly(){
 
 function exportCSV(){
   if(!savedJobs.length){toast('No shipments to export');return;}
-  const h='Booking No,Job No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Sell USD,Cost USD,Profit USD,Margin %,Commission USD,Commission THB\n';
-  const rows=savedJobs.map(j=>[j.no,j.jobno,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,j.sell.toFixed(2),j.cost.toFixed(2),j.profit.toFixed(2),j.margin.toFixed(1),j.comm.toFixed(2),j.commThb.toFixed(0)].map(v=>'"'+(v||'')+'"').join(',')).join('\n');
+  const h='Booking No,Job No,Ref No,Customer,Shipper,Job Type,ETD,ETA,Vessel,Status,Added,Sell USD,Cost USD,Profit USD,Margin %,Commission USD,Commission THB\n';
+  const addedTxt = j=>{ const iso=addedISO(j); if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return '';
+    return addedDay(j)+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false})+((!j.createdAt||j.createdAtEst)?' (approx)':''); };
+  const rows=savedJobs.map(j=>[j.no,j.jobno,j.refno,j.customer,j.shipper,j.jobType,j.etd,j.eta,j.vessel,j.status,addedTxt(j),j.sell.toFixed(2),j.cost.toFixed(2),j.profit.toFixed(2),j.margin.toFixed(1),j.comm.toFixed(2),j.commThb.toFixed(0)].map(v=>'"'+(v||'')+'"').join(',')).join('\n');
   const blob=new Blob([h+rows],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='shipments_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
@@ -11907,6 +11989,8 @@ window.saveFilterPrefs = function(){
       status_filter: document.getElementById('status_filter')?.value || '',
       etd_from:      document.getElementById('etd_from_filter')?.value || '',
       etd_to:        document.getElementById('etd_to_filter')?.value   || '',
+      add_from:      document.getElementById('add_from_filter')?.value || '',
+      add_to:        document.getElementById('add_to_filter')?.value   || '',
     };
     localStorage.setItem('sfp_filter_prefs', JSON.stringify(prefs));
   }catch(e){}
@@ -11933,6 +12017,10 @@ window.applyFilterPrefs = function(){
   const et = document.getElementById('etd_to_filter');
   if(ef && prefs.etd_from !== undefined) ef.value = prefs.etd_from;
   if(et && prefs.etd_to !== undefined) et.value = prefs.etd_to;
+  const af = document.getElementById('add_from_filter');
+  const at = document.getElementById('add_to_filter');
+  if(af && prefs.add_from !== undefined) af.value = prefs.add_from;
+  if(at && prefs.add_to   !== undefined) at.value = prefs.add_to;
   if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
   window.renderShipments?.();
 };
