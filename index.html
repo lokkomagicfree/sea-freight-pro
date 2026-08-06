@@ -165,6 +165,7 @@ body{font-size:14px;font-weight:450}
 .src-import{background:rgba(100,116,139,.15);color:#94a3b8}
 .src-bullet{background:rgba(239,68,68,.15);color:#f87171}
 .src-reefer{background:rgba(0,212,255,.15);color:#00d4ff}
+.src-lcl{background:rgba(255,140,0,.16);color:#ff9f43}
 .src-food{background:rgba(16,185,129,.15);color:#34d399}
 .src-tp{background:rgba(56,189,248,.15);color:#38bdf8}
 /* Carrier colors */
@@ -512,6 +513,7 @@ body{font-size:14px;font-weight:450}
         <option value="MED">MED</option>
         <option value="IA-EU">IA-EU</option>
         <option value="REEFER">❄️ REEFER</option>
+        <option value="LCL">🧊 LCL</option>
         <option value="OTHER">OTHER</option>
       </select>
       <select class="fi" id="f_carrier" onchange="applyFilter()" style="width:140px;font-size:11px">
@@ -544,6 +546,7 @@ body{font-size:14px;font-weight:450}
       <button onclick="openPasteRatesModal()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--cyan);border-color:rgba(41,128,185,.35)">📋 Paste Rates</button>
       <button onclick="publishRatesToShared('manual')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--gold);border-color:rgba(183,128,10,.4)" title="เผยแพร่ rate ปัจจุบันเข้าคลังกลาง ให้ทุก account เห็น (มี confirm + log)">☁ เผยแพร่ให้ทุก account</button>
       <button onclick="showBestByPOD()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--green);border-color:rgba(39,174,96,.4)" title="ดูเรทถูกสุดของแต่ละ POD จัดอันดับ 1-2-3 แยกตามขนาดตู้ (เฉพาะ active)">🏆 Best/POD</button>
+      <button onclick="lclLoadSeed()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:#ff9f43;border-color:rgba(255,140,0,.4)" title="โหลดเรท LCL (Grandlink) เข้าคลัง — เป็นต้นทุน USD/CBM รวม LSS แล้ว">🧊 โหลดเรท LCL</button>
     </div>
   </div>
 
@@ -1002,7 +1005,7 @@ body{font-size:14px;font-weight:450}
         <div class="card-title" id="q_rate_title">📦 Sell Rates (USD)</div>
         <div style="overflow-x:auto;margin-bottom:8px">
           <table style="width:100%;border-collapse:collapse;font-size:12px" id="q_rate_tbl">
-            <thead><tr style="border-bottom:1px solid var(--border)">
+            <thead id="q_rate_head"><tr style="border-bottom:1px solid var(--border)">
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:80px">Carrier</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:110px">POL</th>
               <th style="text-align:left;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:140px">POD</th>
@@ -1031,6 +1034,15 @@ body{font-size:14px;font-weight:450}
             title="ติ๊กเพื่อโชว์ FIX / FAK ในเมล · PDF · Excel ที่ส่งลูกค้า (ถ้ามีแถว FIX จะแนบ Subj to commodity ของ FIX ให้ด้วย)">
             <input type="checkbox" id="q_show_src" onchange="qSaveShowSrc(this.checked);qPreview()"> โชว์ FIX/FAK ให้ลูกค้า</label>
         </div>
+        <div id="q_lcl_bulk" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:7px 9px;border:1px dashed rgba(255,140,0,.4);border-radius:8px;background:rgba(255,140,0,.05)">
+          <span style="font-size:10px;font-family:var(--mono);color:#ff9f43;white-space:nowrap">🧊 ตั้งค่าทุกแถว</span>
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px">กำไร /CBM
+            <input type="text" inputmode="decimal" id="q_lcl_profit_all" class="inp" placeholder="เช่น 15" style="width:70px;font-size:11px;padding:3px 6px;text-align:right;color:var(--gold)"></label>
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="ราคาขายขั้นต่ำต่อ CBM — กันเส้นทางที่ต้นทุนติดลบ (REFUND) หลุดออกไปเป็นราคาติดลบ">ขั้นต่ำ /CBM
+            <input type="text" inputmode="decimal" id="q_lcl_min_all" class="inp" placeholder="เช่น 25" style="width:70px;font-size:11px;padding:3px 6px;text-align:right"></label>
+          <button onclick="qLclApplyBulk()" class="btn btn-ghost" style="font-size:11px;padding:3px 12px;color:#ff9f43;border-color:rgba(255,140,0,.45)">✓ ใช้กับทุกแถว</button>
+          <span id="q_lcl_warn" style="font-size:10px;font-family:var(--mono);color:var(--red)"></span>
+        </div>
         <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
 
@@ -1054,7 +1066,7 @@ body{font-size:14px;font-weight:450}
         <button id="quot_save_btn" onclick="qSave()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save</button>
         <button onclick="qGenerateEmail()" class="btn btn-gold" style="font-size:12px;padding:9px">✉️ Email</button>
         <button onclick="qCopyLine()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.3);color:#00b4d8">💬 Copy LINE</button>
-        <button onclick="exportRateSheetXLSX()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60">📊 Rate Sheet</button>
+        <button id="q_pdf_btn" onclick="exportRateSheetXLSX()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(39,174,96,.12);border:1px solid rgba(39,174,96,.3);color:#27ae60">📊 Rate Sheet</button>
         <button onclick="qExportExcelSheet()" class="btn btn-ghost" style="font-size:12px;padding:9px;background:rgba(16,124,65,.12);border:1px solid rgba(16,124,65,.35);color:#2ecc71">📗 Excel</button>
         <button onclick="qClear()" class="btn btn-ghost" style="font-size:12px;padding:9px">✕ Clear</button>
       </div>
@@ -2012,7 +2024,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   const pg=g('page-'+id); if(pg) pg.classList.add('active');
-  if(id==='quotation'){ try{ qFillTemplateSelect(); qLoadUserTemplates(); }catch(e){} }
+  if(id==='quotation'){ try{ qFillTemplateSelect(); qLoadUserTemplates(); qTypeChange(); }catch(e){} }
   document.querySelectorAll('.nav-tab').forEach(b=>{
     if(b.textContent.toLowerCase().includes(id.slice(0,4))||
        (id==='news'&&b.textContent.includes('News'))||
@@ -2097,17 +2109,124 @@ function vBadge(s){
 
 // ── Source badges ──────────────────────────────────────────
 function srcCls(s,r){
+  if(isLclRate(r)) return 'src-lcl';
   if(r && r.container_type==='REEFER') return 'src-reefer';
   if(s==='image_upload') return 'src-bullet';
   const m={FIX:'src-fix',FAK:'src-wwl',BULLET:'src-bullet',FOOD:'src-food','ISC-ME':'src-isc','MED':'src-isc','IA-EU':'src-iaeu',TP:'src-tp'};
   return m[s]||'src-import';
 }
 function srcLabel(s,r){
+  if(isLclRate(r)) return 'LCL';
   if(r && r.container_type==='REEFER') return 'RF';
   if(s==='image_upload') return 'BUL';
   const m={FIX:'FIX',FAK:'FAK',BULLET:'BUL',FOOD:'FOOD','ISC-ME':'ISC','MED':'MED','IA-EU':'IA-EU'};
   return m[s]||'OTHER';
 }
+// ── LCL helpers ────────────────────────────────────────────
+// เรท LCL เก็บเป็น "ต้นทุน USD/CBM (รวม LSS แล้ว)" ในช่อง cbm — ไม่ใช่ราคาขาย
+// ค่าติดลบ = REFUND (สายเรือคืนเงินให้เรา) ห้ามโชว์ลูกค้าเด็ดขาด
+function isLclRate(r){ return !!(r && (r.container_type==='LCL' || r.source==='LCL')); }
+window.isLclRate = isLclRate;
+function lclCost(r){ const v = parseFloat(r && r.cbm); return isNaN(v) ? null : v; }
+window.lclCost = lclCost;
+// ราคาขายต่อ CBM = ต้นทุน + กำไรที่ตั้งไว้ · ไม่ต่ำกว่าขั้นต่ำที่กำหนด (กันเรท refund ติดลบหลุดไปหาลูกค้า)
+function lclSell(cost, profit, floor){
+  const c = parseFloat(cost)||0, p = parseFloat(profit)||0;
+  const f = (floor==null || floor==='') ? null : parseFloat(floor);
+  let s = c + p;
+  if(f!=null && !isNaN(f) && s < f) s = f;
+  return Math.round(s*100)/100;
+}
+window.lclSell = lclSell;
+
+// ════════════════════════════════════════════════════════════
+// LCL RATES — เรทเหมาส่วน (USD/CBM, W/M min 1)
+// ที่มา: GRANDLINK LOGISTICS "DIRECT ROUTING SERVICES" 1-14 AUG 2026
+// สำคัญ: ตัวเลขในคลัง = "ต้นทุน" ที่รวม LSS แล้ว · ค่าติดลบ = REFUND (ได้เงินคืน)
+//        ห้ามโชว์ลูกค้าตรงๆ — ต้องผ่านช่อง +Profit ในหน้า Quotation ก่อนเสมอ
+// ════════════════════════════════════════════════════════════
+const LCL_SEED_GZ =
+  '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';
+
+async function _lclUnpack(){
+  const bin = Uint8Array.from(atob(LCL_SEED_GZ), c=>c.charCodeAt(0));
+  let txt;
+  if(typeof DecompressionStream!=='undefined'){
+    const ds = new DecompressionStream('gzip');
+    const blob = new Blob([bin]).stream().pipeThrough(ds);
+    txt = await new Response(blob).text();
+  } else if(window.pako){ txt = window.pako.ungzip(bin, {to:'string'}); }
+  else throw new Error('เบราว์เซอร์นี้แตกไฟล์ gzip ไม่ได้');
+  return JSON.parse(txt);
+}
+
+// แปลง seed → แถวเรทมาตรฐานของคลัง
+function _lclExpand(d){
+  const K = d.k, idx = {}; K.forEach((k,i)=> idx[k]=i);
+  return d.r.map(row=>{
+    const g = k => row[idx[k]];
+    return {
+      carrier: g('carrier'), source:'LCL', container_type:'LCL',
+      pol: d.pol, pod: g('pod'), del:'',
+      gp20:0, gp40:0, hc40:0, rf20:0, rf40:0,
+      cbm: g('cbm'), cbm_base: g('cbm_base'), lss: g('lss'),
+      is_refund: (+g('cbm') < 0),
+      ft: g('ft'), etd_cfs: g('etd_cfs'), country: g('country'), routing: g('routing'),
+      commodity:'', validity: d.validity, date_from: d.from, date_to: d.to,
+      valid_status: (typeof calcStatus==='function' ? calcStatus(d.from,d.to) : 'active'),
+      vendor: d.vendor, remark: g('remark'), sheet:'LCL'
+    };
+  });
+}
+
+// โหลดเข้าคลัง — ทับของเดิมที่ carrier+pod ซ้ำ (ไม่สร้างซ้ำ)
+window.lclLoadSeed = async function(silent){
+  try{
+    const d = await _lclUnpack();
+    const rows = _lclExpand(d);
+    const key = r => (String(r.carrier||'').toUpperCase()+'|'+String(r.pod||'').toUpperCase()+'|LCL');
+    const cur = (window.ALL_RATES||[]).slice();
+    const pos = new Map();
+    cur.forEach((r,i)=>{ if(isLclRate(r)) pos.set(key(r), i); });
+    let add=0, upd=0;
+    rows.forEach(r=>{
+      const k = key(r);
+      if(pos.has(k)){ cur[pos.get(k)] = r; upd++; }
+      else { cur.push(r); pos.set(k, cur.length-1); add++; }
+    });
+    window.ALL_RATES = cur;
+    try{ buildFilters(); applyFilter(); markRatesLoaded(); storageSave(); }catch(e){}
+    const msg = '🧊 เรท LCL '+d.validity+' — เพิ่ม '+add+' / อัปเดต '+upd+' (ต้นทุน USD/CBM รวม LSS)';
+    if(!silent) toast(msg);
+    return {add, upd, total: rows.length};
+  }catch(e){
+    if(!silent) toast('❌ โหลดเรท LCL ไม่สำเร็จ: '+e.message);
+    return null;
+  }
+};
+// เผยแพร่เรท LCL ให้ทุก account (ต้องโหลดเข้าคลังก่อน)
+window.lclPublish = async function(){
+  const n = (window.ALL_RATES||[]).filter(isLclRate).length;
+  if(!n) return toast('ยังไม่มีเรท LCL ในคลัง — กด "🧊 โหลดเรท LCL" ก่อน');
+  if(typeof publishRatesToShared!=='function') return toast('❌ ไม่พบฟังก์ชัน publish');
+  return publishRatesToShared('LCL GRANDLINK 1-14 AUG 2026', true);
+};
 
 // ── File handling ──────────────────────────────────────────
 function toggleUpload(){const p=g('upload_panel');if(p)p.style.display=p.style.display==='none'?'block':'none';}
@@ -2733,20 +2852,31 @@ function renderTable(filtered){
     const commTag = r.commodity
       ? `<div style="font-size:9px;color:#8a6d00;background:rgba(183,128,10,.14);border:1px solid rgba(183,128,10,.35);border-radius:4px;padding:1px 6px;margin-top:3px;font-weight:700;white-space:nowrap;display:inline-block" title="${(r.remark||'ใช้กับ commodity นี้เท่านั้น').replace(/"/g,'&quot;')}">🏷 ${r.commodity}</div>`
       : '';
+    // LCL = ต้นทุน USD/CBM (รวม LSS แล้ว) · ค่าติดลบ = REFUND ได้เงินคืน — ภายในเท่านั้น
+    const _lcl = isLclRate(r);
+    const _c   = _lcl ? lclCost(r) : null;
+    const _lclCell = !_lcl ? '' : (_c==null ? '—'
+      : (_c < 0
+          ? `<span style="color:#ff9f43;font-weight:700" title="REFUND — สายเรือคืนเงินให้เรา $${Math.abs(_c)}/CBM · ห้ามโชว์ลูกค้า">↩ $${Math.abs(_c).toLocaleString()}</span>`
+          : `<span style="color:var(--green);font-weight:700">$${_c.toLocaleString()}</span>`));
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span>${fixRemark}${commTag}</td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pol||'—'}</td>
     <td style="font-family:var(--mono);font-size:11px">${r.pod||'—'}</td>
     <td style="font-family:var(--mono);font-size:10px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.del||'—'}</td>
-    <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${isReefer?'var(--cyan)':'var(--muted)'}">
-      ${isReefer?'❄️ RF':'📦 DRY'}
+    <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${_lcl?'#ff9f43':(isReefer?'var(--cyan)':'var(--muted)')}">
+      ${_lcl?'🧊 LCL':(isReefer?'❄️ RF':'📦 DRY')}
     </td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
+    ${_lcl ? `<td colspan="5" style="text-align:center;font-family:var(--mono);font-size:11px">
+       ${_lclCell} <span style="color:var(--muted);font-size:9px">/CBM (cost, incl LSS)</span>
+       ${r.etd_cfs?`<span style="color:var(--muted);font-size:9px;margin-left:6px">ETD/CFS ${r.etd_cfs}</span>`:''}
+       ${r.routing&&r.routing!=='DIRECT'?`<span style="color:var(--gold);font-size:9px;margin-left:6px">T/S</span>`:''}</td>`
+     : `<td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.gp40?'$'+r.gp40.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.hc40?'$'+r.hc40.toLocaleString():'—'}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--cyan);font-weight:600">${r.rf20?'$'+r.rf20.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--cyan)">${r.rf40?'$'+r.rf40.toLocaleString():'—'}</td>`}
     <td style="text-align:center;font-size:10px;font-family:var(--mono);color:${r.ft?'var(--gold)':'var(--muted)'};white-space:nowrap">${ftText(r)||'—'}</td>
     <td style="font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap">${vDate(r.date_from,r.date_to,r.validity)}</td>
     <td>${vBadge(liveStat(r))}</td>
@@ -6612,13 +6742,18 @@ function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier=
   qPreview();
 }
 
+// โหมด LCL ของหน้า Quotation
+function qIsLCL(){ return ((document.getElementById('q_type')||{}).value)==='LCL'; }
+window.qIsLCL = qIsLCL;
+
 function qRenderRateRows(){
   const body = document.getElementById('q_rate_body');
   if(!body) return;
   if(!qRateRows.length){
-    body.innerHTML = '<tr><td colspan="7" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
+    body.innerHTML = '<tr><td colspan="16" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
     return;
   }
+  if(qIsLCL()){ return qRenderRateRowsLCL(body); }
   body.innerHTML = qRateRows.map(row => `
     <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}" title="${row.na?'ไม่พบเรทที่ยัง valid ในคลังเรท → N/A':''}">
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ZIM"
@@ -6662,6 +6797,60 @@ function qRenderRateRows(){
         style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
     </tr>`).join('');
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
+}
+
+// ── ตารางเรทแบบ LCL — คอลัมน์ตามใบเรท Grandlink ───────────────
+// cost = ต้นทุน/CBM (รวม LSS แล้ว, ติดลบ = refund) · profit = กำไรที่บวก
+// ช่อง SELL ที่ออกไปหาลูกค้า = cost + profit แต่ไม่ต่ำกว่า Min (กันเรท refund ติดลบหลุด)
+function qRenderRateRowsLCL(body){
+  body.innerHTML = qRateRows.map(row=>{
+    const cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
+    const sell = row.na ? null : lclSell(cost, row.profit, row.minSell);
+    const refund = cost!=null && cost < 0;
+    return `
+    <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}">
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ONE"
+        oninput="qUpdateRate(${row.id},'carrier',this.value)" style="font-size:11px;padding:3px 6px;color:var(--accent2);width:88px">
+        ${row.country?`<div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:2px">${row.country}</div>`:''}</td>
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pol||''}" placeholder="Laem Chabang"
+        oninput="qUpdateRate(${row.id},'pol',this.value)" style="font-size:11px;padding:3px 6px;width:100px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.pod||''}" placeholder="e.g. Los Angeles"
+        oninput="qUpdateRate(${row.id},'pod',this.value)" style="font-size:11px;padding:3px 6px;width:130px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="—"
+        oninput="qUpdateRate(${row.id},'del',this.value)" style="font-size:11px;padding:3px 6px;width:90px;color:var(--muted)"></td>
+
+      <td style="padding:3px 4px" title="ต้นทุนต่อ CBM (รวม LSS แล้ว) — ภายในเท่านั้น ไม่ออกไปหาลูกค้า">
+        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="cost" class="inp" value="${row.cost==null?'':row.cost}" placeholder="cost"
+          oninput="qUpdateRate(${row.id},'cost',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:${refund?'#ff9f43':'var(--muted)'};width:66px">
+        ${refund?'<div style="font-size:8px;color:#ff9f43;font-family:var(--mono);text-align:right">↩ refund</div>':''}</td>
+
+      <td style="padding:3px 4px" title="กำไรที่บวกต่อ CBM">
+        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="profit" class="inp" value="${row.profit||''}" placeholder="+0"
+          oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:56px"></td>
+
+      <td style="padding:3px 4px" title="ราคาขั้นต่ำต่อ CBM — ถ้า cost+profit ต่ำกว่านี้จะยกขึ้นมาเท่านี้ (กันเรท refund ติดลบหลุดไปหาลูกค้า)">
+        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="minSell" class="inp" value="${row.minSell==null?'':row.minSell}" placeholder="min"
+          oninput="qUpdateRate(${row.id},'minSell',this.value);qUpdateRateDisplay(${row.id})"
+          style="font-size:11px;padding:3px 6px;text-align:right;color:var(--muted);width:52px"></td>
+
+      <td style="padding:3px 4px;text-align:right" title="ราคาที่ลูกค้าจะเห็น">
+        <span id="lclsell_${row.id}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${row.na?'var(--red)':'var(--green)'}">
+          ${row.na?'N/A':(sell==null?'—':'$'+sell.toLocaleString())}</span>
+        <div style="font-size:8px;color:var(--muted);font-family:var(--mono)">/CBM</div></td>
+
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="tt" class="inp" value="${row.tt||''}" placeholder="30"
+        oninput="qUpdateRate(${row.id},'tt',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:52px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="etdCfs" class="inp" value="${row.etdCfs||''}" placeholder="SUN/FRI"
+        oninput="qUpdateRate(${row.id},'etdCfs',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:72px"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="routing" class="inp" value="${row.routing||''}" placeholder="DIRECT"
+        oninput="qUpdateRate(${row.id},'routing',this.value)" style="font-size:10px;padding:3px 6px;text-align:center;width:82px;color:var(--muted)"></td>
+      <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="valid" class="inp" value="${row.valid||''}" placeholder="1-14 AUG 2026"
+        oninput="qUpdateRate(${row.id},'valid',this.value)" style="font-size:11px;padding:3px 6px;color:var(--gold);width:100px"></td>
+      <td style="padding:3px 4px;text-align:center"><button onclick="qRemoveRate(${row.id})"
+        style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
+    </tr>`;}).join('');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -7540,8 +7729,69 @@ window.qSrcPickApply = function(){
   toast('✓ ใช้ชุดเรทที่เลือกแล้ว — ป้าย FIX/FAK แสดงเฉพาะในระบบ');
 };
 
+// ── Sync เรท LCL ────────────────────────────────────────────
+// ดึง "ต้นทุน/CBM" จากคลัง (เฉพาะแถว source LCL ที่ยัง valid) ไม่ใช่ราคาขาย
+function qFindLclRate(row, fallbackPol){
+  const pool = (window.ALL_RATES||[]).filter(isLclRate);
+  const pol  = row.pol || fallbackPol || '';
+  let res = pool.filter(r=>{
+    if(!_qRateValid(r)) return false;
+    if(!_qPortMatch(r.pod, row.pod)) return false;
+    if(pol && !_qPortMatch(r.pol, pol)) return false;
+    return true;
+  });
+  if(String(row.carrier||'').trim()){
+    const want = _qKey(row.carrier);
+    res = res.filter(r=> _qKey(r.carrier).includes(want) || want.includes(_qKey(r.carrier)));
+  }
+  res.sort((a,b)=> (lclCost(a)==null?Infinity:lclCost(a)) - (lclCost(b)==null?Infinity:lclCost(b)));
+  return res[0] || null;
+}
+window.qSyncRatesLCL = function(){
+  const pool = (window.ALL_RATES||[]).filter(isLclRate);
+  if(!pool.length){
+    toast('คลังยังไม่มีเรท LCL — ไปหน้า Rates กด "🧊 โหลดเรท LCL" ก่อน');
+    return;
+  }
+  const fallbackPol = (document.getElementById('q_pol')||{}).value || 'Laem Chabang';
+  let hit=0, na=0, skip=0; const naList=[], refunds=[];
+  qRateRows.forEach(row=>{
+    row._synced = true;
+    if(!row.pod || !String(row.pod).trim()){ skip++; return; }
+    const r = qFindLclRate(row, fallbackPol);
+    if(!r){
+      row.na = true; row.cost=''; row.valid='N/A'; row.tt=''; row.etdCfs=''; row.routing='';
+      na++; naList.push(row.pod); return;
+    }
+    row.na = false;
+    if(!row.carrier) row.carrier = r.carrier || '';
+    if(!row.pol)     row.pol     = r.pol || fallbackPol;
+    row.cost    = lclCost(r);
+    row.tt      = r.ft || row.tt || '';
+    row.etdCfs  = r.etd_cfs || '';
+    row.routing = r.routing || 'DIRECT';
+    row.country = r.country || '';
+    row._costRemark = r.remark || '';
+    row._src    = 'LCL';
+    const vt = _qValidText(r); if(vt) row.valid = vt;
+    if(row.cost < 0) refunds.push(row.pod);
+    hit++;
+  });
+  qRenderRateRows(); qLclCheck(); qPreview();
+  const info = document.getElementById('q_sync_info');
+  if(info){
+    info.innerHTML = `🧊 sync LCL แล้ว · <span style="color:var(--green)">อัปเดต ${hit}</span>`+
+      (na?` · <span style="color:var(--red)">N/A ${na} (${naList.slice(0,4).join(' · ')}${naList.length>4?' …':''})</span>`:'')+
+      (skip?` · ข้าม ${skip} แถวที่ยังไม่ใส่ POD`:'')+
+      (refunds.length?` · <span style="color:#ff9f43">↩ ${refunds.length} เส้นเป็น REFUND — อย่าลืมตั้ง Min ก่อนส่งลูกค้า (${refunds.slice(0,3).join(', ')}${refunds.length>3?' …':''})</span>`:'')+
+      ` · จากคลัง LCL ${pool.length} เรท · <span style="color:var(--muted)">ตัวเลข COST = ต้นทุน ห้ามส่งออกไปตรงๆ</span>`;
+  }
+  toast('🧊 Sync LCL — อัปเดต '+hit+' / N/A '+na+(refunds.length?(' · refund '+refunds.length+' เส้น'):''));
+};
+
 window.qSyncRates = function(){
   if(!qRateRows.length) return toast('ยังไม่มีแถวให้ sync — กด "+ Add POD / Rate" ก่อน');
+  if(qIsLCL()) return window.qSyncRatesLCL();
   const pool = window.ALL_RATES || [];
   if(!pool.length) return toast('คลังเรทยังไม่โหลด ลองรีเฟรชหน้าอีกครั้ง');
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
@@ -7595,7 +7845,9 @@ function qUpdateRate(id, field, val){
   if(!row) return;
   row[field] = val;
   // พิมพ์ราคาเองทับ N/A → ถือว่าไม่ใช่ N/A แล้ว
-  if((field==='r20'||field==='r40'||field==='r4h') && val && !isNaN(parseFloat(val))) row.na = false;
+  if((field==='r20'||field==='r40'||field==='r4h'||field==='cost') && val && !isNaN(parseFloat(val))) row.na = false;
+  // โหมด LCL: แก้ cost / profit / min แล้วอัปเดตราคาขายทันที ไม่ต้องไปยุ่งคลัง
+  if(qIsLCL() && (field==='cost'||field==='profit'||field==='minSell')){ qLclCheck(); qPreview(); return; }
   // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
   if(field==='carrier' || field==='pol' || field==='pod' || field==='del'){
     row.src = '';                                    // เส้นทาง/สายเรือเปลี่ยน → เลือกประเภทเรทใหม่
@@ -7625,6 +7877,20 @@ window.qRefreshRowRate = function(id, mode){
   const row = qRateRows.find(r=>r.id===id);
   if(!row) return;
   if(!row._synced && !row.na) return;             // แถวที่กรอกเรทเองล้วนๆ ไม่ไปยุ่ง
+  if(qIsLCL()){                                   // โหมด LCL — เช็คกับคลัง LCL
+    const pod0 = String(row.pod||'').trim();
+    if(!pod0){ row.na=true; row.cost=''; row.valid='N/A'; qRenderRateRows(); qPreview(); return; }
+    const r = qFindLclRate(row, (document.getElementById('q_pol')||{}).value || 'Laem Chabang');
+    if(!r){ row.na=true; row.cost=''; row.valid='N/A'; row.tt=''; row.etdCfs=''; row.routing=''; }
+    else{
+      row.na=false;
+      if(!row.carrier) row.carrier = r.carrier||'';
+      row.cost = lclCost(r); row.tt = r.ft||''; row.etdCfs = r.etd_cfs||'';
+      row.routing = r.routing||'DIRECT'; row.country = r.country||'';
+      const vt0 = _qValidText(r); if(vt0) row.valid = vt0;
+    }
+    qRenderRateRows(); qPreview(); return;
+  }
   const pod = String(row.pod||'').trim();
   if(!pod){                                        // ลบ POD ทิ้ง = ล้างเป็น N/A
     row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A';
@@ -7649,6 +7915,21 @@ window.qRefreshRowRate = function(id, mode){
 function qUpdateRateDisplay(id){
   const row = qRateRows.find(r=>r.id===id);
   if(!row) return;
+  // โหมด LCL — คำนวณราคาขาย/CBM ใหม่ (cost + profit แต่ไม่ต่ำกว่า Min)
+  const lclEl = document.getElementById('lclsell_'+id);
+  if(lclEl){
+    const cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
+    if(row.na || cost==null || isNaN(cost)){
+      lclEl.textContent = row.na ? 'N/A' : '—';
+      lclEl.style.color = row.na ? 'var(--red)' : 'var(--muted)';
+    }else{
+      const s = lclSell(cost, row.profit, row.minSell);
+      lclEl.textContent = '$'+s.toLocaleString();
+      lclEl.style.color = s<=0 ? 'var(--red)' : 'var(--green)';
+      lclEl.title = s<=0 ? '⚠ ราคาขาย ≤ 0 — ตั้งช่อง Min ก่อนส่งลูกค้า' : '';
+    }
+    return;
+  }
   const el = document.getElementById('eff_'+id);
   if(!el) return;
   const p   = parseFloat(row.profit)||0;
@@ -7715,15 +7996,74 @@ function qRemoveLocal(id){
 
 function qRecalc(){ qPreview(); }
 
-// LCL/FCL toggle for quotation: relabel rate column + rebuild preview
+// LCL/FCL toggle for quotation: สลับหัวตาราง + คอลัมน์ทั้งชุด แล้ว re-render
+let _qHeadFCL = null;
+const Q_LCL_HEAD = [
+  ['Carrier','left','var(--muted)',80],
+  ['POL','left','var(--muted)',100],
+  ['POD','left','var(--muted)',130],
+  ['DEL','left','var(--muted)',90],
+  ['COST/CBM','right','#ff9f43',70],
+  ['+ Profit','right','var(--gold)',58],
+  ['Min','right','var(--muted)',54],
+  ['SELL /CBM','right','var(--green)',82],
+  ['T/T','center','var(--muted)',52],
+  ['ETD/CFS','center','var(--muted)',74],
+  ['ROUTING','center','var(--muted)',84],
+  ['Valid Date','left','var(--gold)',100],
+  ['','left','var(--muted)',28],
+];
 window.qTypeChange = function(){
-  const isLCL = ((document.getElementById('q_type')||{}).value)==='LCL';
-  const col = document.getElementById('q_col_rate');
-  if(col) col.textContent = isLCL ? 'USD / CBM' : '20 GP';
+  const isLCL = qIsLCL();
+  const head  = document.getElementById('q_rate_head');
+  if(head){
+    if(_qHeadFCL === null) _qHeadFCL = head.innerHTML;         // เก็บหัวตาราง FCL ไว้ครั้งแรก
+    head.innerHTML = isLCL
+      ? '<tr style="border-bottom:1px solid var(--border)">' + Q_LCL_HEAD.map(c=>
+          `<th style="text-align:${c[1]};padding:5px 8px;color:${c[2]};font-size:10px;font-family:var(--mono);min-width:${c[3]}px">${c[0]}</th>`).join('') + '</tr>'
+      : _qHeadFCL;
+  }
   const title = document.getElementById('q_rate_title');
-  if(title) title.textContent = isLCL ? '📦 Sell Rates (USD / CBM — LCL · W/M min 1)' : '📦 Sell Rates (USD)';
+  if(title) title.textContent = isLCL
+    ? '🧊 LCL Rates (USD / CBM — W/M min 1 CBM) · COST เห็นเฉพาะภายใน'
+    : '📦 Sell Rates (USD)';
+  const pdfBtn = document.getElementById('q_pdf_btn');
+  if(pdfBtn) pdfBtn.textContent = isLCL ? '📄 LCL Rate Sheet' : '📊 Rate Sheet';
+  const bulk = document.getElementById('q_lcl_bulk');
+  if(bulk) bulk.style.display = isLCL ? 'flex' : 'none';
+  qRenderRateRows();
+  qLclCheck();
   qPreview();
 };
+
+// ตั้งกำไร / ราคาขั้นต่ำ ให้ทุกแถวรวดเดียว
+window.qLclApplyBulk = function(){
+  const p = (document.getElementById('q_lcl_profit_all')||{}).value;
+  const m = (document.getElementById('q_lcl_min_all')||{}).value;
+  if(!String(p).trim() && !String(m).trim()) return toast('ใส่กำไรหรือราคาขั้นต่ำก่อนครับ');
+  qRateRows.forEach(r=>{
+    if(String(p).trim()!=='') r.profit  = p;
+    if(String(m).trim()!=='') r.minSell = m;
+  });
+  qRenderRateRows(); qLclCheck(); qPreview();
+  toast('✓ ตั้งค่าให้ '+qRateRows.length+' แถวแล้ว');
+};
+
+// เตือนถ้ายังมีแถวที่ราคาขายออกไปแล้ว ≤ 0 (มักเกิดกับเส้นทาง REFUND)
+function qLclCheck(){
+  const el = document.getElementById('q_lcl_warn');
+  if(!el) return;
+  if(!qIsLCL()){ el.textContent=''; return; }
+  const bad = qRateRows.filter(r=>{
+    const c = (r.cost===''||r.cost==null) ? null : parseFloat(r.cost);
+    if(r.na || c==null || isNaN(c)) return false;
+    return lclSell(c, r.profit, r.minSell) <= 0;
+  });
+  el.textContent = bad.length
+    ? '⚠ '+bad.length+' แถวราคาขาย ≤ 0 ('+bad.slice(0,3).map(r=>r.pod).join(', ')+(bad.length>3?' …':'')+') — ใบเสนอราคาจะขึ้น ON REQUEST'
+    : '';
+}
+window.qLclCheck = qLclCheck;
 
 function qFilterRates(){
   const car = (document.getElementById('q_f_carrier')?.value||'').toLowerCase();
@@ -7818,9 +8158,18 @@ function qBuildEmail(){
       const _b20=parseFloat(row.r20)||0, _b40=parseFloat(row.r40)||0, _b4h=parseFloat(row.r4h)||0;
       const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
       if(isLCL){
-        if(!r20) return;
-        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
-        lines.push(`  USD ${r20.toLocaleString()} / CBM (W/M, min 1 CBM)`);
+        // LCL: ราคาที่ส่งลูกค้า = cost + profit (ไม่ต่ำกว่า Min) — ห้ามใช้ตัวเลข cost ตรงๆ
+        const _cost = (row.cost===''||row.cost==null) ? null : parseFloat(row.cost);
+        const _na   = row.na || _cost==null || isNaN(_cost);
+        const _sell = _na ? null : lclSell(_cost, row.profit, row.minSell);
+        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}${String(row.routing||'').toUpperCase().indexOf('TRANSHIP')>=0?' (T/S)':''}`);
+        if(_na)              lines.push('  N/A');
+        else if(_sell<=0)    lines.push('  ON REQUEST');
+        else                 lines.push(`  USD ${_sell.toLocaleString()} / CBM (W/M, min 1 CBM, incl. LSS)`);
+        const meta=[];
+        if(!_na && row.tt)     meta.push('T/T '+row.tt+' days');
+        if(!_na && row.etdCfs) meta.push('ETD/CFS '+row.etdCfs);
+        if(meta.length) lines.push('  '+meta.join(' · '));
         if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
         lines.push('');
         return;
@@ -8074,7 +8423,210 @@ window.qExportExcelSheet = async function(){
   toast('📗 Export Excel แล้ว — '+rows.length+' ปลายทาง'+(styled?'':' (โหลดสีไม่ได้ ออกเป็นตารางเปล่า)'));
 };
 
+// ════════════════════════════════════════════════════════════
+// LCL RATE SHEET (PDF) — เลย์เอาต์แบบใบเรท "DIRECT ROUTING SERVICES"
+// หัวกระดาษ/โลโก้ = ชุดเดียวกับ Rate Sheet FCL
+// โชว์เฉพาะ "ราคาขาย" (cost + profit, ไม่ต่ำกว่า Min) — ต้นทุน/REFUND ไม่หลุดออกไป
+// ════════════════════════════════════════════════════════════
+window.qExportLclPdf = function(){
+  if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
+  const { jsPDF } = window.jspdf;
+  const get = id => (document.getElementById(id)||{}).value||'';
+  const cust    = get('q_customer') || 'Customer';
+  const polG    = get('q_pol') || 'LAEM CHABANG, THAILAND';
+  const inco    = get('q_incoterm')||'';
+  const comm    = get('q_commodity')||'';
+  const validG  = get('q_valid')||'';
+  const subjto  = get('q_subjto')||'';
+  const remarks = qStripEx(get('q_remarks')||'');
+  const today   = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+  const rows = (qRateRows||[]).filter(r=> String(r.pod||'').trim());
+  if(!rows.length){ toast('ยังไม่มีแถวเรท — กด "+ Add POD / Rate" ก่อน'); return; }
+
+  // จัดกลุ่มตามประเทศ (เหมือนใบเรทต้นฉบับ) · แถวที่ไม่รู้ประเทศไปอยู่ท้ายสุด
+  const groups = new Map();
+  rows.forEach(r=>{
+    const k = (r.country || 'OTHER DESTINATION').toUpperCase();
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  });
+  const order = [...groups.keys()].sort((a,b)=>
+    (a==='OTHER DESTINATION') - (b==='OTHER DESTINATION') || a.localeCompare(b));
+
+  const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+  const W=210, H=297, LM=12, RM=198, TW=RM-LM;
+  const BLK=[30,30,30], WHITE=[255,255,255], NAVY=[26,82,118], DKGRAY=[55,71,79];
+  const LGRAY=[242,242,242], MUTED=[120,120,120], GREEN=[26,120,66], RED=[192,57,43];
+
+  function T(t,x,yy,sz,bold,col,align){
+    doc.setFontSize(sz||9); doc.setFont('helvetica',bold?'bold':'normal');
+    doc.setTextColor(...(col||BLK)); doc.text(String(t==null?'':t),x,yy,{align:align||'left'});
+  }
+  const fillR=(x,yy,w,h,c)=>{doc.setFillColor(...c);doc.rect(x,yy,w,h,'F');};
+  const strokeR=(x,yy,w,h,c,lw)=>{doc.setDrawColor(...(c||[210,210,210]));doc.setLineWidth(lw||0.2);doc.rect(x,yy,w,h,'S');};
+
+  let y = 12;
+
+  /* ── HEADER (ชุดเดียวกับ Rate Sheet FCL) ── */
+  function header(){
+    const HDR_H = 30;
+    fillR(LM, y, TW, HDR_H, NAVY);
+    const LOGO_W = HDR_H*(5/3);
+    fillR(LM, y, LOGO_W, HDR_H, WHITE);
+    try{ doc.addImage(WWL_LOGO_B64, 'JPEG', LM+1, y+1, LOGO_W-2, HDR_H-2); }catch(e){}
+    const TX = LM + LOGO_W + 6;
+    T('LCL RATE SHEET', TX, y+11, 14, true, WHITE);
+    T(cust.toUpperCase(), TX, y+19, 8.5, false, [180,215,255]);
+    T(today, TX, y+25.5, 7.5, false, [150,200,255]);
+    T('W/M · MIN 1 CBM', RM-2, y+11, 8, true, [150,200,255], 'right');
+    y += HDR_H + 5;
+  }
+  header();
+
+  /* ── บรรทัดสรุปเงื่อนไข ── */
+  T('DIRECT ROUTING SERVICES  —  LCL CONSOLIDATION', LM, y+3, 9.5, true, NAVY);
+  y += 7;
+  const sub = [];
+  sub.push('POL: '+polG);
+  if(validG) sub.push('Tariff effective: '+validG);
+  if(inco)   sub.push('Incoterm: '+inco);
+  if(comm)   sub.push('Commodity: '+comm);
+  doc.setFontSize(7.8); doc.setFont('helvetica','normal'); doc.setTextColor(...MUTED);
+  doc.splitTextToSize(sub.join('   |   '), TW).forEach(ln=>{ doc.text(ln, LM, y+3); y+=4; });
+  if(remarks){
+    doc.setTextColor(...MUTED);
+    doc.splitTextToSize('Note: '+remarks, TW).forEach(ln=>{ doc.text(ln, LM, y+3); y+=4; });
+  }
+  y += 4;
+
+  /* ── ตาราง ── */
+  const COLS = [
+    {label:'PORT OF DESTINATION', w:70, align:'left'},
+    {label:'RATE (USD/CBM)',      w:32, align:'right'},
+    {label:'T/T (DAYS)',          w:22, align:'center'},
+    {label:'ETD / CFS',           w:28, align:'center'},
+    {label:'CARRIER',             w:34, align:'center'},
+  ];
+  const ROW_H = 5.6, HD_H = 6.2, GRP_H = 6.0;
+
+  function colHead(){
+    fillR(LM, y, TW, HD_H, DKGRAY);
+    let cx = LM;
+    COLS.forEach(c=>{
+      T(c.label, c.align==='right'?cx+c.w-2 : c.align==='center'?cx+c.w/2 : cx+2,
+        y+4.3, 7, true, WHITE, c.align==='center'?'center':c.align);
+      cx += c.w;
+    });
+    y += HD_H;
+  }
+  function pageBreak(need){
+    if(y + (need||ROW_H) <= H-24) return false;
+    doc.addPage(); y = 12; header(); colHead(); return true;
+  }
+
+  colHead();
+  let naCount = 0, shown = 0;
+  order.forEach(gname=>{
+    pageBreak(GRP_H + ROW_H*2);
+    // แถบชื่อประเทศ
+    fillR(LM, y, TW, GRP_H, [225,236,245]);
+    strokeR(LM, y, TW, GRP_H, [190,208,224], 0.2);
+    T(gname, LM+2.5, y+4.2, 7.6, true, NAVY);
+    y += GRP_H;
+
+    groups.get(gname).sort((a,b)=>String(a.pod||'').localeCompare(String(b.pod||''))).forEach((r,ri)=>{
+      pageBreak();
+      const cost = (r.cost===''||r.cost==null) ? null : parseFloat(r.cost);
+      const na   = r.na || cost==null || isNaN(cost);
+      const sell = na ? null : lclSell(cost, r.profit, r.minSell);
+      const bad  = sell!=null && sell<=0;                     // กันเรทติดลบหลุด
+      if(na) naCount++; else shown++;
+
+      const bg = na ? [244,244,244] : (ri%2===0 ? WHITE : LGRAY);
+      fillR(LM, y, TW, ROW_H, bg);
+      strokeR(LM, y, TW, ROW_H, [225,225,225], 0.15);
+
+      const ts = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
+      const cells = [
+        (r.pod||'') + (r.del? ' / '+r.del : '') + (ts?'  (T/S)':''),
+        na ? 'N/A' : (bad ? 'ON REQUEST' : 'USD '+sell.toLocaleString()),
+        na ? 'N/A' : (r.tt||'-'),
+        na ? 'N/A' : (r.etdCfs||'-'),
+        na ? 'N/A' : (r.carrier||'-'),
+      ];
+      let cx = LM;
+      cells.forEach((v,i)=>{
+        const c = COLS[i];
+        const col = na ? MUTED : (i===1 ? (bad?RED:GREEN) : BLK);
+        T(v, c.align==='right'?cx+c.w-2 : c.align==='center'?cx+c.w/2 : cx+2,
+          y+3.9, i===1?7.6:7.2, i===1, col, c.align==='center'?'center':c.align);
+        cx += c.w;
+      });
+      y += ROW_H;
+    });
+  });
+
+  /* ── LOCAL CHARGES ── */
+  const lc = (qLocalRows||[]).filter(x=>x.name && x.rate);
+  if(lc.length){
+    pageBreak(12 + lc.length*ROW_H);
+    y += 5;
+    fillR(LM, y, TW, HD_H, DKGRAY);
+    T('LOCAL CHARGES', LM+2, y+4.3, 7, true, WHITE);
+    T('RATE', LM+112, y+4.3, 7, true, WHITE, 'right');
+    T('UNIT', LM+120, y+4.3, 7, true, WHITE);
+    y += HD_H;
+    lc.forEach((x,i)=>{
+      pageBreak();
+      fillR(LM,y,TW,ROW_H, i%2===0?WHITE:LGRAY);
+      strokeR(LM,y,TW,ROW_H,[225,225,225],0.15);
+      T(x.name, LM+2, y+3.9, 7.2, false, BLK);
+      T(String(x.rate), LM+112, y+3.9, 7.2, true, GREEN, 'right');
+      T(x.unit||'', LM+120, y+3.9, 7.2, false, MUTED);
+      y += ROW_H;
+    });
+  }
+
+  /* ── เงื่อนไขท้ายใบ ── */
+  const terms = [
+    'Rate is per CBM on W/M basis, minimum 1 CBM, and already includes LSS.',
+    'Rate is subject to space availability and vessel schedule at time of booking.',
+    'Rate excludes local charges at destination, customs clearance, duty, tax and inland haulage unless stated above.',
+    'Dangerous goods, personal effects, reefer and out-of-gauge cargo are quoted separately.',
+    'Transit time (T/T) is an estimate from the carrier and is not guaranteed.',
+  ];
+  if(subjto) terms.unshift('Subject to '+subjto+'.');
+  if(order.some(k=>groups.get(k).some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0)))
+    terms.push('Ports marked (T/S) are served via transhipment.');
+  pageBreak(10 + terms.length*3.6);
+  y += 6;
+  T('TERMS & CONDITIONS', LM, y, 7.5, true, NAVY);
+  y += 3.4;
+  doc.setFontSize(6.8); doc.setFont('helvetica','normal'); doc.setTextColor(...MUTED);
+  terms.forEach(t=>{
+    doc.splitTextToSize('•  '+t, TW).forEach(ln=>{ doc.text(ln, LM, y+2.6); y+=3.2; });
+  });
+
+  /* ── footer ทุกหน้า ── */
+  const pages = doc.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    doc.setPage(p);
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.2); doc.line(LM,H-14,RM,H-14);
+    T('WORLDWIDE LOGISTICS SERVICES (THAILAND) CO., LTD.', LM, H-10, 6.8, true, MUTED);
+    T('Page '+p+' / '+pages, RM, H-10, 6.8, false, MUTED, 'right');
+  }
+
+  const fname = 'LCL_RATE_'+cust.replace(/[^\w]+/g,'_').toUpperCase()+'_'+today.replace(/ /g,'')+'.pdf';
+  doc.save(fname);
+  toast('📄 LCL Rate Sheet — '+shown+' เส้นทาง'+(naCount?(' · N/A '+naCount):'')+' · '+order.length+' ประเทศ');
+};
+
+// โลโก้ WWL (ใช้ร่วมกันทั้ง Rate Sheet FCL และ LCL)
+const WWL_LOGO_B64 = 'data:image/jpeg;base64,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';
+
 window.exportRateSheetXLSX = function(){
+  if(typeof qIsLCL==='function' && qIsLCL()) return window.qExportLclPdf();
   if(!window.jspdf){ toast('⏳ jsPDF loading… retry'); return; }
   const { jsPDF } = window.jspdf;
 
@@ -8123,7 +8675,7 @@ window.exportRateSheetXLSX = function(){
   // Logo — fill entire left section of banner with white, then draw logo
   const LOGO_X=LM, LOGO_Y=y, LOGO_W=HDR_H*(5/3), LOGO_H=HDR_H;
   fillR(LOGO_X, LOGO_Y, LOGO_W, LOGO_H, [255,255,255]); // white bg same size as banner height
-  try{ doc.addImage('data:image/jpeg;base64,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', 'JPEG', LOGO_X+1, LOGO_Y+1, LOGO_W-2, LOGO_H-2); }catch(e){}
+  try{ doc.addImage(WWL_LOGO_B64, 'JPEG', LOGO_X+1, LOGO_Y+1, LOGO_W-2, LOGO_H-2); }catch(e){}
 
   // RATE SHEET + customer + date — right of logo
   const TX = LOGO_X + LOGO_W + 6;
