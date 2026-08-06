@@ -1053,6 +1053,13 @@ body{font-size:14px;font-weight:450}
             <input type="text" inputmode="decimal" id="q_lcl_profit_all" class="inp" placeholder="เช่น 15" style="width:70px;font-size:11px;padding:3px 6px;text-align:right;color:var(--gold)"></label>
           <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="ราคาขายขั้นต่ำต่อ CBM — กันเส้นทางที่ต้นทุนติดลบ (REFUND) หลุดออกไปเป็นราคาติดลบ">ขั้นต่ำ /CBM
             <input type="text" inputmode="decimal" id="q_lcl_min_all" class="inp" placeholder="เช่น 25" style="width:70px;font-size:11px;padding:3px 6px;text-align:right"></label>
+          <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px" title="ปัดราคาขายขึ้นให้เป็นเลขลงตัว (ปัดขึ้นเสมอ กำไรจะไม่หาย)">ปัดเศษ
+            <select id="q_lcl_round_all" class="inp" onchange="qLclSetRound(this.value)" style="width:92px;font-size:11px;padding:3px 6px">
+              <option value="1">จำนวนเต็ม</option>
+              <option value="5">หลัก 5</option>
+              <option value="10">หลัก 10</option>
+              <option value="0">ไม่ปัด (.00)</option>
+            </select></label>
           <button onclick="qLclApplyBulk()" class="btn btn-ghost" style="font-size:11px;padding:3px 12px;color:#ff9f43;border-color:rgba(255,140,0,.45)">✓ ใช้กับทุกแถว</button>
           <span id="q_lcl_warn" style="font-size:10px;font-family:var(--mono);color:var(--red)"></span>
         </div>
@@ -2149,15 +2156,33 @@ window.lclCost = lclCost;
 // ราคาขายต่อ CBM = ต้นทุน × (1 + margin%) + กำไรบาท/USD ต่อ CBM
 // แล้วยกขึ้นให้ไม่ต่ำกว่าขั้นต่ำที่กำหนด (กันเรท refund ติดลบหลุดไปหาลูกค้า)
 // หมายเหตุ: % คิดจากต้นทุน — ถ้าต้นทุนติดลบ (REFUND) % จะไม่มีความหมาย ต้องพึ่ง Min เท่านั้น
-function lclSell(cost, profit, floor, pct){
+function lclSell(cost, profit, floor, pct, step){
   const c = parseFloat(cost)||0, p = parseFloat(profit)||0;
   const m = (pct==null || pct==='') ? 0 : (parseFloat(pct)||0);
   const f = (floor==null || floor==='') ? null : parseFloat(floor);
   let s = c + (c>0 ? c*m/100 : 0) + p;     // ต้นทุน ≤ 0 → ไม่คิด % (จะได้ไม่ยิ่งติดลบ)
   if(f!=null && !isNaN(f) && s < f) s = f;
+  // ปัดขึ้นให้เป็นเลขลงตัว (ไม่มีทศนิยม) — ปัดขึ้นเสมอ กำไรจะได้ไม่หาย
+  const st = (step==null || step==='') ? lclRoundStep() : (parseFloat(step)||0);
+  if(st > 0 && s > 0) s = Math.ceil(s/st)*st;
   return Math.round(s*100)/100;
 }
 window.lclSell = lclSell;
+// ขั้นการปัดราคา LCL — 1 = จำนวนเต็ม · 5/10 = ปัดเป็นหลัก 5/10 · 0 = ไม่ปัด
+const LS_LCL_ROUND = 'sfp_lcl_round';
+function lclRoundStep(){
+  const el = document.getElementById('q_lcl_round_all');
+  if(el && el.value !== '') return parseFloat(el.value)||0;
+  try{ const v = localStorage.getItem(LS_LCL_ROUND); if(v!=null) return parseFloat(v)||0; }catch(e){}
+  return 1;                                  // ค่าเริ่มต้น = ปัดขึ้นเป็นจำนวนเต็ม
+}
+window.lclRoundStep = lclRoundStep;
+window.qLclSetRound = function(v){
+  try{ localStorage.setItem(LS_LCL_ROUND, String(v)); }catch(e){}
+  qRateRows.forEach(r=>{ r.round = v; });
+  qRenderRateRows(); qLclCheck(); qPreview();
+  toast(+v>0 ? ('✓ ปัดราคาขึ้นเป็นหลัก '+v+' ทุกแถว') : '✓ ไม่ปัดเศษแล้ว (โชว์ทศนิยม)');
+};
 // อ่านค่าจากแถวโดยตรง — ให้ทุกที่ (ตาราง / อีเมล / PDF) คิดเลขชุดเดียวกัน
 function lclRowCost(row){
   if(!row) return null;
@@ -2167,7 +2192,7 @@ function lclRowCost(row){
 function lclRowSell(row){
   const c = lclRowCost(row);
   if(!row || row.na || c==null) return null;
-  return lclSell(c, row.profit, row.minSell, row.mpct);
+  return lclSell(c, row.profit, row.minSell, row.mpct, row.round);
 }
 // margin ที่ได้จริงเทียบกับราคาขาย (%) — ใช้เช็คว่ากำไรพอไหม
 function lclRowMargin(row){
@@ -7610,10 +7635,11 @@ window.qSaveTemplate = async function(){
     defMpct: isLcl ? one('mpct')    : '',
     defProfit: isLcl ? one('profit')  : '',
     defMin:  isLcl ? one('minSell') : '',
+    defRound: isLcl ? (gv('q_lcl_round_all')||'') : '',
     rows: qRateRows.map(r=> isLcl
       ? { pod:r.pod||'', del:r.del||'', carrier:r.carrier||'', country:r.country||'',
           tt:r.tt||'', etdCfs:r.etdCfs||'', routing:r.routing||'', valid:r.valid||'',
-          mpct:r.mpct||'', profit:r.profit||'', minSell:r.minSell||'' }
+          mpct:r.mpct||'', profit:r.profit||'', minSell:r.minSell||'', round:r.round||'' }
       : { pod:r.pod||'', del:r.del||'', dem:r.dem||'', det:r.det||'',
           combined:r.combined||'', direct:r.direct||'', tt:r.tt||'' })
   };
@@ -7825,13 +7851,14 @@ window.qLoadTemplate = function(name){
     qRateRows = t.rows.map(r=>({
       id: Date.now()+Math.random(),
       carrier: r.carrier||'', pol: t.pol, pod: r.pod||'', del: r.del||'',
-      cost:'', mpct: (r.mpct||dM), profit: (r.profit||dP), minSell: (r.minSell||dN),
+      cost:'', mpct: (r.mpct||dM), profit: (r.profit||dP), minSell: (r.minSell||dN), round: (r.round||t.defRound||''),
       tt: r.tt||'', etdCfs: r.etdCfs||'', routing: r.routing||'', country: r.country||'',
       valid: r.valid||'', polLock: !!t.lockPol, _synced: true
     }));
     // เติมช่องตั้งค่าทุกแถวให้ตรงกับเทมเพลต จะได้เห็นว่าใช้ค่าอะไรอยู่
     const sv=(id,val)=>{ const el=document.getElementById(id); if(el && val) el.value=val; };
     sv('q_lcl_pct_all', dM); sv('q_lcl_profit_all', dP); sv('q_lcl_min_all', dN);
+    if(t.defRound!=null && t.defRound!=='') sv('q_lcl_round_all', t.defRound);
     qTypeChange();                                       // วาดหัวตาราง LCL + โชว์แถบตั้งกำไร
     try{ window.qSyncRatesLCL(); }catch(e){ qPreview(); } // ดึงต้นทุนที่ยัง valid ให้ทันที
     const nC = new Set(t.rows.map(r=>r.country).filter(Boolean)).size;
@@ -8326,6 +8353,8 @@ window.qTypeChange = function(){
   if(xlBtn) xlBtn.textContent = isLCL ? '📗 LCL Excel' : '📗 Excel';
   const bulk = document.getElementById('q_lcl_bulk');
   if(bulk) bulk.style.display = isLCL ? 'flex' : 'none';
+  const rdEl = document.getElementById('q_lcl_round_all');
+  if(rdEl && isLCL){ try{ const v=localStorage.getItem(LS_LCL_ROUND); if(v!=null) rdEl.value=v; }catch(e){} }
   // LCL ออกจากท่าเรือกรุงเทพเสมอ — กันกรอก LAEM CHABANG ค้างมาจากโหมด FCL
   if(isLCL){
     const polEl = document.getElementById('q_pol');
@@ -8349,10 +8378,12 @@ window.qLclApplyBulk = function(){
   const pct = gv('q_lcl_pct_all'), p = gv('q_lcl_profit_all'), m = gv('q_lcl_min_all');
   if(!pct && !p && !m) return toast('ใส่ Margin % หรือกำไร หรือราคาขั้นต่ำก่อนครับ');
   if(pct && isNaN(parseFloat(pct))) return toast('❌ Margin % ต้องเป็นตัวเลข');
+  const rd = gv('q_lcl_round_all');
   qRateRows.forEach(r=>{
     if(pct!=='') r.mpct    = pct;
     if(p  !=='') r.profit  = p;
     if(m  !=='') r.minSell = m;
+    if(rd !=='') r.round   = rd;
   });
   qRenderRateRows(); qLclCheck(); qPreview();
   const parts=[];
@@ -8727,8 +8758,10 @@ window.qExportLclExcel = async function(){
         put(r,c,st);
       }
       // ช่องราคา — ใส่รูปแบบเงิน USD เฉพาะที่เป็นตัวเลขจริง
+      // ราคาที่ปัดเป็นเลขลงตัวแล้ว ไม่ต้องโชว์ .00
       const ref = XL.utils.encode_cell({r,c:1});
-      if(ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '"USD "#,##0.00';
+      if(ws[ref] && typeof ws[ref].v === 'number')
+        ws[ref].z = Number.isInteger(ws[ref].v) ? '"USD "#,##0' : '"USD "#,##0.00';
     };
     DATA_ROWS.forEach(r=> styleRow(r,false));
     NA_ROWS.forEach(r=> styleRow(r,true));
