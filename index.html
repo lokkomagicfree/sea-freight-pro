@@ -5885,7 +5885,7 @@ function loadPdfJs(){
 async function pdfToLines(buf){
   const pdfjsLib = await loadPdfJs();
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
-  const lines=[];
+  const lines=[], xs=[];
   for(let p=1; p<=pdf.numPages; p++){
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
@@ -5899,9 +5899,10 @@ async function pdfToLines(buf){
     [...rows.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>{
       arr.sort((a,b)=>a.x-b.x);
       const txt = arr.map(o=>o.s).join(' ').replace(/\s+/g,' ').trim();
-      if(txt) lines.push(txt);
+      if(txt){ lines.push(txt); xs.push(Math.round(arr[0].x)); }   // จำ x ซ้ายสุดไว้ด้วย
     });
   }
+  lines.__x = xs;          // ส่งพิกัดไปด้วย (array รับ property ได้)
   return lines;
 }
 function extractPdfBooking(input){
@@ -5928,6 +5929,7 @@ function isOwnBookingPdf(lines){
   return /worldwide logistics services/.test(t) && /booking confirmation/.test(t);
 }
 function applyOwnBookingPdf(lines){
+  const X = (lines && lines.__x) || [];      // พิกัด x ของแต่ละบรรทัด (ถ้ามี)
   const L = lines.map(x=>String(x).replace(/\s+/g,' ').trim());
   const OWN = ['Shipper Name','Shipping Line','VSL Name / Voy','MOTHER VSL Name','ETD','ETA',
     'Port of Receive','Port of Discharge','Port of Loading','Final Destination','Port of Transit','Volume',
@@ -5962,18 +5964,36 @@ function applyOwnBookingPdf(lines){
       seen.push({idx, k:x.k, v});
     });
   });
-  // "Booking No." ในใบของเราไม่มีเครื่องหมาย : และค่าอยู่บรรทัดล่าง
-  if(!map['booking no.']){
+  // "Booking No." ในใบของเราไม่มีเครื่องหมาย : และค่าอยู่คนละบรรทัด
+  // เลข booking เป็น "ตัวเลขล้วน" เสมอ (เช่น 6462437150)
+  // ส่วน REF ลูกค้าเป็นตัวอักษรนำหน้า (เช่น STHABKK00538887) — ห้ามหยิบสลับกัน
+  // เลข booking กับ REF ลูกค้าอยู่คนละคอลัมน์ และ pdf.js เรียงสองบรรทัดนี้สลับกันได้
+  // แยกด้วย "พิกัด x" ไม่ใช่รูปแบบตัวอักษร เพราะ booking บางสายก็มีตัวอักษร (035GX50795, BKKGS2100300)
+  let refFromCol = '';
+  {
     const RE2 = new RegExp(RE.source, 'i');
+    const isVal = t => t && !RE2.test(t) && !/^(Schedule|Conveyance|Special|Remark)/i.test(t)
+                    && /^[A-Za-z0-9][A-Za-z0-9\-\/]{4,}$/.test(t);
     for(let i=0;i<L.length;i++){
       if(!/^booking\s*no\.?$/i.test(L[i])) continue;
-      for(let j=i+1;j<Math.min(i+5,L.length);j++){
-        const nx=L[j];
-        if(!nx || RE2.test(nx) || /^(Schedule|Conveyance|Special|Remark)/i.test(nx)) continue;
-        if(/^[A-Za-z]{2,6}\d{6,}$/.test(nx)) continue;      // อันนี้คือ REF ลูกค้า ไม่ใช่เลข booking
-        map['booking no.'] = nx; break;
+      const labelX = X[i];
+      const cands = [];
+      for(let j=i+1;j<Math.min(i+6,L.length);j++){
+        if(isVal(String(L[j]||'').trim())) cands.push({ t:String(L[j]).trim(), x:X[j] });
       }
-      if(map['booking no.']) break;
+      if(!cands.length) break;
+      let pick;
+      if(labelX!=null && cands.some(c=>c.x!=null)){
+        // ค่าของ Booking No. อยู่คอลัมน์ขวา = x ใกล้/มากกว่าป้าย · REF อยู่คอลัมน์ซ้าย
+        const right = cands.filter(c=>c.x!=null && c.x >= labelX - 40);
+        pick = (right.sort((a,b)=>a.x-b.x)[0] || cands[0]);
+        const left = cands.filter(c=>c !== pick && c.x!=null && c.x < labelX - 40);
+        if(left.length) refFromCol = left[0].t;
+      } else {
+        pick = cands.find(c=>/^\d{6,}$/.test(c.t)) || cands[0];   // ไม่มีพิกัด → เดาจากตัวเลขล้วน
+      }
+      if(pick) map['booking no.'] = pick.t;
+      break;
     }
   }
   const g = k => map[k.toLowerCase()] || '';
@@ -5981,8 +6001,11 @@ function applyOwnBookingPdf(lines){
   let ref='';
   const bkg = (g('Booking No.')||'').replace(/[^\w-]/g,'');
   { // เช่น SBKK00538403 / STHABKK00538887 (ตัวอักษรได้ถึง 10 ตัว) และต้องไม่ใช่เลข booking เอง
-    const cands = L.join('\n').match(/\b[A-Z]{2,10}\d{6,}\b/g) || [];
-    ref = cands.find(x => x !== bkg) || ''; }
+    if(refFromCol && refFromCol !== bkg) ref = refFromCol;
+    else {
+      const cands = L.join('\n').match(/\b[A-Z]{2,10}\d{6,}\b/g) || [];
+      ref = cands.find(x => x !== bkg) || '';
+    } }
   // วันที่ → YYYY-MM-DD
   const MO={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   const pad=n=>String(n).padStart(2,'0');
