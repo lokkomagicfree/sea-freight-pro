@@ -5976,39 +5976,52 @@ function applyOwnBookingPdf(lines){
   // "Booking No." ในใบของเราไม่มีเครื่องหมาย : และค่าอยู่คนละบรรทัด
   // เลข booking เป็น "ตัวเลขล้วน" เสมอ (เช่น 6462437150)
   // ส่วน REF ลูกค้าเป็นตัวอักษรนำหน้า (เช่น STHABKK00538887) — ห้ามหยิบสลับกัน
-  // เลข booking กับ REF ลูกค้าอยู่คนละคอลัมน์ และ pdf.js เรียงสองบรรทัดนี้สลับกันได้
-  // แยกด้วย "พิกัด x" ไม่ใช่รูปแบบตัวอักษร เพราะ booking บางสายก็มีตัวอักษร (035GX50795, BKKGS2100300)
+  // ── หาเลข Booking ──
+  // ใบของเราไม่มี ":" หลัง "Booking No." และค่าอยู่คนละบรรทัด/คนละคอลัมน์กับ REF
+  // เลข booking บางสายมีตัวอักษร (035GX50795) จึงแยกด้วย "ตำแหน่งคอลัมน์" ไม่ใช่รูปแบบตัวอักษร
   let refFromCol = '';
   {
     const RE2 = new RegExp(RE.source, 'i');
-    const isVal = t => t && !RE2.test(t) && !/^(Schedule|Conveyance|Special|Remark)/i.test(t)
-                    && /^[A-Za-z0-9][A-Za-z0-9\-\/]{4,}$/.test(t);
-    for(let i=0;i<L.length;i++){
-      if(!/^booking\s*no\.?$/i.test(L[i])) continue;
+    const isLabel = t => RE2.test(t) || /^(Schedule|Conveyance|Special|Remark)/i.test(t);
+    const isVal   = t => t && !isLabel(t) && /^[A-Za-z0-9][A-Za-z0-9\-\/]{4,}$/.test(t);
+    // ป้าย "Booking No." อาจอยู่บรรทัดเดียวกับอย่างอื่น จึงหาแบบ contains
+    let i = L.findIndex(t => /^booking\s*no\.?$/i.test(t));
+    if(i < 0) i = L.findIndex(t => /booking\s*no\.?\s*$/i.test(t));
+    if(i >= 0){
       const labelX = X[i];
+      const hasX   = labelX != null;                 // ไฟล์เก่าที่ไม่มีพิกัดก็ยังต้องอ่านได้
       const cands = [];
-      for(let j=i+1;j<Math.min(i+6,L.length);j++){
-        if(isVal(String(L[j]||'').trim())) cands.push({ t:String(L[j]).trim(), x:X[j] });
+      for(let j=i+1; j<Math.min(i+7, L.length); j++){
+        const t = String(L[j]||'').trim(); if(!t) continue;
+        if(isLabel(t)){
+          // มีพิกัด: เจอป้ายถัดไปในคอลัมน์เดียวกัน = หมดเขตของ Booking No. (เช่น Shipping Line :)
+          if(hasX && X[j]!=null && Math.abs(X[j]-labelX) < 40) break;
+          continue;                                  // ป้ายคอลัมน์อื่น / ไม่มีพิกัด → ข้ามไป
+        }
+        if(isVal(t)) cands.push({ t, x: X[j] });
       }
-      if(!cands.length) break;
-      let pick;
-      if(labelX!=null && cands.some(c=>c.x!=null)){
-        // ค่าของ Booking No. อยู่คอลัมน์ขวา = x ใกล้/มากกว่าป้าย · REF อยู่คอลัมน์ซ้าย
-        const right = cands.filter(c=>c.x!=null && c.x >= labelX - 40);
-        pick = (right.sort((a,b)=>a.x-b.x)[0] || cands[0]);
-        const left = cands.filter(c=>c !== pick && c.x!=null && c.x < labelX - 40);
-        if(left.length) refFromCol = left[0].t;
+      let pick = null;
+      if(hasX){
+        // ต้องอยู่คอลัมน์เดียวกับป้ายเท่านั้น — หาไม่เจอก็ปล่อยว่าง ดีกว่าเดาผิด
+        const right = cands.filter(c=>c.x!=null && (Math.abs(c.x-labelX) < 40 || c.x >= labelX));
+        pick = right.sort((a,b)=>a.x-b.x)[0] || null;
       } else {
-        pick = cands.find(c=>/^\d{6,}$/.test(c.t)) || cands[0];   // ไม่มีพิกัด → เดาจากตัวเลขล้วน
+        pick = cands.find(c=>/\d{4,}/.test(c.t)) || null;
       }
-      if(pick) map['booking no.'] = pick.t;
-      break;
+      if(pick){
+        map['booking no.'] = pick.t;
+        const left = cands.filter(c => c!==pick && /\d{4,}/.test(c.t));
+        if(left.length) refFromCol = left[0].t;
+      }
     }
   }
   const g = k => map[k.toLowerCase()] || '';
   // REF ของลูกค้า = บรรทัดรูปแบบ SBKKxxxx / ตัวอักษร+ตัวเลข ที่อยู่ใกล้ Shipper Name
   let ref='';
-  const bkg = (g('Booking No.')||'').replace(/[^\w-]/g,'');
+  let bkg = (g('Booking No.')||'').replace(/[^\w-]/g,'');
+  // กันหยิบชื่อสายเรือมาเป็นเลข booking (เช่น COSCO) — เลข booking ต้องมีตัวเลขอยู่ด้วย
+  const carrierTxt = (g('Shipping Line')||'').replace(/[^\w-]/g,'');
+  if(bkg && (bkg.toUpperCase()===carrierTxt.toUpperCase() || !/\d{4,}/.test(bkg))) bkg = '';
   { // เช่น SBKK00538403 / STHABKK00538887 (ตัวอักษรได้ถึง 10 ตัว) และต้องไม่ใช่เลข booking เอง
     if(refFromCol && refFromCol !== bkg) ref = refFromCol;
     else {
