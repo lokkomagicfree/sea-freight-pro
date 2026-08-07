@@ -2156,11 +2156,17 @@ window.lclCost = lclCost;
 // ราคาขายต่อ CBM = ต้นทุน × (1 + margin%) + กำไรบาท/USD ต่อ CBM
 // แล้วยกขึ้นให้ไม่ต่ำกว่าขั้นต่ำที่กำหนด (กันเรท refund ติดลบหลุดไปหาลูกค้า)
 // หมายเหตุ: % คิดจากต้นทุน — ถ้าต้นทุนติดลบ (REFUND) % จะไม่มีความหมาย ต้องพึ่ง Min เท่านั้น
+// เส้นที่สายเรือคืนเงินให้เรา (ต้นทุนติดลบ) → ขายราคาเดียว 1 USD/CBM เสมอ
+// (บวก % จากเลขติดลบไม่ได้ · เงินคืนคือกำไรอยู่แล้ว)
+const LCL_REFUND_PRICE = 1;
+window.LCL_REFUND_PRICE = LCL_REFUND_PRICE;
 function lclSell(cost, profit, floor, pct, step){
   const c = parseFloat(cost)||0, p = parseFloat(profit)||0;
   const m = (pct==null || pct==='') ? 0 : (parseFloat(pct)||0);
   const f = (floor==null || floor==='') ? null : parseFloat(floor);
-  let s = c + (c>0 ? c*m/100 : 0) + p;     // ต้นทุน ≤ 0 → ไม่คิด % (จะได้ไม่ยิ่งติดลบ)
+  // ต้นทุน ≤ 0 = REFUND → ราคา 1 USD/CBM (เว้นแต่พิมพ์ Min ทับไว้เอง)
+  if(c <= 0) return (f!=null && !isNaN(f)) ? Math.round(f*100)/100 : LCL_REFUND_PRICE;
+  let s = c + c*m/100 + p;
   if(f!=null && !isNaN(f) && s < f) s = f;
   // ปัดขึ้นให้เป็นเลขลงตัว (ไม่มีทศนิยม) — ปัดขึ้นเสมอ กำไรจะได้ไม่หาย
   const st = (step==null || step==='') ? lclRoundStep() : (parseFloat(step)||0);
@@ -2170,6 +2176,8 @@ function lclSell(cost, profit, floor, pct, step){
 window.lclSell = lclSell;
 // ขั้นการปัดราคา LCL — 1 = จำนวนเต็ม · 5/10 = ปัดเป็นหลัก 5/10 · 0 = ไม่ปัด
 const LS_LCL_ROUND = 'sfp_lcl_round';
+const LS_LCL_MPCT = 'sfp_lcl_mpct';
+const LS_LCL_MIN  = 'sfp_lcl_min';
 function lclRoundStep(){
   const el = document.getElementById('q_lcl_round_all');
   if(el && el.value !== '') return parseFloat(el.value)||0;
@@ -7011,8 +7019,8 @@ function qRenderRateRowsLCL(body){
     const sell = lclRowSell(row);
     const mgn  = lclRowMargin(row);
     const refund = cost!=null && cost < 0;
-    // ต้นทุนติดลบ (REFUND) → Margin % คิดไม่ได้ ต้องพิมพ์ราคาขายเอง
-    const needPrice = !row.na && sell!=null && sell<=0;
+    // ต้นทุนติดลบ (REFUND) → ขายราคาคงที่ LCL_REFUND_PRICE อัตโนมัติ
+    const needPrice = !row.na && sell!=null && sell<=0;   // เผื่อกรณีผิดปกติเท่านั้น
     return `
     <tr data-rowid="${row.id}" style="border-bottom:1px solid rgba(30,48,80,.3)${row.na?';background:rgba(200,60,45,.10)':''}">
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="carrier" class="inp" value="${row.carrier||''}" placeholder="e.g. ONE"
@@ -7042,8 +7050,8 @@ function qRenderRateRowsLCL(body){
           oninput="qUpdateRate(${row.id},'profit',this.value);qUpdateRateDisplay(${row.id})"
           style="font-size:11px;padding:3px 6px;text-align:right;color:var(--gold);width:56px"></td>
 
-      <td style="padding:3px 4px" title="${needPrice?'เส้นนี้ต้นทุนติดลบ (REFUND) — Margin % ใช้ไม่ได้ ต้องพิมพ์ราคาขายลงช่องนี้':'ราคาขั้นต่ำต่อ CBM — ถ้า cost+profit ต่ำกว่านี้จะยกขึ้นมาเท่านี้'}">
-        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="minSell" class="inp" value="${row.minSell==null?'':row.minSell}" placeholder="${needPrice?'ใส่ราคา':'min'}"
+      <td style="padding:3px 4px" title="${refund?('เส้น REFUND — ขายอัตโนมัติ '+LCL_REFUND_PRICE+' USD/CBM · พิมพ์ตัวเลขที่นี่เพื่อกำหนดราคาเอง'):'ราคาขั้นต่ำต่อ CBM — ถ้า cost+profit ต่ำกว่านี้จะยกขึ้นมาเท่านี้'}">
+        <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="minSell" class="inp" value="${row.minSell==null?'':row.minSell}" placeholder="${refund?String(LCL_REFUND_PRICE):'min'}"
           oninput="qUpdateRate(${row.id},'minSell',this.value);qUpdateRateDisplay(${row.id})"
           style="font-size:11px;padding:3px 6px;text-align:right;width:52px;color:${needPrice?'var(--red)':'var(--muted)'};${needPrice?'border-color:var(--red);background:rgba(200,60,45,.10)':''}"></td>
 
@@ -7051,8 +7059,8 @@ function qRenderRateRowsLCL(body){
           ${needPrice?`onclick="qLclSetPrice(${row.id})" style="cursor:pointer"`:''}>
         <span id="lclsell_${row.id}" style="font-family:var(--mono);font-size:12px;font-weight:700;color:${(row.na||needPrice)?'var(--red)':'var(--green)'}">
           ${row.na?'N/A':(sell==null?'—':'$'+sell.toLocaleString())}</span>
-        <div id="lclmgn_${row.id}" style="font-size:8.5px;font-family:var(--mono);color:${needPrice?'var(--red)':'var(--muted)'}">${
-          needPrice?'⚠ คลิกเพื่อตั้งราคา':(mgn==null?'/CBM':(mgn+'% margin'))}</div></td>
+        <div id="lclmgn_${row.id}" style="font-size:8.5px;font-family:var(--mono);color:${needPrice?'var(--red)':(refund?'#ff9f43':'var(--muted)')}">${
+          needPrice?'⚠ คลิกเพื่อตั้งราคา':(refund?'↩ refund → คงที่':(mgn==null?'/CBM':(mgn+'% margin')))}</div></td>
 
       <td style="padding:3px 4px"><input spellcheck="false" data-rid="${row.id}" data-f="tt" class="inp" value="${row.tt||''}" placeholder="30"
         oninput="qUpdateRate(${row.id},'tt',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:52px"></td>
@@ -7639,6 +7647,26 @@ function qBuildLclTemplatesFrom(rows){
     || String(x.pod||'').localeCompare(String(y.pod||''))
     || String(x.del||'').localeCompare(String(y.del||'')));
 
+  // ── WWL LCL QUOTATION — ใบเต็ม ครบทุกปลายทางในคลัง ──────────────
+  // ท่าเรือทั่วโลก + inland อเมริกาทั้ง 2 ประตู (LAX / NYC) ในใบเดียว ไม่ต้องใส่ทีละ POD
+  // เรียง: ประเทศ → ท่าเรือก่อน → แล้วเมือง inland · เมืองที่เข้าได้ 2 ทางจะอยู่ติดกันให้เทียบ
+  const gate = r => /NEW YORK/i.test(r.via || '') ? 'NYC' : 'LAX';
+  // ปลายทางเดียวกันที่มี 2 บริการ (เช่น BELAWAN ตรง/ผ่านสิงคโปร์) เก็บตัวถูกสุดพอ
+  const cheapest = new Map();
+  rows.forEach(r=>{
+    const k = String(r.pod||'').toUpperCase()+'|'+String(r.del||'').toUpperCase();
+    const c = lclResolveCost(r, r.pol).cost;
+    const cur = cheapest.get(k);
+    if(!cur || (c!=null && (cur.c==null || c < cur.c))) cheapest.set(k, {r, c});
+  });
+  const allRows = [...cheapest.values()].map(x=>x.r).sort((x,y)=>
+       String(x.country||'zz').localeCompare(String(y.country||'zz'))
+    || (x.del?1:0) - (y.del?1:0)
+    || String(x.del||x.pod).localeCompare(String(y.del||y.pod))
+    || gate(x).localeCompare(gate(y)));
+  mk('WWL LCL QUOTATION', allRows,
+     'LCL W/M min 1 CBM · rate incl. LSS · IPI = all-in ถึงเมืองปลายทาง ผ่าน LAX หรือ NYC (จำกัด 1 CBM ไม่เกิน 360 KGS)');
+
   mk('🧊 LCL — ทุกปลายทาง ('+rows.length+')', sortRows(rows));
   LCL_TPL_REGION.forEach(([name, ctys])=>{
     const list = sortRows(rows.filter(r=> ctys.includes(String(r.country||'').toUpperCase())));
@@ -7923,8 +7951,18 @@ window.qLoadTemplate = function(name){
     if(tsel){ tsel.value = 'LCL'; }
     const vd = [...new Set(t.rows.map(r=>r.valid).filter(Boolean))];
     if(vd.length===1) set('q_valid', vd[0]);
-    // margin/กำไร/ขั้นต่ำ: ใช้ค่ารายแถวก่อน · ไม่มีก็ใช้ค่ากลางของเทมเพลต
-    const dM = t.defMpct||'', dP = t.defProfit||'', dN = t.defMin||'';
+    // margin/กำไร/ขั้นต่ำ: ค่าในเทมเพลต → ค่าที่เคยใช้ล่าสุด → ถามครั้งเดียวถ้ายังไม่เคยตั้ง
+    const _ls = k => { try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } };
+    let dM = t.defMpct || _ls(LS_LCL_MPCT);
+    let dP = t.defProfit || '';
+    let dN = t.defMin  || _ls(LS_LCL_MIN);
+    if(!dM && !dP){
+      const v = prompt('ใส่ Margin % ที่จะบวกให้ทุกปลายทาง ('+t.rows.length+' POD)\n\n'
+        + 'เส้นที่สายเรือคืนเงินให้เรา (REFUND) จะขายราคา '+LCL_REFUND_PRICE+' USD/CBM ให้อัตโนมัติ\n'
+        + 'เว้นว่าง = ยังไม่บวก ค่อยไปตั้งในตารางทีหลัง', '20');
+      if(v!==null && String(v).trim()!=='') dM = String(v).trim();
+    }
+    try{ if(dM) localStorage.setItem(LS_LCL_MPCT, dM); if(dN) localStorage.setItem(LS_LCL_MIN, dN); }catch(e){}
     qRateRows = t.rows.map(r=>({
       id: Date.now()+Math.random(),
       carrier: r.carrier||'', pol: t.pol, pod: r.pod||'', del: r.del||'',
@@ -7939,9 +7977,10 @@ window.qLoadTemplate = function(name){
     qTypeChange();                                       // วาดหัวตาราง LCL + โชว์แถบตั้งกำไร
     try{ window.qSyncRatesLCL(); }catch(e){ qPreview(); } // ดึงต้นทุนที่ยัง valid ให้ทันที
     const nC = new Set(t.rows.map(r=>r.country).filter(Boolean)).size;
-    const hasM = dM || t.rows.some(r=>r.mpct) || dP || dN;
     toast('🧊 โหลดเทมเพลต LCL — '+t.rows.length+' ปลายทาง'+(nC?(' / '+nC+' ประเทศ'):'')
-      +(dM?(' · margin '+dM+'%'):'')+(hasM?'':' · อย่าลืมตั้ง Margin % + ขั้นต่ำ'));
+      +(dM?(' · บวก margin '+dM+'% ให้ทุก POD แล้ว'):'')
+      +(dN?(' · ขั้นต่ำ $'+dN):'')
+      +((!dM&&!dP)?' · อย่าลืมตั้ง Margin %':''));
     return;
   }
 
@@ -8341,11 +8380,15 @@ function qUpdateRateDisplay(id){
           mEl.textContent = '⚠ คลิกเพื่อตั้งราคา';
           mEl.style.color = 'var(--red)';
           mEl.title = 'เส้นนี้สายเรือคืนเงินให้เรา (REFUND) จึงไม่มีต้นทุนให้บวก % — ต้องพิมพ์ราคาขายลงช่อง Min';
+        }else if(cost!=null && cost<=0){
+          mEl.textContent = '↩ refund → คงที่';
+          mEl.style.color = '#ff9f43';
+          mEl.title = 'สายเรือคืนเงินให้เรา '+Math.abs(cost)+' USD/CBM — ขายราคาคงที่ '+LCL_REFUND_PRICE+' USD/CBM (พิมพ์ในช่อง Min เพื่อเปลี่ยน)';
         }else{
           mEl.textContent = mg==null ? '/CBM' : (mg+'% margin');
           // margin บาง = เตือน (ต่ำกว่า 10% เหลือง)
           mEl.style.color = mg==null ? 'var(--muted)' : (mg<10 ? 'var(--gold)' : 'var(--muted)');
-          mEl.title = (cost!=null && cost<0) ? 'เส้น REFUND — ราคานี้มาจากช่อง Min ทั้งหมด เป็นกำไรล้วน' : '';
+          mEl.title = '';
         }
       }
     }
@@ -8457,6 +8500,11 @@ window.qTypeChange = function(){
   if(bulk) bulk.style.display = isLCL ? 'flex' : 'none';
   const rdEl = document.getElementById('q_lcl_round_all');
   if(rdEl && isLCL){ try{ const v=localStorage.getItem(LS_LCL_ROUND); if(v!=null) rdEl.value=v; }catch(e){} }
+  if(isLCL){ try{
+    const p=document.getElementById('q_lcl_pct_all'), n=document.getElementById('q_lcl_min_all');
+    if(p && !p.value) p.value = localStorage.getItem(LS_LCL_MPCT)||'';
+    if(n && !n.value) n.value = localStorage.getItem(LS_LCL_MIN)||'';
+  }catch(e){} }
   // LCL ออกจากท่าเรือกรุงเทพเสมอ — กันกรอก LAEM CHABANG ค้างมาจากโหมด FCL
   if(isLCL){
     const polEl = document.getElementById('q_pol');
@@ -8481,6 +8529,7 @@ window.qLclApplyBulk = function(){
   if(!pct && !p && !m) return toast('ใส่ Margin % หรือกำไร หรือราคาขั้นต่ำก่อนครับ');
   if(pct && isNaN(parseFloat(pct))) return toast('❌ Margin % ต้องเป็นตัวเลข');
   const rd = gv('q_lcl_round_all');
+  try{ if(pct) localStorage.setItem(LS_LCL_MPCT, pct); if(m) localStorage.setItem(LS_LCL_MIN, m); }catch(e){}
   qRateRows.forEach(r=>{
     if(pct!=='') r.mpct    = pct;
     if(p  !=='') r.profit  = p;
