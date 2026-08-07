@@ -2274,15 +2274,35 @@ function commMonthlyTotals(){
     const mDb  = dbByMonth[key]||0;
     const mPThb= active.reduce((s,j)=>s+(j.profit||0)*(j.rate||window.exRate||1),0);
     const monthProfitThb = mPThb + mDb;
-    let total;
+    let auto;
     if(window.commMode==='tiered' && typeof tieredCommRate==='function'){
-      total = monthProfitThb * tieredCommRate(monthProfitThb);
+      auto = monthProfitThb * tieredCommRate(monthProfitThb);
     } else {
-      total = mT + mDb * (window.commRate||0.25);
+      auto = mT + mDb * (window.commRate||0.25);
     }
-    out[key] = { commThb: Math.round(total*100)/100,
+    // ── ค่าคอมจริง ──
+    // ช่อง "฿ profit" ที่กรอกเองในตาราง Monthly Summary คือยอดจริงที่ใช้จ่ายค่าคอม
+    // (คอลัมน์ "COMM จาก THB") → ถ้ามีตัวเลขนี้ ให้ยึดตัวนี้ ไม่ใช้ยอดที่ระบบคำนวณเอง
+    let basis = null;
+    try{
+      const sr = (typeof srLoad==='function') ? srLoad() : {};
+      const manual = sr['manual_thb_profit_'+key];
+      basis = (manual!==undefined && manual!=='' ) ? Number(manual) : (mDb>0 ? mDb : null);
+    }catch(e){}
+    let actual = null, rateUsed = null;
+    if(basis > 0){
+      rateUsed = (typeof monthlyCommRateFor==='function') ? monthlyCommRateFor(basis) : (window.commRate||0.25);
+      actual = Math.round(basis * rateUsed);
+    }
+    out[key] = { commThb: Math.round((actual!=null ? actual : auto)*100)/100,   // ตัวที่ CS Hub เอาไปคิด
+                 autoThb:  Math.round(auto*100)/100,                            // ที่ระบบคำนวณเอง (ไว้เทียบ)
+                 basisThb: basis!=null ? Math.round(basis*100)/100 : null,      // ยอด THB ที่กรอกเอง
+                 rateUsed, isActual: actual!=null,
                  profitThb: Math.round(monthProfitThb*100)/100,
-                 jobs: active.length };
+                 jobs: active.length,
+                 dueLabel: (typeof commDueLabel==='function') ? commDueLabel(key) : '',   // เดือนที่ได้รับเงินจริง
+                 dueISO:   (typeof commDueDate==='function' && commDueDate(key))
+                             ? commDueDate(key).toISOString().slice(0,10) : '' };
   });
   return out;
 }
