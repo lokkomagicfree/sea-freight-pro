@@ -5894,7 +5894,7 @@ function loadPdfJs(){
 async function pdfToLines(buf){
   const pdfjsLib = await loadPdfJs();
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
-  const lines=[], xs=[];
+  const lines=[], xs=[], items=[];
   for(let p=1; p<=pdf.numPages; p++){
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
@@ -5908,10 +5908,15 @@ async function pdfToLines(buf){
     [...rows.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>{
       arr.sort((a,b)=>a.x-b.x);
       const txt = arr.map(o=>o.s).join(' ').replace(/\s+/g,' ').trim();
-      if(txt){ lines.push(txt); xs.push(Math.round(arr[0].x)); }   // จำ x ซ้ายสุดไว้ด้วย
+      if(txt){
+        lines.push(txt);
+        xs.push(Math.round(arr[0].x));                        // x ซ้ายสุดของบรรทัด
+        items.push(arr.map(o=>({x:Math.round(o.x), t:String(o.s).trim()})).filter(o=>o.t));
+      }
     });
   }
   lines.__x = xs;          // ส่งพิกัดไปด้วย (array รับ property ได้)
+  lines.__items = items;   // ชิ้นข้อความย่อยพร้อมพิกัด — ใช้แยกค่าที่อยู่บรรทัดเดียวกันคนละคอลัมน์
   return lines;
 }
 function extractPdfBooking(input){
@@ -5990,6 +5995,7 @@ function applyOwnBookingPdf(lines){
     if(i >= 0){
       // ป้ายอาจถูกรวมกับข้อความอื่นในบรรทัดเดียว (เช่น "Shipper Name : ... Booking No.")
       // กรณีนั้น x ของบรรทัดจะเป็นของข้อความซ้าย ใช้เป็นตำแหน่งคอลัมน์ไม่ได้
+      const IT = (lines && lines.__items) || [];
       const merged = !/^booking\s*no\.?$/i.test(String(L[i]||'').trim());
       const labelX = merged ? 300 : X[i];            // ป้ายรวม → ใช้ "ครึ่งขวาของหน้า" แทน
       const hasX   = labelX != null;                 // ไฟล์เก่าที่ไม่มีพิกัดก็ยังต้องอ่านได้
@@ -5997,11 +6003,14 @@ function applyOwnBookingPdf(lines){
       for(let j=i+1; j<Math.min(i+7, L.length); j++){
         const t = String(L[j]||'').trim(); if(!t) continue;
         if(isLabel(t)){
-          // มีพิกัด: เจอป้ายถัดไปในคอลัมน์เดียวกัน = หมดเขตของ Booking No. (เช่น Shipping Line :)
+          // เจอป้ายถัดไปในคอลัมน์เดียวกัน = หมดเขตของ Booking No. (เช่น Shipping Line :)
           if(!merged && hasX && X[j]!=null && Math.abs(X[j]-labelX) < 40) break;
-          continue;                                  // ป้ายคอลัมน์อื่น / ไม่มีพิกัด → ข้ามไป
+          continue;                                  // ป้ายคอลัมน์อื่น → ข้ามไป
         }
-        if(isVal(t)) cands.push({ t, x: X[j] });
+        // บรรทัดเดียวอาจมี 2 ค่าคนละคอลัมน์ (เช่น "STHABKK00538887   6462437150")
+        // จึงต้องดูเป็น "ชิ้น" พร้อมพิกัดของตัวเอง
+        const parts = (IT[j] && IT[j].length) ? IT[j] : [{x:X[j], t}];
+        parts.forEach(p=>{ if(isVal(p.t)) cands.push({ t:p.t, x:p.x }); });
       }
       let pick = null;
       if(hasX){
