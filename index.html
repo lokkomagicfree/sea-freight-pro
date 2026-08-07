@@ -719,11 +719,12 @@ body{font-size:14px;font-weight:450}
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em">📅 MONTHLY SUMMARY</div>
         <div style="overflow-x:auto">
-          <table class="tbl" style="min-width:900px">
+          <table class="tbl" style="min-width:1030px">
             <thead><tr>
               <th>Month</th><th style="text-align:right">Jobs</th>
               <th style="text-align:right">Sell (USD)</th><th style="text-align:right">Cost (USD)</th>
               <th style="text-align:right;color:var(--green)">Profit (USD)</th>
+              <th style="text-align:right;color:var(--green);min-width:120px" title="กำไรรวมเป็นบาท = กำไร shipment แปลงตามเรทของแต่ละงาน + กำไร Transit">Profit (THB)</th>
               <th style="text-align:right">Margin</th>
               <th style="text-align:right;color:var(--gold)">Commission (USD)</th>
               <th style="text-align:right;color:var(--gold)">Commission (THB)</th>
@@ -5638,7 +5639,7 @@ function renderMonthlySummary(groups,sortedKeys){
   if(!mergedKeys.length && !sortedKeys.length){wrap.style.display='none';return;}
   wrap.style.display='';
 
-  let gS=0,gC=0,gP=0,gCo=0,gT=0,gJ=0,gDb=0;
+  let gS=0,gC=0,gP=0,gCo=0,gT=0,gJ=0,gDb=0,gPThb=0;
   tbody.innerHTML=mergedKeys.map((key)=>{
     const jobs=(groups[key])||[];
     const activeJobs = jobs.filter(j=>j.status!=='cancelled');
@@ -5660,7 +5661,7 @@ function renderMonthlySummary(groups,sortedKeys){
       mDbComm  = mDb * (window.commRate||0.25); // Transit comm = profit × commRate
       mTTotal  = mT + mDbComm;
     }
-    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mTTotal;gJ+=totalJobs;gDb+=mDb;
+    gS+=mS;gC+=mC;gP+=mP;gCo+=mCo;gT+=mTTotal;gJ+=totalJobs;gDb+=mDb;gPThb+=monthProfitThb;
     let label=key;
     if(key!=='Unknown'){const[y,m]=key.split('-');label=(MN[m]||m)+' '+y;}
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
@@ -5680,6 +5681,11 @@ function renderMonthlySummary(groups,sortedKeys){
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?'$'+mS.toFixed(0):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mC?'$'+mC.toFixed(0):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mP>=0?'var(--green)':'var(--red)'}">${mS||mC?'$'+mP.toFixed(0):'—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${monthProfitThb>=0?'var(--green)':'var(--red)'}"
+          title="Shipment ${Math.round(mPThb).toLocaleString('th-TH')} ฿${mDb?(' + Transit '+Math.round(mDb).toLocaleString('th-TH')+' ฿'):''}">
+        ${monthProfitThb?Math.round(monthProfitThb).toLocaleString('th-TH')+' ฿':'—'}
+        ${mDb&&mPThb?`<div style="font-size:9px;color:var(--cyan);margin-top:1px;font-weight:400">+${Math.round(mDb).toLocaleString('th-TH')} (Transit)</div>`:''}
+      </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px">${mS?mM.toFixed(1)+'%':'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mCo<0?'var(--red)':'var(--gold)'}">${mCo?'$'+mCo.toFixed(2):'—'}</td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${mTTotal<0?'var(--red)':'var(--gold)'}">
@@ -5702,6 +5708,7 @@ function renderMonthlySummary(groups,sortedKeys){
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">${gS?'$'+gS.toFixed(0):'—'}</td>
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700">${gC?'$'+gC.toFixed(0):'—'}</td>
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gP>=0?'var(--green)':'var(--red)'}">${gS||gC?'$'+gP.toFixed(0):'—'}</td>
+    <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gPThb>=0?'var(--green)':'var(--red)'}">${gPThb?Math.round(gPThb).toLocaleString('th-TH')+' ฿':'—'}</td>
     <td></td>
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gCo<0?'var(--red)':'var(--gold)'}">${gCo?'$'+gCo.toFixed(2):'—'}</td>
     <td style="padding:10px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${gT<0?'var(--red)':'var(--gold)'}">${gT?(gT<0?'-':'')+Math.abs(gT).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
