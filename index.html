@@ -1857,6 +1857,7 @@ const QUOT_KEY    = 'seafreight_quotations_v1';
 const TODO_KEY    = 'seafreight_todos_v1';
 
 function storageSave(){
+  try{ window.commSchedulePublish && window.commSchedulePublish(); }catch(e){}
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedJobs));
     try{ localStorage.setItem('sfp_jobs_savedAt', new Date().toISOString()); }catch(_e){}
@@ -2248,6 +2249,65 @@ function lclResolveCost(r, pol){
            etdCfs: r.etd_cfs || oc.etd_cfs || lclEtdOf(r.via, pol || r.pol) || '' };  // IPI ออกเรือวันเดียวกับท่าที่ผ่าน
 }
 window.lclOceanTo=lclOceanTo; window.lclResolveCost=lclResolveCost;
+
+// ════════════════════════════════════════════════════════════
+// เผยแพร่ "ค่าคอมรายเดือนของ PAE" ให้แอปอื่นอ่านได้ (CS Hub → หน้า COMMISSION ของ FILM)
+// เขียนที่ sharedCommission/pae — เฉพาะเจ้าของบัญชี PAE เท่านั้นที่เขียน
+// ตัวเลขคิดชุดเดียวกับตาราง Monthly Summary เป๊ะ (shipment + transit, รองรับ tiered)
+// ════════════════════════════════════════════════════════════
+const COMM_OWNER_EMAIL = 'thmunpukdee@gmail.com';
+function commMonthlyTotals(){
+  const jobs = window.savedJobs || [];
+  const dbByMonth = (typeof getDbProfitByMonth==='function') ? getDbProfitByMonth() : {};
+  const groups = {};
+  jobs.forEach(j=>{
+    const key = j.jobType==='import' ? (j.etaMonth||'') : (j.etdMonth||'');
+    if(!key || key==='Unknown') return;
+    (groups[key] = groups[key] || []).push(j);
+  });
+  const keys = [...new Set([...Object.keys(groups), ...Object.keys(dbByMonth)])]
+                 .filter(k=>k && k!=='Unknown').sort();
+  const out = {};
+  keys.forEach(key=>{
+    const active = (groups[key]||[]).filter(j=>j.status!=='cancelled');
+    const mT   = active.reduce((s,j)=>s+(j.commThb||0),0);
+    const mDb  = dbByMonth[key]||0;
+    const mPThb= active.reduce((s,j)=>s+(j.profit||0)*(j.rate||window.exRate||1),0);
+    const monthProfitThb = mPThb + mDb;
+    let total;
+    if(window.commMode==='tiered' && typeof tieredCommRate==='function'){
+      total = monthProfitThb * tieredCommRate(monthProfitThb);
+    } else {
+      total = mT + mDb * (window.commRate||0.25);
+    }
+    out[key] = { commThb: Math.round(total*100)/100,
+                 profitThb: Math.round(monthProfitThb*100)/100,
+                 jobs: active.length };
+  });
+  return out;
+}
+window.commMonthlyTotals = commMonthlyTotals;
+
+let _commPubTimer = null, _commPubHash = '';
+async function publishCommissionSummary(force){
+  if((window._currentEmail||'') !== COMM_OWNER_EMAIL) return false;   // เฉพาะบัญชี PAE
+  if(typeof window.fbSetShared !== 'function') return false;
+  const months = commMonthlyTotals();
+  const payload = { owner: COMM_OWNER_EMAIL, months,
+                    commMode: window.commMode||'flat', commRate: window.commRate||0,
+                    updatedAt: new Date().toISOString() };
+  const h = JSON.stringify(months);
+  if(!force && h === _commPubHash) return false;                     // ไม่มีอะไรเปลี่ยน ไม่ต้องเขียน
+  const ok = await window.fbSetShared('sharedCommission/pae', payload);
+  if(ok) _commPubHash = h;
+  return ok;
+}
+window.publishCommissionSummary = publishCommissionSummary;
+// เรียกแบบหน่วง — ให้ CS Hub เห็นเกือบทันทีเวลาแก้งาน แต่ไม่เขียนรัวๆ
+window.commSchedulePublish = function(){
+  clearTimeout(_commPubTimer);
+  _commPubTimer = setTimeout(()=>{ publishCommissionSummary().catch(()=>{}); }, 3000);
+};
 
 // ปลายทางที่จะโชว์ให้ลูกค้า — เส้น inland (IPI) โชว์ชื่อเมือง แล้ววงเล็บบอกว่าเข้าทางท่าไหน
 function lclDestLabel(r){
@@ -11184,6 +11244,8 @@ onAuthStateChanged(auth, async user=>{
     try{ leadsApplyVisibility(); leadsLoad(); leadsPull(); }catch(e){}
     // เทมเพลต Quotation เป็นของใครของมัน — สลับบัญชีแล้วต้องโหลดของบัญชีใหม่
     try{ qLoadUserTemplates(); }catch(e){}
+    // ส่งสรุปค่าคอมรายเดือนขึ้น shared ให้ CS Hub อ่าน (เฉพาะบัญชี PAE)
+    setTimeout(()=>{ try{ window.publishCommissionSummary(true); }catch(e){} }, 6000);
     await initFirestoreSync();
     // Push current jobs to Firestore so CS Portal can read them —
     // but ONLY if local differs from what we just loaded from cloud.
