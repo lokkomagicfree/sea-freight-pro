@@ -5979,9 +5979,10 @@ function applyOwnBookingPdf(lines){
   const g = k => map[k.toLowerCase()] || '';
   // REF ของลูกค้า = บรรทัดรูปแบบ SBKKxxxx / ตัวอักษร+ตัวเลข ที่อยู่ใกล้ Shipper Name
   let ref='';
-  { const m = L.join('\n').match(/\b([A-Z]{2,6}\d{6,})\b/); if(m) ref = m[1]; }
   const bkg = (g('Booking No.')||'').replace(/[^\w-]/g,'');
-  if(ref && ref===bkg) ref='';
+  { // เช่น SBKK00538403 / STHABKK00538887 (ตัวอักษรได้ถึง 10 ตัว) และต้องไม่ใช่เลข booking เอง
+    const cands = L.join('\n').match(/\b[A-Z]{2,10}\d{6,}\b/g) || [];
+    ref = cands.find(x => x !== bkg) || ''; }
   // วันที่ → YYYY-MM-DD
   const MO={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   const pad=n=>String(n).padStart(2,'0');
@@ -5993,14 +5994,17 @@ function applyOwnBookingPdf(lines){
     return '';
   };
   // เรือ / เที่ยว  "EVER MATCH / 1469E"
-  let vessel='', voyage='';
-  { const v=g('VSL Name / Voy');
-    const m=v.match(/^(.*?)\s*\/\s*(\S+)\s*$/);
-    if(m){ vessel=m[1].trim(); voyage=m[2].trim(); } else vessel=v; }
-  let mVessel='', mVoy='';
-  { const v=g('MOTHER VSL Name');
-    const m=v.match(/^(.*?)\s*\/\s*(\S+)\s*$/);
-    if(m){ mVessel=m[1].trim(); mVoy=m[2].trim(); } else mVessel=v; }
+  // รองรับ 2 รูปแบบ: "EVER MATCH / 1469E"  และ  "HANSA OSTERBURG V.570N"
+  const splitVsl = v => {
+    v = String(v||'').trim();
+    let m = v.match(/^(.*?)\s*\/\s*(\S+)\s*$/);
+    if(m) return [m[1].trim(), m[2].trim()];
+    m = v.match(/^(.*?)\s+V\.?\s*([A-Z0-9\-]+)\s*$/i);
+    if(m) return [m[1].trim(), m[2].trim()];
+    return [v, ''];
+  };
+  const [vessel, voyage] = splitVsl(g('VSL Name / Voy'));
+  const [mVessel, mVoy]  = splitVsl(g('MOTHER VSL Name'));
   // ตู้  "1x40HC"  หรือ "1x20GP + 2x40HC"
   const volRaw = g('Volume');
   const ctn = [];
@@ -6341,87 +6345,9 @@ function extractExcelBooking(input){
 }
 window.extractExcelBooking = extractExcelBooking;
 
-async function extractPdfBooking(input){
-  const file = input.files[0]; if(!file) return;
-  let apiKey = localStorage.getItem('sfp_akey') || document.getElementById('anthropic_key_inp')?.value || '';
-  if(!apiKey){
-    apiKey = prompt('🔑 กรอก Anthropic API Key เพื่อใช้ฟีเจอร์นี้:\n(จะบันทึกใน browser อัตโนมัติ)');
-    if(!apiKey) return;
-    localStorage.setItem('sfp_akey', apiKey.trim());
-    apiKey = apiKey.trim();
-    const inp = document.getElementById('anthropic_key_inp');
-    if(inp) inp.value = apiKey;
-  }
-  toast('🤖 กำลังอ่าน PDF…');
-  try{
-    // Convert PDF to base64
-    const b64 = await new Promise((res,rej)=>{
-      const r=new FileReader();
-      r.onload=e=>res(e.target.result.split(',')[1]);
-      r.onerror=rej;
-      r.readAsDataURL(file);
-    });
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-20250514', max_tokens:1500,
-        messages:[{role:'user',content:[
-          {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
-          {type:'text',text:`Extract booking confirmation data from this PDF. Return ONLY a JSON object with these exact keys (use empty string if not found):
-{
-  "bookingNo": "",
-  "shipper": "",
-  "consignee": "",
-  "pol": "",
-  "pod": "",
-  "etd": "",
-  "eta": "",
-  "vessel": "",
-  "voyage": "",
-  "carrier": "",
-  "commodity": "",
-  "containers": "",
-  "siCutoff": "",
-  "vgmCutoff": "",
-  "gateClosing": "",
-  "bltype": "",
-  "sc": ""
-}
-ETD/ETA format: YYYY-MM-DD if possible. No markdown, no explanation, just the JSON.`}
-        ]}]
-      })
-    });
-    const data = await resp.json();
-    const text = data.content?.[0]?.text||'';
-    const json = JSON.parse(text.replace(/```json|```/g,'').trim());
-    // Fill form fields
-    const s=(id,val)=>{ const e=g(id); if(e&&val) e.value=val; };
-    s('s_bkgno',     json.bookingNo);
-    s('s_shipper',   json.shipper);
-    s('s_consignee', json.consignee);
-    s('s_customer',  json.shipper||json.consignee);
-    s('s_pol',       json.pol);
-    s('s_pod',       json.pod);
-    s('s_etd',       json.etd);
-    s('s_eta',       json.eta);
-    s('s_vessel',    json.vessel);
-    s('s_voyage',    json.voyage);
-    s('s_carrier',   json.carrier);
-    s('s_commodity', json.commodity);
-    s('s_si_cutoff', json.siCutoff);
-    s('s_vgm_cutoff',json.vgmCutoff);
-    s('s_gate_closing',json.gateClosing);
-    s('s_bltype',    json.bltype);
-    s('s_sc',        json.sc);
-    if(json.containers) s('s_connote', json.containers);
-    toast('✅ ดึงข้อมูลจาก PDF สำเร็จ!');
-  }catch(err){
-    toast('❌ Error: '+err.message);
-    console.error(err);
-  }
-  input.value='';
-}
+// [ลบแล้ว] เวอร์ชันเก่าที่ยิงไป api.anthropic.com ตรงจากเบราว์เซอร์ —
+// ถูก CORS บล็อกเสมอ ขึ้น "Failed to fetch" และเพราะประกาศทีหลัง
+// มันจึงไปทับตัวอ่าน PDF ในเครื่อง (pdf.js) ที่ใช้งานได้จริงด้านบน
 window.extractPdfBooking = extractPdfBooking;
 
 function recalcMonthlyComm(inp){
