@@ -5988,14 +5988,17 @@ function applyOwnBookingPdf(lines){
     let i = L.findIndex(t => /^booking\s*no\.?$/i.test(t));
     if(i < 0) i = L.findIndex(t => /booking\s*no\.?\s*$/i.test(t));
     if(i >= 0){
-      const labelX = X[i];
+      // ป้ายอาจถูกรวมกับข้อความอื่นในบรรทัดเดียว (เช่น "Shipper Name : ... Booking No.")
+      // กรณีนั้น x ของบรรทัดจะเป็นของข้อความซ้าย ใช้เป็นตำแหน่งคอลัมน์ไม่ได้
+      const merged = !/^booking\s*no\.?$/i.test(String(L[i]||'').trim());
+      const labelX = merged ? 300 : X[i];            // ป้ายรวม → ใช้ "ครึ่งขวาของหน้า" แทน
       const hasX   = labelX != null;                 // ไฟล์เก่าที่ไม่มีพิกัดก็ยังต้องอ่านได้
       const cands = [];
       for(let j=i+1; j<Math.min(i+7, L.length); j++){
         const t = String(L[j]||'').trim(); if(!t) continue;
         if(isLabel(t)){
           // มีพิกัด: เจอป้ายถัดไปในคอลัมน์เดียวกัน = หมดเขตของ Booking No. (เช่น Shipping Line :)
-          if(hasX && X[j]!=null && Math.abs(X[j]-labelX) < 40) break;
+          if(!merged && hasX && X[j]!=null && Math.abs(X[j]-labelX) < 40) break;
           continue;                                  // ป้ายคอลัมน์อื่น / ไม่มีพิกัด → ข้ามไป
         }
         if(isVal(t)) cands.push({ t, x: X[j] });
@@ -6022,6 +6025,23 @@ function applyOwnBookingPdf(lines){
   // กันหยิบชื่อสายเรือมาเป็นเลข booking (เช่น COSCO) — เลข booking ต้องมีตัวเลขอยู่ด้วย
   const carrierTxt = (g('Shipping Line')||'').replace(/[^\w-]/g,'');
   if(bkg && (bkg.toUpperCase()===carrierTxt.toUpperCase() || !/\d{4,}/.test(bkg))) bkg = '';
+  // ตาข่ายกันตก: ยังหาไม่เจอ → หาโทเคนเดี่ยวๆ ที่อยู่ครึ่งขวาของหน้า มีตัวเลข และไม่ใช่ REF
+  if(!bkg){
+    const cand = [];
+    L.forEach((t,i)=>{
+      const v = String(t||'').trim();
+      if(!/^[A-Za-z0-9][A-Za-z0-9\-\/]{5,}$/.test(v)) return;   // ต้องเป็นโทเคนเดี่ยว
+      if(!/\d{4,}/.test(v)) return;
+      if(v.toUpperCase()===carrierTxt.toUpperCase()) return;
+      if(X[i]!=null && X[i] < 300) return;                       // ต้องอยู่คอลัมน์ขวา
+      if(/\d{1,2}-[A-Za-z]{3}-\d{4}/.test(v)) return;            // ไม่ใช่วันที่
+      cand.push(v);
+    });
+    const pick = cand.find(v => v !== ref) || cand[0];
+    if(pick) bkg = pick;
+  }
+  // เก็บบรรทัดที่อ่านได้ไว้ตรวจย้อนหลัง เผื่อใบไหนอ่านไม่ออก (ดูได้ที่ console: __sfpLastPdf)
+  try{ window.__sfpLastPdf = { lines: L.slice(0,16), xs: X.slice(0,16), bkg, ref }; }catch(e){}
   { // เช่น SBKK00538403 / STHABKK00538887 (ตัวอักษรได้ถึง 10 ตัว) และต้องไม่ใช่เลข booking เอง
     if(refFromCol && refFromCol !== bkg) ref = refFromCol;
     else {
