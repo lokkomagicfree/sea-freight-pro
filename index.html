@@ -2316,6 +2316,28 @@ function commMonthlyTotals(){
 }
 window.commMonthlyTotals = commMonthlyTotals;
 
+// ── ส่ง Remark ของแต่ละ shipment ให้ CS Hub อ่าน ──────────────
+// เก็บเป็นแผนที่ bookingNo → remark ที่ sharedRates/shipment_remarks
+// (ใช้ collection เดียวกับ sharedRates เพราะ Firestore rules อนุญาตเฉพาะที่นี่)
+let _remPubHash = '';
+async function publishShipmentRemarks(force){
+  if(typeof window.fbSetShared !== 'function') return false;
+  const map = {};
+  (window.savedJobs||[]).forEach(j=>{
+    const k = String(j && j.no || '').trim();
+    const v = String(j && j.remarks || '').trim();
+    if(k && v) map[k] = v.slice(0, 400);
+  });
+  const h = JSON.stringify(map);
+  if(!force && h === _remPubHash) return false;
+  const ok = await window.fbSetShared('sharedRates/shipment_remarks', {
+    map, count: Object.keys(map).length,
+    by: window._currentEmail || '', updatedAt: new Date().toISOString() });
+  if(ok) _remPubHash = h;
+  return ok;
+}
+window.publishShipmentRemarks = publishShipmentRemarks;
+
 let _commPubTimer = null, _commPubHash = '';
 async function publishCommissionSummary(force){
   if((window._currentEmail||'') !== COMM_OWNER_EMAIL) return false;   // เฉพาะบัญชี PAE
@@ -2336,7 +2358,10 @@ window.publishCommissionSummary = publishCommissionSummary;
 // เรียกแบบหน่วง — ให้ CS Hub เห็นเกือบทันทีเวลาแก้งาน แต่ไม่เขียนรัวๆ
 window.commSchedulePublish = function(){
   clearTimeout(_commPubTimer);
-  _commPubTimer = setTimeout(()=>{ publishCommissionSummary().catch(()=>{}); }, 3000);
+  _commPubTimer = setTimeout(()=>{
+    publishCommissionSummary().catch(()=>{});
+    publishShipmentRemarks().catch(()=>{});      // ส่ง remark ให้ CS Hub ด้วย
+  }, 3000);
 };
 
 // ปลายทางที่จะโชว์ให้ลูกค้า — เส้น inland (IPI) โชว์ชื่อเมือง แล้ววงเล็บบอกว่าเข้าทางท่าไหน
@@ -11286,7 +11311,8 @@ onAuthStateChanged(auth, async user=>{
     // เทมเพลต Quotation เป็นของใครของมัน — สลับบัญชีแล้วต้องโหลดของบัญชีใหม่
     try{ qLoadUserTemplates(); }catch(e){}
     // ส่งสรุปค่าคอมรายเดือนขึ้น shared ให้ CS Hub อ่าน (เฉพาะบัญชี PAE)
-    setTimeout(()=>{ try{ window.publishCommissionSummary(true); }catch(e){} }, 6000);
+    setTimeout(()=>{ try{ window.publishCommissionSummary(true); }catch(e){}
+                     try{ window.publishShipmentRemarks(true); }catch(e){} }, 6000);
     await initFirestoreSync();
     // Push current jobs to Firestore so CS Portal can read them —
     // but ONLY if local differs from what we just loaded from cloud.
