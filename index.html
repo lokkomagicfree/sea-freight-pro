@@ -14206,3 +14206,641 @@ function renderBestByPOD(){
 }
 window.renderBestByPOD=renderBestByPOD;
 </script>
+
+<!-- 🐱 น้องแมวประจำออฟฟิศ -->
+<script>
+/* ══════════════════════════════════════════════════════════════
+   🐱 น้องแมวประจำออฟฟิศ v2 — ใช้ร่วมกันทั้ง Sea Freight Pro และ CS Ops Hub
+   ลากวางได้ · หลบตอนเรากรอกข้อมูล · ให้อาหาร/อาบน้ำ/เล่นบอล · โตขึ้นได้
+   เดินขยับขาจริง หันซ้ายขวา · พักแล้วหมอบ · เลียขา · ทูหัวล้างหน้า
+   เลือกลายสีได้ · มีปุ่มเรียกน้อง
+   ══════════════════════════════════════════════════════════════ */
+(function(){
+  if (window.__wwlCat) return;
+  var LS='wwl_cat_v1', DAY=86400000;
+
+  var S={ born:Date.now(), food:70, clean:70, play:70, love:0, seen:Date.now(),
+          x:null, y:null, name:'เหมียว', coat:'orange', hidden:false };
+  try{ var raw=localStorage.getItem(LS); if(raw) S=Object.assign(S,JSON.parse(raw)); }catch(e){}
+  try{ if(localStorage.getItem('wwl_cat_off')==='1'){ S.hidden=true; localStorage.removeItem('wwl_cat_off'); } }catch(e){}
+
+  function save(){ S.seen=Date.now(); try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){} }
+  function clamp(v){ return Math.max(0,Math.min(100,v)); }
+  function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+  (function(){ var h=(Date.now()-(S.seen||Date.now()))/3600000;
+    if(h>0){ S.food=clamp(S.food-h*4); S.clean=clamp(S.clean-h*2.5); S.play=clamp(S.play-h*3); } })();
+
+  function ageDays(){ return (Date.now()-S.born)/DAY; }
+  function stage(){ var p=ageDays()+(S.love/40);
+    if(p<3)  return {i:0,name:'ลูกแมว',scale:.62,next:3};
+    if(p<10) return {i:1,name:'วัยรุ่น',scale:.82,next:10};
+    if(p<21) return {i:2,name:'โตเต็มวัย',scale:1,next:21};
+    return {i:3,name:'แมวผู้ใหญ่',scale:1.08,next:null}; }
+  function mood(){ var m=Math.min(S.food,S.clean,S.play);
+    if(m<20) return 'angry'; if(m<45) return 'clingy';
+    if(S.food>80&&S.clean>80&&S.play>80) return 'love'; return 'kind'; }
+  var MOOD_TH={angry:'โกรธ 😾',clingy:'อ้อน 🥺',love:'รัก 💗',kind:'ใจดี 😺'};
+
+  // ── ลายสีให้เลือก ─────────────────────────────────────────
+  var COATS={
+    orange :{n:'ส้มลาย',   body:'#F7B267', head:'#F9BE78', mark:'#E08D3C', ear:'#F19B94', nose:'#E8807C', stripes:1, patch:0},
+    grey   :{n:'เทาลาย',   body:'#A9B4C0', head:'#BCC6D1', mark:'#7C8A99', ear:'#E5A9A9', nose:'#D98C8C', stripes:1, patch:0},
+    tuxedo :{n:'ขาว-ดำ',   body:'#3A3F47', head:'#454B54', mark:'#2A2E34', ear:'#E5A9A9', nose:'#D98C8C', stripes:0, patch:2},
+    calico :{n:'สามสี',    body:'#F5EFE6', head:'#FAF5EE', mark:'#E08D3C', ear:'#F19B94', nose:'#E8807C', stripes:0, patch:1},
+    cream  :{n:'ครีม',     body:'#F3DEC0', head:'#F8E8D2', mark:'#DCC09A', ear:'#F0B7B0', nose:'#E09A96', stripes:0, patch:0},
+    black  :{n:'ดำสนิท',   body:'#3B3F46', head:'#464B53', mark:'#2E3238', ear:'#C98A8A', nose:'#C97F7F', stripes:0, patch:0},
+    white  :{n:'ขาวหิมะ',  body:'#F2F4F7', head:'#FAFBFC', mark:'#DCE2E8', ear:'#F3B8B2', nose:'#E79A94', stripes:0, patch:0},
+    siamese:{n:'วิเชียรมาศ',body:'#EADFCE', head:'#F3EADC', mark:'#5A4636', ear:'#C99C93', nose:'#8A6A5C', stripes:0, patch:3}
+  };
+  function coat(){ return COATS[S.coat] || COATS.orange; }
+
+  // ── โครงร่างน้อง (SVG แยกชิ้นเพื่อขยับได้) ─────────────────
+  var wrap=document.createElement('div');
+  wrap.id='wwl-cat-wrap';
+  wrap.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483000';
+
+  var cat=document.createElement('div');
+  cat.id='wwl-cat';
+  cat.style.cssText='position:absolute;width:104px;height:92px;pointer-events:auto;cursor:grab;'+
+    'transition:opacity .25s;will-change:transform;user-select:none;-webkit-user-select:none;touch-action:none';
+  cat.title='ลากไปวางได้ · คลิกเพื่อดูแลน้อง';
+
+  cat.innerHTML=
+  '<svg viewBox="0 0 130 112" width="100%" height="100%" style="overflow:visible">'+
+    '<ellipse id="wc-shadow" cx="62" cy="104" rx="32" ry="5" fill="rgba(0,0,0,.15)"/>'+
+    '<g id="wc-all">'+
+      '<g id="wc-tail"><path id="wc-tail-p" d="M92 78 q24 4 22 -17 q-2 -14 -13 -13 q-9 1 -7 10 q1 7 7 6" fill="none" stroke-width="9" stroke-linecap="round"/></g>'+
+      // ขาหลัง 2 ข้าง
+      '<g id="wc-leg-bl" class="wc-leg"><rect x="34" y="80" width="10" height="16" rx="5"/></g>'+
+      '<g id="wc-leg-br" class="wc-leg"><rect x="50" y="82" width="10" height="14" rx="5"/></g>'+
+      // ลำตัว
+      '<g id="wc-body"><ellipse id="wc-body-e" cx="62" cy="76" rx="33" ry="22"/>'+
+        '<g id="wc-body-mark" opacity="0">'+
+          '<path d="M46 60 q6 6 0 12" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
+          '<path d="M60 57 q6 7 0 14" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
+          '<path d="M74 59 q6 6 0 12" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
+        '</g>'+
+        '<g id="wc-body-patch" opacity="0"><path d="M62 55 q22 2 26 18 q-14 8 -26 4z"/></g>'+
+      '</g>'+
+      // ขาหน้า 2 ข้าง (ขาหน้าซ้ายใช้ยกเลีย/ล้างหน้า)
+      '<g id="wc-leg-fr" class="wc-leg"><rect x="74" y="82" width="10" height="14" rx="5"/></g>'+
+      '<g id="wc-leg-fl" class="wc-leg"><rect x="86" y="80" width="10" height="16" rx="5"/></g>'+
+      // หัว
+      '<g id="wc-head">'+
+        '<path id="wc-ear" d="M36 34 l2 -20 l17 12z M90 34 l-2 -20 l-17 12z"/>'+
+        '<path id="wc-ear-in" d="M40 30 l1.5 -12 l10 7z M86 30 l-1.5 -12 l-10 7z"/>'+
+        '<ellipse id="wc-face" cx="63" cy="43" rx="29" ry="26"/>'+
+        '<g id="wc-head-mark" opacity="0">'+
+          '<path d="M55 20 l2 9 M63 18 l0 10 M71 20 l-2 9" fill="none" stroke-width="3" stroke-linecap="round"/>'+
+        '</g>'+
+        '<g id="wc-head-patch" opacity="0"><path d="M63 17 q17 3 20 20 q-10 8 -20 6z"/></g>'+
+        '<g id="wc-eyes">'+
+          '<ellipse class="wc-eye" cx="53" cy="42" rx="5.6" ry="6.6" fill="#3B2F2F"/>'+
+          '<ellipse class="wc-eye" cx="73" cy="42" rx="5.6" ry="6.6" fill="#3B2F2F"/>'+
+          '<circle class="wc-gl" cx="54.9" cy="39.6" r="2" fill="#fff"/><circle class="wc-gl" cx="74.9" cy="39.6" r="2" fill="#fff"/>'+
+        '</g>'+
+        '<g id="wc-eyes-shut" opacity="0" stroke="#3B2F2F" stroke-width="2.2" stroke-linecap="round" fill="none">'+
+          '<path d="M48 42 q5 4 10 0"/><path d="M68 42 q5 4 10 0"/></g>'+
+        '<path id="wc-brow-l" d="M47 32 l10 3" stroke="#7a4f24" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0"/>'+
+        '<path id="wc-brow-r" d="M79 32 l-10 3" stroke="#7a4f24" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0"/>'+
+        '<path id="wc-nose" d="M60 51 l3 3 l3 -3z"/>'+
+        '<path id="wc-mouth" d="M59 56 q4 4 8 0" stroke="#7a4f24" stroke-width="1.8" fill="none" stroke-linecap="round"/>'+
+        '<g id="wc-whisk" stroke-width="1.5" stroke-linecap="round" opacity=".75">'+
+          '<path d="M34 46 l-14 -3"/><path d="M34 50 l-14 2"/>'+
+          '<path d="M92 46 l14 -3"/><path d="M92 50 l14 2"/></g>'+
+        '<ellipse class="wc-blush" cx="44" cy="50" rx="4.5" ry="3" opacity=".5"/>'+
+        '<ellipse class="wc-blush" cx="82" cy="50" rx="4.5" ry="3" opacity=".5"/>'+
+      '</g>'+
+    '</g>'+
+    '<g id="wc-fx" opacity="0"></g>'+
+  '</svg>';
+
+  var bubble=document.createElement('div');
+  bubble.style.cssText='position:absolute;pointer-events:none;background:#fff;color:#33404f;border:1px solid #e3e8ee;'+
+    'border-radius:12px;padding:5px 10px;font-size:12px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.12);'+
+    'opacity:0;transition:opacity .25s;white-space:nowrap;font-family:system-ui,-apple-system,sans-serif;max-width:250px';
+
+  var panel=document.createElement('div');
+  panel.style.cssText='position:absolute;pointer-events:auto;display:none;background:#fff;border:1px solid #e3e8ee;'+
+    'border-radius:14px;padding:11px 13px;box-shadow:0 12px 34px rgba(0,0,0,.18);'+
+    'font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#33404f;width:238px';
+
+  var ball=document.createElement('div');
+  ball.style.cssText='position:absolute;width:20px;height:20px;border-radius:50%;display:none;'+
+    'background:radial-gradient(circle at 32% 30%,#ff8fa3,#e63950);box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:none';
+
+  // ── ปุ่มเรียกน้อง ─────────────────────────────────────────
+  var callBtn=document.createElement('button');
+  callBtn.id='wwl-cat-call';
+  callBtn.title='เรียกน้องแมว';
+  callBtn.textContent='🐾';
+  callBtn.style.cssText='position:fixed;right:16px;bottom:16px;width:46px;height:46px;border-radius:50%;'+
+    'border:1px solid #e3e8ee;background:#fff;box-shadow:0 6px 18px rgba(0,0,0,.16);cursor:pointer;'+
+    'font-size:21px;line-height:1;pointer-events:auto;z-index:2147483001;transition:transform .15s';
+  callBtn.onmouseenter=function(){ callBtn.style.transform='scale(1.1)'; };
+  callBtn.onmouseleave=function(){ callBtn.style.transform='scale(1)'; };
+
+  // ชามข้าว (โผล่ตอนกินข้าว)
+  var bowl=document.createElement('div');
+  bowl.style.cssText='position:absolute;display:none;pointer-events:none;width:52px;height:34px';
+  bowl.innerHTML='<svg viewBox="0 0 60 40" width="100%" height="100%">'+
+    '<ellipse cx="30" cy="14" rx="21" ry="7" fill="#C97B4A"/>'+
+    '<path d="M9 14 q3 18 21 18 q18 0 21 -18z" fill="#E39B63"/>'+
+    '<ellipse cx="30" cy="14" rx="16" ry="5" fill="#8d5524"/>'+
+    '<circle cx="25" cy="13" r="3" fill="#a9713b"/><circle cx="34" cy="15" r="2.6" fill="#a9713b"/></svg>';
+
+  // กะละมัง + ฟองสบู่ (โผล่ตอนอาบน้ำ)
+  var tub=document.createElement('div');
+  tub.style.cssText='position:absolute;display:none;pointer-events:none;width:120px;height:60px';
+  tub.innerHTML='<svg viewBox="0 0 140 70" width="100%" height="100%" style="overflow:visible">'+
+    '<g id="wc-foam"></g>'+
+    '<path d="M14 26 q4 34 56 34 q52 0 56 -34z" fill="#BDE0FE"/>'+
+    '<ellipse cx="70" cy="26" rx="56" ry="11" fill="#8ECAE6"/>'+
+    '<ellipse cx="70" cy="26" rx="48" ry="8" fill="#CDE8F6"/></svg>';
+
+  wrap.appendChild(bowl); wrap.appendChild(tub);
+  wrap.appendChild(ball); wrap.appendChild(cat); wrap.appendChild(bubble); wrap.appendChild(panel);
+  var root=document.body||document.documentElement;
+  root.appendChild(wrap); root.appendChild(callBtn);
+  var $=function(id){ return cat.querySelector('#'+id); };
+
+  // ── ทาสีตามลายที่เลือก ────────────────────────────────────
+  function paint(){
+    var c=coat();
+    $('wc-body-e').setAttribute('fill',c.body);
+    $('wc-face').setAttribute('fill',c.head);
+    $('wc-ear').setAttribute('fill',c.body);
+    $('wc-ear-in').setAttribute('fill',c.ear);
+    $('wc-nose').setAttribute('fill',c.nose);
+    $('wc-tail-p').setAttribute('stroke',c.body);
+    cat.querySelectorAll('.wc-leg rect').forEach(function(r){ r.setAttribute('fill',c.body); });
+    cat.querySelectorAll('.wc-blush').forEach(function(b){ b.setAttribute('fill',c.ear); });
+    $('wc-whisk').setAttribute('stroke',c.mark);
+    var bm=$('wc-body-mark'), hm=$('wc-head-mark');
+    bm.setAttribute('opacity', c.stripes?'.55':'0'); hm.setAttribute('opacity', c.stripes?'.55':'0');
+    bm.querySelectorAll('path').forEach(function(p){ p.setAttribute('stroke',c.mark); });
+    hm.querySelectorAll('path').forEach(function(p){ p.setAttribute('stroke',c.mark); });
+    var bp=$('wc-body-patch'), hp=$('wc-head-patch');
+    bp.setAttribute('opacity', c.patch?'.9':'0'); hp.setAttribute('opacity', c.patch?'.9':'0');
+    bp.querySelectorAll('path').forEach(function(p){ p.setAttribute('fill',c.mark); });
+    hp.querySelectorAll('path').forEach(function(p){ p.setAttribute('fill',c.mark); });
+  }
+
+  // ── ตำแหน่ง / ท่าทาง ──────────────────────────────────────
+  var W=function(){return window.innerWidth;}, H=function(){return window.innerHeight;};
+  var pos={x:(S.x!=null?S.x:W()-170), y:(S.y!=null?S.y:H()-170)};
+  var target={x:pos.x,y:pos.y};
+  var facing=1, dragging=false, quiet=false, busy=false;
+  var state='loaf';           // walk | loaf | nap | lick | wash | sit
+  var stateUntil=0, bob=0, ballPos=null;
+
+  function place(){
+    var sc=stage().scale;
+    var lift = (state==='loaf'||state==='nap') ? 6 : 0;      // หมอบ = ตัวเตี้ยลง
+    cat.style.transform='translate('+pos.x+'px,'+(pos.y+lift+Math.sin(bob)*(state==='walk'?2.5:.8))+'px) '+
+      'scale('+(sc*facing)+','+sc+')';
+    cat.style.transformOrigin='50% 100%';
+    placeProps(sc);
+  }
+  // วางชามข้าว / กะละมัง ให้ติดตัวน้องเสมอ
+  function placeProps(sc){
+    if(state==='eat'){
+      bowl.style.width=(46*sc)+'px'; bowl.style.height=(30*sc)+'px';
+      bowl.style.left=(pos.x+(facing>0?62*sc:-8*sc))+'px';
+      bowl.style.top=(pos.y+60*sc)+'px';
+    }
+    if(state==='bath'){
+      tub.style.width=(124*sc)+'px'; tub.style.height=(62*sc)+'px';
+      tub.style.left=(pos.x-10*sc)+'px';
+      tub.style.top=(pos.y+36*sc)+'px';
+    }
+  }
+  function clampPos(){ pos.x=Math.max(4,Math.min(W()-108,pos.x)); pos.y=Math.max(4,Math.min(H()-104,pos.y)); }
+
+  // ท่าหมอบ: ลำตัวแบนลง ขาหดเข้า เงาแผ่กว้าง
+  function applyPose(){
+    var loaf = (state==='loaf'||state==='nap');
+    var body=$('wc-body'), head=$('wc-head'), sh=$('wc-shadow');
+    body.setAttribute('transform', loaf ? 'translate(0,7) scale(1.06,0.80) translate(0,10)' : '');
+    head.setAttribute('transform', loaf ? 'translate(0,9)' : '');
+    sh.setAttribute('rx', loaf ? 36 : 32);
+    // อุปกรณ์ประกอบฉาก: ชามข้าว / กะละมังอาบน้ำ
+    bowl.style.display = (state==='eat')  ? 'block' : 'none';
+    tub.style.display  = (state==='bath') ? 'block' : 'none';
+    if(state!=='bath') foamClear();
+    placeProps(stage().scale);
+    cat.querySelectorAll('.wc-leg').forEach(function(g){
+      g.setAttribute('opacity', (loaf || state==='bath') ? '0' : '1');
+    });
+    $('wc-eyes').setAttribute('opacity', state==='nap' ? '0' : '1');
+    $('wc-eyes-shut').setAttribute('opacity', state==='nap' ? '1' : '0');
+  }
+
+  // ขาเดิน: สลับหน้า-หลังไขว้กันเหมือนแมวจริง
+  function legs(t){
+    var swing = state==='walk' ? Math.sin(t/95)*13 : 0;
+    var set=function(id,dir,pivotX){
+      var el=$(id); if(!el) return;
+      el.setAttribute('transform', state==='walk'
+        ? 'rotate('+(swing*dir)+' '+pivotX+' 82)' : '');
+    };
+    set('wc-leg-bl', 1, 39); set('wc-leg-br',-1, 55);
+    set('wc-leg-fr', 1, 79); set('wc-leg-fl',-1, 91);
+  }
+
+  // ── ท่าเลียขา / ทูหัวล้างหน้า ─────────────────────────────
+  var groomT=0;
+  function groom(t){
+    var head=$('wc-head'), fl=$('wc-leg-fl');
+    if(state==='lick'){
+      // ก้มหัวลงเลียขาหน้า + ขาหน้ายกนิดๆ
+      var k=Math.sin(t/180);
+      head.setAttribute('transform','rotate('+(16+k*5)+' 63 60) translate(0,6)');
+      fl.setAttribute('transform','rotate(-26 91 82)');
+      fl.setAttribute('opacity','1');
+    } else if(state==='wash'){
+      // ยกขาหน้าขึ้นถูหัวเป็นวงกลม (ทูหัว)
+      var a=t/150;
+      head.setAttribute('transform','rotate('+(Math.sin(a)*7-4)+' 63 60)');
+      fl.setAttribute('transform','translate('+(Math.cos(a)*5-14)+','+(Math.sin(a)*5-34)+') rotate(-55 91 82)');
+      fl.setAttribute('opacity','1');
+    } else if(state==='eat'){
+      // ก้มหน้าลงชาม เคี้ยวเป็นจังหวะ งั่มๆ
+      var e=Math.sin(t/150), chew=Math.abs(Math.sin(t/70));
+      head.setAttribute('transform','translate('+(facing>0?6:-6)+','+(16+e*4)+') rotate('+(14+e*4)+' 63 60) scale(1,'+(1-chew*0.05)+')');
+      fl.setAttribute('transform','');
+      fl.setAttribute('opacity','1');
+    } else if(state==='bath'){
+      // แช่กะละมัง ตัวโยกไปมา + ขาหน้าถูตัว + ฟองสบู่
+      var w=Math.sin(t/130);
+      head.setAttribute('transform','translate(0,6) rotate('+(w*7)+' 63 60)');
+      fl.setAttribute('transform','translate('+(Math.cos(t/120)*5-12)+','+(Math.sin(t/120)*4-30)+') rotate(-52 91 82)');
+      fl.setAttribute('opacity','1');
+      foam(t);
+    } else if(state!=='loaf' && state!=='nap'){
+      head.setAttribute('transform','');
+    }
+  }
+
+  // ── ฟองสบู่ตอนอาบน้ำ ──────────────────────────────────────
+  var foamArr=[], foamSeed=0;
+  function foamClear(){ foamArr=[]; var g=tub.querySelector('#wc-foam'); if(g) g.innerHTML=''; }
+  function foam(t){
+    var g=tub.querySelector('#wc-foam'); if(!g) return;
+    if(t-foamSeed>170 && foamArr.length<16){
+      foamSeed=t;
+      foamArr.push({x:22+Math.random()*96, y:30+Math.random()*8, r:3+Math.random()*6,
+                    v:.25+Math.random()*.45, s:Math.random()*6.28, born:t});
+    }
+    var out='';
+    for(var i=foamArr.length-1;i>=0;i--){
+      var b=foamArr[i], age=t-b.born;
+      if(age>2600){ foamArr.splice(i,1); continue; }
+      var y=b.y-age*b.v*0.045, x=b.x+Math.sin(age/300+b.s)*4;
+      var op=Math.max(0, 0.85-age/3200);
+      out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+b.r.toFixed(1)+'" fill="#ffffff" opacity="'+op.toFixed(2)+'"/>'+
+           '<circle cx="'+(x-b.r*0.3).toFixed(1)+'" cy="'+(y-b.r*0.3).toFixed(1)+'" r="'+(b.r*0.28).toFixed(1)+'" fill="#ffffff" opacity="'+(op*0.9).toFixed(2)+'"/>';
+    }
+    // ฟองกองบนหัวน้อง
+    out+='<ellipse cx="70" cy="24" rx="26" ry="9" fill="#ffffff" opacity="0.75"/>';
+    g.innerHTML=out;
+  }
+
+  // ── เลือกกิจกรรมถัดไป — เน้นพัก ไม่เดินบ่อย ────────────────
+  function nextState(){
+    if(dragging||busy||quiet||ballPos) return;
+    var r=Math.random(), m=mood();
+    // หิว/สกปรกมาก จะไม่ค่อยหลับ เดินวนหาเจ้าของแทน
+    var napW = (m==='angry') ? .10 : .34;
+    if(r < napW)          go('nap',  14000+Math.random()*20000);
+    else if(r < napW+.28) go('loaf', 9000+Math.random()*12000);
+    else if(r < napW+.40) go('lick', 4500+Math.random()*3000);
+    else if(r < napW+.52) go('wash', 4500+Math.random()*3000);
+    else if(r < napW+.62) go('sit',  6000+Math.random()*6000);
+    else { // เดินสั้นๆ ไปใกล้ๆ ไม่ข้ามจอ
+      var d=110+Math.random()*180, a=Math.random()*Math.PI*2;
+      target.x=Math.max(10,Math.min(W()-118, pos.x+Math.cos(a)*d));
+      target.y=Math.max(10,Math.min(H()-114, pos.y+Math.sin(a)*d));
+      go('walk', 12000);
+    }
+  }
+  function go(st, ms){
+    state=st; stateUntil=performance.now()+ms;
+    if(st!=='walk'){ target.x=pos.x; target.y=pos.y; }
+    applyPose();
+    if(st==='nap') setTimeout(function(){ if(state==='nap') fx('zzz'); }, 900);
+  }
+  function wake(){
+    if(state==='nap'||state==='loaf'){ go('sit',3000); say(pick(['หืม..ตื่นแล้ว','เมี๊ยว~','ง่วงอยู่เลย']),1600); }
+  }
+
+  // ── หลบเวลาเรากำลังพิมพ์ ───────────────────────────────────
+  function isEditable(el){ if(!el) return false;
+    var t=(el.tagName||'').toUpperCase();
+    return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||el.isContentEditable; }
+  function overlaps(r,pad){ pad=pad||30; var sc=stage().scale, w=104*sc, h=92*sc;
+    return !(pos.x>r.right+pad||pos.x+w<r.left-pad||pos.y>r.bottom+pad||pos.y+h<r.top-pad); }
+  function dodge(r){
+    var sc=stage().scale, w=104*sc, h=92*sc;
+    var spots=[{x:12,y:H()-h-12},{x:W()-w-12,y:H()-h-12},{x:12,y:12},{x:W()-w-12,y:12}]
+      .filter(function(p){ return (p.x>r.right+24||p.x+w<r.left-24||p.y>r.bottom+24||p.y+h<r.top-24); });
+    if(!spots.length) return;
+    spots.sort(function(a,b){ return (Math.abs(a.x-pos.x)+Math.abs(a.y-pos.y))-(Math.abs(b.x-pos.x)+Math.abs(b.y-pos.y)); });
+    target.x=spots[0].x; target.y=spots[0].y; go('walk',8000);
+  }
+  document.addEventListener('focusin',function(e){
+    if(!isEditable(e.target)) return;
+    quiet=true; cat.style.opacity='.45'; hidePanel(); say('');
+    var r=null; try{ r=e.target.getBoundingClientRect(); }catch(err){}
+    if(r&&overlaps(r)) dodge(r); else if(state==='walk') go('loaf',9000);
+  },true);
+  document.addEventListener('focusout',function(){ quiet=false; cat.style.opacity='1'; },true);
+  window.addEventListener('scroll',function(){
+    if(quiet&&document.activeElement&&isEditable(document.activeElement)){
+      var r=null; try{ r=document.activeElement.getBoundingClientRect(); }catch(e){}
+      if(r&&overlaps(r)) dodge(r);
+    }
+  },true);
+
+  // ── ลากวาง ────────────────────────────────────────────────
+  var grab={dx:0,dy:0,moved:false};
+  function down(e){ var p=e.touches?e.touches[0]:e;
+    dragging=true; grab.moved=false; grab.dx=p.clientX-pos.x; grab.dy=p.clientY-pos.y;
+    cat.style.cursor='grabbing'; e.preventDefault(); }
+  function move(e){ if(!dragging) return; var p=e.touches?e.touches[0]:e;
+    var nx=p.clientX-grab.dx, ny=p.clientY-grab.dy;
+    if(Math.abs(nx-pos.x)+Math.abs(ny-pos.y)>3) grab.moved=true;
+    pos.x=nx; pos.y=ny; clampPos(); target.x=pos.x; target.y=pos.y; place(); e.preventDefault(); }
+  function up(){ if(!dragging) return; dragging=false; cat.style.cursor='grab';
+    S.x=pos.x; S.y=pos.y; save();
+    if(grab.moved){ go('sit',4000); say(pick(['วางตรงนี้ก็ได้~','หื้อ..ตกใจหมด','ที่นี่นั่งสบายดี']),1600); }
+    else { wake(); togglePanel(); } }
+  cat.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  cat.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false});
+  window.addEventListener('touchend',up);
+
+  // ── คำพูด / เอฟเฟกต์ ──────────────────────────────────────
+  var sayT=null;
+  function say(t,ms){ clearTimeout(sayT);
+    if(!t){ bubble.style.opacity='0'; return; }
+    bubble.textContent=t; bubble.style.opacity='1';
+    bubble.style.left=Math.min(W()-260,Math.max(4,pos.x))+'px';
+    bubble.style.top=Math.max(2,pos.y-30)+'px';
+    sayT=setTimeout(function(){ bubble.style.opacity='0'; },ms||2200); }
+  function fx(kind){
+    var g=$('wc-fx');
+    g.innerHTML={ heart:'<path d="M63 10 q7 -10 14 -2 q6 7 -14 22 q-20 -15 -14 -22 q7 -8 14 2z" fill="#ff6b81"/>',
+      food:'<circle cx="63" cy="15" r="9" fill="#8d5524"/><circle cx="55" cy="19" r="6" fill="#a9713b"/>',
+      bath:'<circle cx="55" cy="13" r="6" fill="#8ecae6" opacity=".85"/><circle cx="69" cy="9" r="8" fill="#bde0fe" opacity=".85"/>',
+      mad:'<path d="M59 7 l8 0 l-3 12 l-2 0z" fill="#e63950"/><circle cx="63" cy="23" r="2.4" fill="#e63950"/>',
+      zzz:'<text x="52" y="16" font-size="15" fill="#8899aa" font-family="sans-serif">z</text>'+
+          '<text x="66" y="8" font-size="11" fill="#8899aa" font-family="sans-serif">z</text>' }[kind]||'';
+    g.setAttribute('opacity','1'); g.style.transition='none'; g.style.transform='translateY(0)';
+    requestAnimationFrame(function(){ g.style.transition='opacity 1.4s,transform 1.4s';
+      g.style.transform='translateY(-24px)'; g.setAttribute('opacity','0'); });
+  }
+  function face(){
+    var m=mood(), mo=$('wc-mouth');
+    $('wc-brow-l').setAttribute('opacity',m==='angry'?'1':'0');
+    $('wc-brow-r').setAttribute('opacity',m==='angry'?'1':'0');
+    mo.setAttribute('d', m==='angry'?'M59 58 q4 -4 8 0' : m==='clingy'?'M59 56 q4 2 8 0'
+                        : m==='love'?'M58 55 q5 6 10 0' : 'M59 56 q4 4 8 0');
+  }
+
+  // ── ดูแลน้อง ──────────────────────────────────────────────
+  var actT=[];
+  function actTimer(fn,ms){ actT.push(setTimeout(fn,ms)); }
+  function act(kind){
+    // ถ้ากำลังกิน/อาบอยู่แล้วกดใหม่ ให้เริ่มท่าใหม่ทันที ไม่ต้องรอ
+    if(busy && (state==='eat'||state==='bath')){ actT.forEach(clearTimeout); actT=[]; busy=false; }
+    if(busy) return; busy=true; wake();
+    var wasAngry=mood()==='angry';
+    if(kind==='food'){ S.food=clamp(S.food+34); S.love++; fx('food');
+      go('eat',5200);                                   // ทำท่ากินข้าว
+      say(wasAngry?'หิวมากแล้วนะ! 😾':pick(['อร่อยจัง! 🐟','ขอบคุณนะ~','งั่มๆ 🍚']),2200);
+      actTimer(function(){ if(state==='eat') say(pick(['งั่มๆ~','อร่อย! 😋','เพิ่มอีกได้ไหม']),1800); },2600);
+      actTimer(function(){ busy=false; fx('heart'); go('lick',4200); },5200); }
+    else if(kind==='bath'){ S.clean=clamp(S.clean+40); S.love++; fx('bath');
+      go('bath',6000);                                  // ทำท่าอาบน้ำ มีฟองสบู่
+      say(pick(['สะอาดเอี่ยม! 🛁','เย็นดี~','ไม่ชอบน้ำ...แต่ก็ดี']),2200);
+      cat.animate([{filter:'brightness(1)'},{filter:'brightness(1.22)'},{filter:'brightness(1)'}],
+                  {duration:2000,iterations:3});
+      actTimer(function(){ if(state==='bath') say(pick(['ฟองเยอะจัง! 🫧','ขนเปียกหมดแล้ว','เมี๊ยว~ 🧼']),1800); },3000);
+      actTimer(function(){ busy=false; fx('heart'); go('wash',4500); },6000); }
+    else if(kind==='ball'){ S.play=clamp(S.play+32); S.love++; throwBall();
+      say(pick(['ลูกบอล! 🎾','ไล่จับได้แน่!','สนุกจัง~']),1800); }
+    S.love=Math.min(500,S.love); save(); face(); renderPanel();
+  }
+  function throwBall(){
+    ballPos={x:30+Math.random()*(W()-130), y:70+Math.random()*(H()-190)};
+    ball.style.display='block'; ball.style.transition='none';
+    ball.style.left=(pos.x+44)+'px'; ball.style.top=(pos.y+34)+'px';
+    requestAnimationFrame(function(){
+      ball.style.transition='left .55s cubic-bezier(.3,1.4,.6,1),top .55s cubic-bezier(.3,1.4,.6,1)';
+      ball.style.left=ballPos.x+'px'; ball.style.top=ballPos.y+'px'; });
+    target.x=ballPos.x-36; target.y=ballPos.y-48; go('walk',6000);
+    setTimeout(function(){ ball.style.display='none'; ballPos=null; busy=false;
+      fx('heart'); say('จับได้แล้ว! 🐾',1600); go('sit',3000); },2700);
+  }
+
+  // ── แผงดูแล ───────────────────────────────────────────────
+  var BTN='flex:1;border:1px solid #e3e8ee;background:#fff;border-radius:9px;padding:7px 4px;font-size:11.5px;'+
+          'cursor:pointer;font-family:inherit;color:#33404f';
+  var BTN2='border:none;background:none;color:#7a8a9c;font-size:11px;cursor:pointer;text-decoration:underline;'+
+           'font-family:inherit;padding:0';
+  function bar(l,v,c){ return '<div style="display:flex;align-items:center;gap:6px;margin:5px 0">'+
+    '<span style="width:48px;color:#7a8a9c;font-size:11px">'+l+'</span>'+
+    '<span style="flex:1;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;display:inline-block">'+
+    '<i style="display:block;height:100%;width:'+Math.round(v)+'%;background:'+c+'"></i></span>'+
+    '<b style="width:26px;text-align:right;font-size:11px;color:#5a6b7c">'+Math.round(v)+'</b></div>'; }
+  var ACT_TH={walk:'กำลังเดิน',loaf:'หมอบพัก',nap:'งีบหลับ 💤',lick:'เลียขา',wash:'ทูหัวล้างหน้า',
+              sit:'นั่งเฉยๆ',eat:'กำลังกินข้าว 🐟',bath:'กำลังอาบน้ำ 🫧'};
+  function renderPanel(){
+    if(panel.style.display==='none') return;
+    var st=stage(), pts=ageDays()+(S.love/40), prog=st.next?Math.min(100,pts/st.next*100):100;
+    panel.innerHTML=
+      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">'+
+        '<b style="font-size:13px">'+S.name+'</b>'+
+        '<span style="font-size:11px;color:#7a8a9c">'+st.name+'</span>'+
+        '<span style="margin-left:auto;font-size:11px">'+MOOD_TH[mood()]+'</span></div>'+
+      '<div style="font-size:11px;color:#7a8a9c;margin-bottom:6px">อายุ '+ageDays().toFixed(1)+' วัน · ตอนนี้'+(ACT_TH[state]||'')+'</div>'+
+      bar('อิ่ม',S.food,'#f4a259')+bar('สะอาด',S.clean,'#8ecae6')+bar('สนุก',S.play,'#90be6d')+
+      '<div style="margin:7px 0 3px;font-size:11px;color:#7a8a9c">'+
+        (st.next?('โตขึ้นอีก '+Math.max(0,st.next-pts).toFixed(1)+' แต้ม'):'โตเต็มที่แล้ว 🎉')+'</div>'+
+      '<span style="display:block;height:6px;background:#eef1f5;border-radius:4px;overflow:hidden">'+
+        '<i style="display:block;height:100%;width:'+prog+'%;background:linear-gradient(90deg,#f4a259,#e76f51)"></i></span>'+
+      '<div style="display:flex;gap:6px;margin-top:10px">'+
+        '<button data-act="food" style="'+BTN+'">🐟 อาหาร</button>'+
+        '<button data-act="bath" style="'+BTN+'">🛁 อาบน้ำ</button>'+
+        '<button data-act="ball" style="'+BTN+'">🎾 บอล</button></div>'+
+      '<div style="margin-top:10px;font-size:11px;color:#7a8a9c;margin-bottom:5px">ลายสีน้อง</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:5px">'+
+        Object.keys(COATS).map(function(k){ var c=COATS[k];
+          return '<button data-coat="'+k+'" title="'+c.n+'" style="width:24px;height:24px;border-radius:50%;cursor:pointer;'+
+            'border:2px solid '+(S.coat===k?'#e76f51':'#e3e8ee')+';background:linear-gradient(135deg,'+c.head+' 50%,'+c.mark+' 50%)"></button>'; }).join('')+
+      '</div>'+
+      '<div style="margin-top:9px;display:flex;gap:10px;align-items:center">'+
+        '<button data-act="rename" style="'+BTN2+'">✎ ตั้งชื่อ</button>'+
+        '<button data-act="hide" style="'+BTN2+'">ซ่อนน้อง</button></div>';
+  }
+  function showPanel(){ panel.style.display='block';
+    panel.style.left=Math.min(W()-250,Math.max(6,pos.x-70))+'px';
+    panel.style.top=Math.max(6,Math.min(H()-330,pos.y-250))+'px'; renderPanel(); }
+  function hidePanel(){ panel.style.display='none'; }
+  function togglePanel(){ panel.style.display==='block'?hidePanel():showPanel(); }
+
+  panel.addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    var ck=b.getAttribute('data-coat');
+    if(ck){ S.coat=ck; save(); paint(); renderPanel(); say('ลาย'+COATS[ck].n+'~',1600); return; }
+    var a=b.getAttribute('data-act');
+    if(a==='hide'){ hideCat(); return; }
+    if(a==='rename'){ var n=prompt('ตั้งชื่อน้องแมว:',S.name);
+      if(n&&n.trim()){ S.name=n.trim().slice(0,20); save(); renderPanel(); say('ชื่อ '+S.name+' นะ!',2000); } return; }
+    act(a);
+  });
+  document.addEventListener('mousedown',function(e){
+    if(!panel.contains(e.target)&&e.target!==cat&&!cat.contains(e.target)&&e.target!==callBtn) hidePanel();
+  },true);
+
+  // ── โซนทำงาน: น้องจะไม่เข้าไปกวนบริเวณที่เรากำลังทำงานอยู่ ──
+  var lastWorkRect=null, lastWorkAt=0;
+  function markWork(el){
+    if(!el) return;
+    try{ var r=el.getBoundingClientRect();
+      if(r.width>0&&r.height>0){ lastWorkRect=r; lastWorkAt=performance.now(); } }catch(e){}
+  }
+  function isWorkEl(el){
+    if(!el||!el.tagName) return false;
+    if(isEditable(el)) return true;
+    var t=el.tagName.toUpperCase();
+    if(t==='TD'||t==='TH') return true;                       // ตาราง Work Sheet / Shipments
+    if(el.getAttribute && el.getAttribute('role')==='textbox') return true;
+    if(el.closest && el.closest('.ws-wrap,.grid-wrap,table,dialog,[role="dialog"],.modal')) return true;
+    return false;
+  }
+  document.addEventListener('focusin', function(e){ if(isWorkEl(e.target)) markWork(e.target); }, true);
+  document.addEventListener('click',   function(e){ if(isWorkEl(e.target)) markWork(e.target); }, true);
+  document.addEventListener('keydown', function(){
+    var a=document.activeElement; if(isWorkEl(a)) markWork(a);
+  }, true);
+
+  // คืนกรอบพื้นที่ที่ห้ามน้องทับ (ยังอุ่นอยู่ภายใน 12 วินาที)
+  function workZone(){
+    var a=document.activeElement;
+    if(isWorkEl(a)){ try{ var r=a.getBoundingClientRect(); if(r.width>0) return r; }catch(e){} }
+    if(lastWorkRect && performance.now()-lastWorkAt < 12000) return lastWorkRect;
+    return null;
+  }
+  // กันน้อง (และชามข้าว/กะละมัง) ไม่ให้ทับโซนทำงาน — เช็คทุกเฟรม
+  var lastDodge=0;
+  function keepClear(now){
+    if(dragging) return;
+    var r=workZone(); if(!r){ if(!quiet) cat.style.opacity='1'; return; }
+    var pad=(state==='eat'||state==='bath') ? 70 : 34;   // ตอนกิน/อาบน้ำ เว้นที่ให้ของประกอบฉาก
+    if(!overlaps(r,pad)){ if(!quiet) cat.style.opacity='1'; return; }
+    cat.style.opacity='.35';                              // ทับอยู่ = จางลงทันที ไม่บังตัวเลข
+    if(now-lastDodge < 900) return;
+    lastDodge=now;
+    if(state==='eat'||state==='bath'){                    // กำลังกิน/อาบ ย้ายทั้งฉากไปมุมว่าง
+      var sp=freeSpot(r); if(sp){ pos.x=sp.x; pos.y=sp.y; target.x=pos.x; target.y=pos.y; clampPos(); place(); }
+    } else dodge(r);
+  }
+  function freeSpot(r){
+    var sc=stage().scale, w=104*sc, h=92*sc;
+    var spots=[{x:W()-w-150,y:H()-h-16},{x:16,y:H()-h-16},{x:16,y:16},{x:W()-w-150,y:16}]
+      .filter(function(p){ return (p.x>r.right+30||p.x+w+150<r.left-30||p.y>r.bottom+30||p.y+h<r.top-30); });
+    return spots.length?spots[0]:null;
+  }
+
+  // ── กะพริบตา ──────────────────────────────────────────────
+  var blinkAt=0;
+  function blink(now){
+    if(state==='nap') return;
+    if(now<blinkAt) return;
+    blinkAt=now+2600+Math.random()*4200;
+    var e=$('wc-eyes'), s=$('wc-eyes-shut');
+    e.setAttribute('opacity','0'); s.setAttribute('opacity','1');
+    setTimeout(function(){ if(state!=='nap'){ e.setAttribute('opacity','1'); s.setAttribute('opacity','0'); } },130);
+  }
+
+  // ── ลูปหลัก ───────────────────────────────────────────────
+  var last=0;
+  function loop(now){
+    requestAnimationFrame(loop);
+    if(S.hidden) return;
+    var dt=Math.min(48, now-last); last=now;
+
+    if(!dragging && state==='walk'){
+      var dx=target.x-pos.x, dy=target.y-pos.y, d=Math.sqrt(dx*dx+dy*dy);
+      if(d>2.5){
+        var sp=(ballPos?0.115:0.055)*dt;
+        pos.x+=dx/d*sp; pos.y+=dy/d*sp;
+        if(Math.abs(dx)>2) facing = dx>0 ? 1 : -1;
+        bob+=dt/95;
+      } else if(!ballPos){ go(pick(['loaf','loaf','nap','sit']), 8000+Math.random()*9000); }
+      clampPos();
+    } else { bob+=dt/460; }
+
+    if(!dragging && now>stateUntil) nextState();
+
+    legs(now); groom(now); place(); blink(now); keepClear(now);
+    if(panel.style.display==='block' && (now|0)%600<20) renderPanel();
+  }
+
+  // ── ค่าสถานะลดลงตามเวลา ───────────────────────────────────
+  setInterval(function(){
+    if(S.hidden) return;
+    S.food=clamp(S.food-1.1); S.clean=clamp(S.clean-0.7); S.play=clamp(S.play-0.9);
+    face(); save(); renderPanel();
+    var m=mood();
+    if(m==='angry' && Math.random()<0.35){ fx('mad'); say(pick(['หิวแล้วนะ! 😾','ขนสกปรกแล้ว...','เบื่อ! เล่นด้วยหน่อย']),2600); }
+    else if(m==='clingy' && Math.random()<0.22){ say(pick(['อ้อนๆ~ 🥺','มองอยู่นะ','เมี๊ยว...']),2200); }
+  }, 60000);
+
+  // ── แสดง / ซ่อน + ปุ่มเรียกน้อง ───────────────────────────
+  function showCat(fromBtn){
+    S.hidden=false; save();
+    wrap.style.display='block'; cat.style.display='block';
+    callBtn.style.opacity='.55'; callBtn.title='เรียกน้องแมว';
+    if(fromBtn){                       // เรียกแล้ววิ่งมาหาปุ่ม
+      var sc=stage().scale;
+      pos.x=Math.max(8, W()-104*sc-150); pos.y=Math.max(8, H()-92*sc-40);
+      clampPos(); place(); paint(); face();
+      go('sit',3000); fx('heart'); say(pick(['มาแล้ว! 🐾','เรียกหนูเหรอ~','เมี๊ยว~ อยู่นี่']),2200);
+    }
+    applyPose();
+  }
+  function hideCat(){
+    S.hidden=true; save(); hidePanel();
+    wrap.style.display='none'; callBtn.style.opacity='1';
+    callBtn.title='เรียกน้องแมวกลับมา';
+  }
+  callBtn.addEventListener('click', function(){
+    if(S.hidden) showCat(true);
+    else { showCat(true); showPanel(); }
+  });
+
+  window.addEventListener('resize', function(){ clampPos(); place(); });
+  window.addEventListener('beforeunload', function(){ S.x=pos.x; S.y=pos.y; save(); });
+
+  // ── เริ่มทำงาน ────────────────────────────────────────────
+  paint(); face(); clampPos(); place(); applyPose();
+  if(S.hidden){ wrap.style.display='none'; callBtn.style.opacity='1'; }
+  else callBtn.style.opacity='.55';
+  requestAnimationFrame(loop);
+  setTimeout(function(){
+    if(S.hidden) return;
+    var h=new Date().getHours();
+    say((h<12?'อรุณสวัสดิ์ ':h<18?'สวัสดีตอนบ่าย ':'สวัสดีตอนเย็น ')+'เมี๊ยว~ 🐾', 3000);
+  }, 1400);
+
+  window.__wwlCat = { show:function(){ showCat(true); }, hide:hideCat,
+                      feed:function(){ act('food'); }, bathe:function(){ act('bath'); },
+                      play:function(){ act('ball'); }, state:function(){ return {S:S, state:state}; } };
+  window.wwlCatShow = function(){ showCat(true); };
+  window.wwlCatHide = hideCat;
+})();
+</script>
+
