@@ -2252,7 +2252,7 @@ window.lclOceanTo=lclOceanTo; window.lclResolveCost=lclResolveCost;
 
 // ════════════════════════════════════════════════════════════
 // เผยแพร่ "ค่าคอมรายเดือนของ PAE" ให้แอปอื่นอ่านได้ (CS Hub → หน้า COMMISSION ของ FILM)
-// เขียนที่ sharedCommission/pae — เฉพาะเจ้าของบัญชี PAE เท่านั้นที่เขียน
+// เขียนที่ sharedRates/commission_pae — เฉพาะเจ้าของบัญชี PAE เท่านั้นที่เขียน
 // ตัวเลขคิดชุดเดียวกับตาราง Monthly Summary เป๊ะ (shipment + transit, รองรับ tiered)
 // ════════════════════════════════════════════════════════════
 const COMM_OWNER_EMAIL = 'thmunpukdee@gmail.com';
@@ -2298,7 +2298,9 @@ async function publishCommissionSummary(force){
                     updatedAt: new Date().toISOString() };
   const h = JSON.stringify(months);
   if(!force && h === _commPubHash) return false;                     // ไม่มีอะไรเปลี่ยน ไม่ต้องเขียน
-  const ok = await window.fbSetShared('sharedCommission/pae', payload);
+  // เก็บไว้ใต้ sharedRates/ เพราะ Firestore rules ของโปรเจกต์อนุญาตเฉพาะ collection นี้
+  // (path ใหม่อย่าง sharedCommission/ จะโดน permission-denied)
+  const ok = await window.fbSetShared('sharedRates/commission_pae', payload);
   if(ok) _commPubHash = h;
   return ok;
 }
