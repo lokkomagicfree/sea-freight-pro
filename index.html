@@ -2195,6 +2195,50 @@ function lclRowSell(row){
   return lclSell(c, row.profit, row.minSell, row.mpct, row.round);
 }
 // margin ที่ได้จริงเทียบกับราคาขาย (%) — ใช้เช็คว่ากำไรพอไหม
+// ── เรท inland (IPI) เป็น "ค่าขาในประเทศ" อย่างเดียว ต้องบวกเรทเรือถึงท่าที่ผ่าน (via) เสมอ ──
+// เก็บแยกไว้แบบนี้เพื่อให้อัปเดตเรทเรือรอบใหม่แล้วค่า IPI ขยับตามเองอัตโนมัติ
+function lclOceanTo(port, pol){
+  const want = String(port||'').toUpperCase().trim();
+  if(!want) return null;
+  const pool = (window.ALL_RATES||[]).filter(r=> isLclRate(r) && !r.del && !r.via);
+  let res = pool.filter(r=>{
+    if(!_qRateValid(r)) return false;
+    if(!_qPortMatch(r.pod, want)) return false;
+    if(pol && !_qPortMatch(r.pol, pol)) return false;
+    return true;
+  });
+  res.sort((a,b)=> (lclCost(a)==null?Infinity:lclCost(a)) - (lclCost(b)==null?Infinity:lclCost(b)));
+  return res[0] || null;
+}
+// คืนต้นทุนรวมที่ใช้จริง + คำอธิบายที่มา (ไว้โชว์ tooltip / เตือนเมื่อขาดขาเรือ)
+function lclResolveCost(r, pol){
+  if(!r) return {cost:null, note:'', missing:false};
+  const own = lclCost(r);
+  if(!r.via) return {cost:own, note:'', missing:false};
+  const oc = lclOceanTo(r.via, pol || r.pol);
+  if(!oc) return {cost:null, note:'ไม่พบเรทเรือถึง '+r.via+' ที่ยัง valid', missing:true};
+  const sea = lclCost(oc);
+  if(sea==null) return {cost:null, note:'เรทเรือถึง '+r.via+' ไม่มีราคา', missing:true};
+  return { cost: Math.round((sea + (own||0))*100)/100,
+           note: 'เรือถึง '+r.via+' $'+sea+' + inland $'+(own||0)+(oc.carrier?(' · '+oc.carrier):''),
+           missing:false, sea, inland:own, oceanRate:oc };
+}
+window.lclOceanTo=lclOceanTo; window.lclResolveCost=lclResolveCost;
+
+// ปลายทางที่จะโชว์ให้ลูกค้า — เส้น inland (IPI) โชว์ชื่อเมือง แล้ววงเล็บบอกว่าเข้าทางท่าไหน
+function lclDestLabel(r){
+  const rt = String(r.routing||'').toUpperCase();
+  const ts = rt.indexOf('TRANSHIP')>=0;
+  const base = r.del ? (r.del+'   (IPI via '+(r.pod||'LAX')+')') : (r.pod||'');
+  return base + (ts?'   (T/S)':'');
+}
+function lclRoutingLabel(r){
+  const rt = String(r.routing||'').toUpperCase();
+  if(rt.indexOf('IPI')>=0)      return 'IPI';
+  if(rt.indexOf('TRANSHIP')>=0) return 'T/S';
+  return 'DIRECT';
+}
+window.lclDestLabel=lclDestLabel; window.lclRoutingLabel=lclRoutingLabel;
 function lclRowMargin(row){
   const c = lclRowCost(row), s = lclRowSell(row);
   if(c==null || s==null || s===0) return null;
@@ -2209,23 +2253,32 @@ window.lclRowCost=lclRowCost; window.lclRowSell=lclRowSell; window.lclRowMargin=
 //        ห้ามโชว์ลูกค้าตรงๆ — ต้องผ่านช่อง +Profit ในหน้า Quotation ก่อนเสมอ
 // ════════════════════════════════════════════════════════════
 const LCL_SEED_GZ =
-  'H4sICLUtdGoCA2xjbGNvbXBhY3QuanNvbgDdW0lv48gV/isFohEkHTEmRW32rUSWxDLJKoVFypYHjYHH7ekY3W0Hbk8jgyBADrnkPpf8kum55pcY+SV5r7hIplYv2nwwRVF01ffqvXp7/d34ahzZNeOvN5+MI6N7fv3h481Ho2Z8Pf909f7q7md4aJt2g9C0T+pWvQU/'+
-  '/Xh78xke4zfT6piWDc/ubiae2A0c4PL6/c0tPO3HVHghFwEJZZ+rhLsKfv5oHH1nXJzf3l5d3ho4/Xu4XvzwObt+/8P5l0u4/fTlC054B5fLu/ffX/yIXy9ufrq+u/0Z7m5vfrq7uv6Ad5efz28/Gu/gDgb+zhgwwU7huUsHjCTyRBg1609WzbTxqi+G0zQbFryiUkEO'+
-  'SC/mcE/hw6VwkwBo5fMB+X3MTMVFnw5kzP6AI958uSOXfyNjsv77K5nzOv50dX3xiYRKkTe2hd9j1kuFR/73z1/I/W//uv/2y/1v/77/Bje/3n/7D3ljHbjdSL8nqYefLPEO3J4iY5jvamP6vDTuUiDOrGvynAnydo+2ekncYqKOpU+FYKqbxn2jZjeBnObW2bYSO6jH'+
-  'Qso9ZtSaHUSNiPHGqDfNaYakCgCEfF3AO/hVyIRQ12WDhAxYrKSgIWG9HnOT5dR0Y65AupAaB4hoNLdOzWK8vZhFVCTh3gCOWNiVabw/KwwilPj7AlaNPMFGu45WSjfEsX2eJLQvBWi8BqoNfdEaz26Cds8AH2RwYVP2Q9A1ykcTwGPYzfPgZb9Wpj+Y4qsvZAQKQsCA'+
-  '7RZM2saZW5XZy+VyadSV3tpWq7UCbzmYCJkGQx7idm+0ihXbQczwLzKQMe53KZKYUeB33UJ5zK6ayY2m2ZyGLKhHn8bibBB8SLtyyEhME0Z6MibZoISGIQEyEgIvd4/x/xNJaKRIqjziWAeKJRXwiYwBvkSDrK1xc4+wD6lwZTpkcG+3tI/UKrfXLIdiF9CPYJOTiKNC'+
-  'MLopE3TIRJLGgEqv/PTynzCvVuCHV0Gfkd8RJdPEh+FZ7iE9lqBiUHyGROBGiGB0BO2yWZM8kiypCIVZISawM+fctvafMBeYTBdtlT0kSYZSIEWaSc0xk6x9paifwpczX6ZTOwrtR/OlaYJZSZ3kARA55lSewpONURtRlwKlDhLpNKu+xf5xDzz9MyrA/Msp9qFGf3H2'+
-  '/VEDepOh2RiVQxoOaEy52n9lMrbGHnraIo/s7QlZrFphn4tnGeHKvALWtIsLWWZJNjPvn2FeLzMHmyE4cXFg8JD7PoVxzRZOaWqfHu+MQ3TnUvbkecdub3OFtE+rWU37jOeuuJggFsd8DZKRD/zUhMgY4SkHYRczDMaaRegUww7R37mVKRNfITuF8WOMr+wGxtl2o0x+'+
-  'OZbpVHGy/miQrDXxxU4yN3t52kgqDMg6OiArQYNf06iC7sHsLtteRiNkxKfDGBA4mNOolzmNWTHMtsFGNFYsC8/3YnF9GmUJ53anSIDMXds+i8H/GG0e7KRv4EE8Cd+GnBJfwk2gk0dzXFm05Ado1JHS8duPVlDjcapwJkY19fzmGEXrBRAssTLN0srkOqwnpaeStNdb'+
-  'DX5CueunM9bTKhL5G1hPialgg/oR82iXwtidOsoirmNb5y5zd4/kiUAusozW4w13u+LrkTInmGHAFCMNQTb1erg+EwJdCa3UnaIi84J4mnPxjEt5oZsmCQx/iIvSebgok7uzQLGOvdlekMnVC1culamttDlhq+vPWyyY/4hc/OXy4uMK28GecrpmMNkfeSxGQXvI5CxG'+
-  'tLbB5ECGAd15HqNv4bHQByBtxNnawgYV4AlAyOWzIbpc9ZxZ7dIpXDOIskbIQnqSVaAbZQV6bhIekAB6td4s/LIqdGNxFToPn45pQGOURNM+1Bs5c1/0jhi7LomfVshaTwwFGGajRgAPCiMM/C4dKZjOIcLWha+dZohzuFpbgEpRV43oK5K1grQ+E1KLWltLWnNR5MQT'+
-  'Gq7V81wmiu3VaIp4SIU0NCELnem1E7QY5xA+z1BK6k4RWu8wVI4h0u4iHWcsemmQjmiE62rp4G9GObtEe0wHaENetNymx5xTbevF87OTPs08EL0L6829gc1jCZyL9g95AHHsGTgReyMp2j8IZJehkdW+gfPQyVc0KX2DxwJeZiyn/YBishdkSUQTVeze/RKmSB7zvQGt'+
-  'BUnQvtROzZQoNV+DKAnO+5k+3aPNLRUYgVe7u9FM8DMsBltFoL/7LElkMJKvdpckMqIB/PH92icjgO9rM/FK+dJNlU5uVBPanQpH4G1G15HMXuZmc+H6TK5QMn0swufVSRWTafjyoBYl5caZqIZTJj7qD/Nh+bQRDenoqema+gr8azgzs68VxAOqeEz6qafzNU69UMbr'+
-  'Aj0bS9kD/ABNtaPWMqeYNwFowx21+fIxoaHW24Wzt9mFy1GgPgnCLOVmO2XKv14kCjcqePYSwSuZjahDmXLsu9TVWduaOKwyxek05glP1fZSHzRSCYs9GgFeXfy2F1e/BUt8FgNbPAXPQDf0eRptEb5ITlg8MGodpyjo7Qv0WCbFymvF6kxkJ3d80VMXN6Y3XdKfBn5C'+
-  'zhjNXt7SCZCAxtTFkpLpZPbLelDPmYQ7oAFXyaO8qUpNZ5lz5ayW43VZN0WDWx6tbOVZ6ymhHvg85IMBF0xtMR9fpuOHnJoBlb7iWPJfVguKsNFU5+et/BRp6Z6PNXyEXliFzkeVdunXy9vzD5eraHmrPEkpQJH70/oewTw8L5Mv2kwinAeniybefSl/dgLwomNIXRq7'+
-  'LJTYwFY5PzmrEKIGFHsFt9ff5MXcw9qrNp/1hTWOLWMd0pAJVzfn7TDavIFCYg/jjDNdWTx5gN2jeAtRLOjrgKK009Djw0ftuHl+ZjHBJJ5QRtg27HQK6+cUTbTrwOMswQODMzwsc1geljlc6/oczsUD0RbRDcZGqUqnQr52ph+zBquTJ2UtiuaofDqgB/u28ratgLEw'+
-  'm1c7hU4ZahaN8ZlEP2fy2lTDKAv5qUrkyYxS3AzTlwqegFIOsAtcbtYdmqBJsXjIXUaOsM/HDYAwFpDuKPt8+/btQ3OBff00GiRo014Xif4IDJWWomw7hdi812Xgehl5z7I9PnpbOIpIonpiomLOrIqAELNQH3zb2LTo545kHMw4Btmwyp36tDmLbZr7TC6FAJOO3Vmn'+
-  'DIqdTFHVMj015CwRGFysKSIeu7I5ooo6qxXaLMcNGmbgZ12sOrGQdZk4ha+H6cXC13sOdGeV7pGpTovx7JOIJcg7xz5Wf09W+90//g/NSnLNd0YAAA==';
+  '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';
 
 async function _lclUnpack(){
   const bin = Uint8Array.from(atob(LCL_SEED_GZ), c=>c.charCodeAt(0));
@@ -2246,7 +2299,8 @@ function _lclExpand(d){
     const g = k => row[idx[k]];
     return {
       carrier: g('carrier'), source:'LCL', container_type:'LCL',
-      pol: d.pol, pod: g('pod'), del:'',
+      pol: d.pol, pod: g('pod'), del: (idx['del']!=null ? g('del') : ''),
+      via: (idx['via']!=null ? g('via') : ''), addon: !!(idx['via']!=null && g('via')),
       gp20:0, gp40:0, hc40:0, rf20:0, rf40:0,
       cbm: g('cbm'), cbm_base: g('cbm_base'), lss: g('lss'),
       is_refund: (+g('cbm') < 0),
@@ -2920,9 +2974,11 @@ function renderTable(filtered){
     const _lcl = isLclRate(r);
     const _c   = _lcl ? lclCost(r) : null;
     const _lclCell = !_lcl ? '' : (_c==null ? '—'
-      : (_c < 0
-          ? `<span style="color:#ff9f43;font-weight:700" title="REFUND — สายเรือคืนเงินให้เรา $${Math.abs(_c)}/CBM · ห้ามโชว์ลูกค้า">↩ $${Math.abs(_c).toLocaleString()}</span>`
-          : `<span style="color:var(--green);font-weight:700">$${_c.toLocaleString()}</span>`));
+      : (r.via
+          ? `<span style="color:var(--cyan);font-weight:700" title="ค่าขาในประเทศอย่างเดียว — ต้องบวกเรทเรือถึง ${r.via} เพิ่ม">+$${_c.toLocaleString()}</span>`
+          : (_c < 0
+            ? `<span style="color:#ff9f43;font-weight:700" title="REFUND — สายเรือคืนเงินให้เรา $${Math.abs(_c)}/CBM · ห้ามโชว์ลูกค้า">↩ $${Math.abs(_c).toLocaleString()}</span>`
+            : `<span style="color:var(--green);font-weight:700">$${_c.toLocaleString()}</span>`)));
     return `<tr>
     <td><span class="src-badge ${srcCls(r.source,r)}">${srcLabel(r.source,r)}</span>${fixRemark}${commTag}</td>
     <td style="font-weight:500">${r.carrier||'—'}</td>
@@ -2933,7 +2989,7 @@ function renderTable(filtered){
       ${_lcl?'🧊 LCL':(isReefer?'❄️ RF':'📦 DRY')}
     </td>
     ${_lcl ? `<td colspan="5" style="text-align:center;font-family:var(--mono);font-size:11px">
-       ${_lclCell} <span style="color:var(--muted);font-size:9px">/CBM (cost, incl LSS)</span>
+       ${_lclCell} <span style="color:var(--muted);font-size:9px">${r.via?('/CBM inland — ต้องบวกขาเรือถึง '+r.via):'/CBM (cost, incl LSS)'}</span>
        ${r.etd_cfs?`<span style="color:var(--muted);font-size:9px;margin-left:6px">ETD/CFS ${r.etd_cfs}</span>`:''}
        ${r.routing&&r.routing!=='DIRECT'?`<span style="color:var(--gold);font-size:9px;margin-left:6px">T/S</span>`:''}</td>`
      : `<td style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:600">${r.gp20?'$'+r.gp20.toLocaleString():'—'}</td>
@@ -6957,11 +7013,12 @@ function qRenderRateRowsLCL(body){
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.del||''}" placeholder="—"
         oninput="qUpdateRate(${row.id},'del',this.value)" style="font-size:11px;padding:3px 6px;width:90px;color:var(--muted)"></td>
 
-      <td style="padding:3px 4px" title="ต้นทุนต่อ CBM (รวม LSS แล้ว) — ภายในเท่านั้น ไม่ออกไปหาลูกค้า">
+      <td style="padding:3px 4px" title="${row.costNote ? ('ต้นทุนรวม = '+row.costNote) : 'ต้นทุนต่อ CBM (รวม LSS แล้ว) — ภายในเท่านั้น ไม่ออกไปหาลูกค้า'}">
         <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="cost" class="inp" value="${row.cost==null?'':row.cost}" placeholder="cost"
           oninput="qUpdateRate(${row.id},'cost',this.value);qUpdateRateDisplay(${row.id})"
           style="font-size:11px;padding:3px 6px;text-align:right;color:${refund?'#ff9f43':'var(--muted)'};width:66px">
-        ${refund?'<div style="font-size:8px;color:#ff9f43;font-family:var(--mono);text-align:right">↩ refund</div>':''}</td>
+        ${refund?'<div style="font-size:8px;color:#ff9f43;font-family:var(--mono);text-align:right">↩ refund</div>':''}
+        ${row.via?`<div style="font-size:8px;color:var(--cyan);font-family:var(--mono);text-align:right">รวมขาเรือ ${row.via}</div>`:''}</td>
 
       <td style="padding:3px 4px" title="บวกกำไรเป็น % ของต้นทุน (ต้นทุนติดลบ/REFUND จะไม่คิด % — ใช้ Min แทน)">
         <input type="text" inputmode="decimal" data-rid="${row.id}" data-f="mpct" class="inp" value="${row.mpct||''}" placeholder="%"
@@ -7541,6 +7598,7 @@ try{ QUOTE_TEMPLATES_USER = JSON.parse(localStorage.getItem(LS_QTPL)||'{}'); }ca
 let QUOTE_TEMPLATES_LCL = {};
 const LCL_TPL_REGION = [
   ['🧊 LCL — USA / CANADA',        ['USA','CANADA']],
+  ['🧊 LCL — USA INLAND (IPI ผ่าน LAX)', ['USA INLAND (IPI VIA LAX)']],
   ['🧊 LCL — EUROPE / UK / MED',   ['UNITED KINGDOM','NETHERLANDS / BELGIUM','FRANCE','GERMANY','SPAIN','ITALY','EGYPT']],
   ['🧊 LCL — INTRA ASIA',          ['SINGAPORE','MALAYSIA','INDONESIA','PHILIPPINES','VIETNAM','CAMBODIA','CHINA','HONG KONG','JAPAN','KOREA','TAIWAN']],
   ['🧊 LCL — INDIA / ISC',         ['INDIA','BANGLADESH','PAKISTAN','SRI LANKA / MALDIVES']],
@@ -7549,7 +7607,7 @@ const LCL_TPL_REGION = [
   ['🧊 LCL — AFRICA / INDIAN OCEAN',['AFRICA','MAURITIUS']],
 ];
 function _lclTplRow(r){
-  return { pod:r.pod, del:'', carrier:r.carrier||'', country:r.country||'',
+  return { pod:r.pod, del:r.del||'', carrier:r.carrier||'', country:r.country||'',
            tt:r.ft||'', etdCfs:r.etd_cfs||'', routing:r.routing||'DIRECT', valid:r.validity||'' };
 }
 function qBuildLclTemplatesFrom(rows){
@@ -7564,7 +7622,9 @@ function qBuildLclTemplatesFrom(rows){
   const byC = {};
   rows.forEach(r=>{ const c=(r.country||'OTHER').toUpperCase(); (byC[c]=byC[c]||[]).push(r); });
   const sortRows = a => a.slice().sort((x,y)=>
-    String(x.country||'').localeCompare(String(y.country||'')) || String(x.pod||'').localeCompare(String(y.pod||'')));
+    String(x.country||'').localeCompare(String(y.country||''))
+    || String(x.pod||'').localeCompare(String(y.pod||''))
+    || String(x.del||'').localeCompare(String(y.del||'')));
 
   mk('🧊 LCL — ทุกปลายทาง ('+rows.length+')', sortRows(rows));
   LCL_TPL_REGION.forEach(([name, ctys])=>{
@@ -8048,17 +8108,23 @@ window.qSrcPickApply = function(){
 function qFindLclRate(row, fallbackPol){
   const pool = (window.ALL_RATES||[]).filter(isLclRate);
   const pol  = row.pol || fallbackPol || '';
+  const wantDel = _qCity(row.del);
   let res = pool.filter(r=>{
     if(!_qRateValid(r)) return false;
     if(!_qPortMatch(r.pod, row.pod)) return false;
     if(pol && !_qPortMatch(r.pol, pol)) return false;
+    // ใส่ DEL = ต้องเป็นเรท inland (IPI) ของเมืองนั้น · ไม่ใส่ = เอาเฉพาะเรทถึงท่าเรือ
+    const rDel = _qCity(r.del);
+    if(wantDel){ if(rDel !== wantDel && !_qPortMatch(r.del, row.del)) return false; }
+    else if(rDel) return false;
     return true;
   });
   if(String(row.carrier||'').trim()){
     const want = _qKey(row.carrier);
     res = res.filter(r=> _qKey(r.carrier).includes(want) || want.includes(_qKey(r.carrier)));
   }
-  res.sort((a,b)=> (lclCost(a)==null?Infinity:lclCost(a)) - (lclCost(b)==null?Infinity:lclCost(b)));
+  const tot = r => { const x = lclResolveCost(r, pol).cost; return x==null ? Infinity : x; };
+  res.sort((a,b)=> tot(a)-tot(b));
   return res[0] || null;
 }
 window.qSyncRatesLCL = function(){
@@ -8077,10 +8143,17 @@ window.qSyncRatesLCL = function(){
       row.na = true; row.cost=''; row.valid='N/A'; row.tt=''; row.etdCfs=''; row.routing='';
       na++; naList.push(row.pod); return;
     }
+    const rc = lclResolveCost(r, row.pol || fallbackPol);
+    if(rc.cost==null){                       // เส้น IPI แต่ไม่มีเรทเรือถึงท่าที่ผ่าน = ยังคิดราคาไม่ได้
+      row.na = true; row.cost=''; row.valid='N/A'; row._costRemark = rc.note;
+      na++; naList.push(row.pod + (row.del?(' / '+row.del):'') + ' — ' + rc.note); return;
+    }
     row.na = false;
-    if(!row.carrier) row.carrier = r.carrier || '';
+    if(!row.carrier) row.carrier = (rc.oceanRate && rc.oceanRate.carrier) || r.carrier || '';
     if(!row.pol)     row.pol     = r.pol || fallbackPol;
-    row.cost    = lclCost(r);
+    row.cost    = rc.cost;
+    row.costNote= rc.note;                   // "เรือถึง LAX $140 + inland $82"
+    row.via     = r.via || '';
     row.tt      = r.ft || row.tt || '';
     row.etdCfs  = r.etd_cfs || '';
     row.routing = r.routing || 'DIRECT';
@@ -8197,11 +8270,16 @@ window.qRefreshRowRate = function(id, mode){
     const r = qFindLclRate(row, (document.getElementById('q_pol')||{}).value || LCL_POL);
     if(!r){ row.na=true; row.cost=''; row.valid='N/A'; row.tt=''; row.etdCfs=''; row.routing=''; }
     else{
-      row.na=false;
-      if(!row.carrier) row.carrier = r.carrier||'';
-      row.cost = lclCost(r); row.tt = r.ft||''; row.etdCfs = r.etd_cfs||'';
-      row.routing = r.routing||'DIRECT'; row.country = r.country||'';
-      const vt0 = _qValidText(r); if(vt0) row.valid = vt0;
+      const rc0 = lclResolveCost(r, row.pol || LCL_POL);
+      if(rc0.cost==null){ row.na=true; row.cost=''; row.valid='N/A'; row._costRemark=rc0.note; }
+      else{
+        row.na=false;
+        if(!row.carrier) row.carrier = (rc0.oceanRate && rc0.oceanRate.carrier) || r.carrier||'';
+        row.cost = rc0.cost; row.costNote = rc0.note; row.via = r.via||'';
+        row.tt = r.ft||''; row.etdCfs = r.etd_cfs||'';
+        row.routing = r.routing||'DIRECT'; row.country = r.country||'';
+        const vt0 = _qValidText(r); if(vt0) row.valid = vt0;
+      }
     }
     qRenderRateRows(); qPreview(); return;
   }
@@ -8549,7 +8627,7 @@ function qBuildEmail(){
         // LCL: ราคาที่ส่งลูกค้า = cost + profit (ไม่ต่ำกว่า Min) — ห้ามใช้ตัวเลข cost ตรงๆ
         const _sell = lclRowSell(row);
         const _na   = (_sell == null);
-        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}${String(row.routing||'').toUpperCase().indexOf('TRANSHIP')>=0?' (T/S)':''}`);
+        lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${lclDestLabel(row)}`);
         if(_na)              lines.push('  N/A');
         else if(_sell<=0)    lines.push('  ON REQUEST');
         else                 lines.push(`  USD ${_sell.toLocaleString()} / CBM (W/M, min 1 CBM, incl. LSS)`);
@@ -8781,13 +8859,12 @@ window.qExportLclExcelJS = async function(){
       const s   = lclRowSell(r);
       const na  = (s==null);
       const bad = (s!=null && s<=0);              // refund ที่ยังไม่ตั้ง Min
-      const ts  = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
       if(na) naCount++; else shown++;
       const vals=[
-        (r.pod||'')+(r.del?' / DEL: '+r.del:''),
+        lclDestLabel(r),
         na?'N/A':(bad?'ON REQUEST':s),
         na?'N/A':(r.tt||'-'), na?'N/A':(r.etdCfs||'-'),
-        na?'N/A':(r.carrier||'-'), na?'N/A':(ts?'T/S':'DIRECT'),
+        na?'N/A':(r.carrier||'-'), na?'N/A':lclRoutingLabel(r),
         r.valid||gValid||''
       ];
       ws.getRow(R).height = 18;
@@ -8819,6 +8896,8 @@ window.qExportLclExcelJS = async function(){
   terms.push('Transit time (T/T) is an estimate from the carrier and is not guaranteed.');
   if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0))
     terms.push('Ports marked T/S are served via transhipment.');
+  if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('IPI')>=0))
+    terms.push('IPI rates are all-in from origin to the inland point via Los Angeles, limited to 1 CBM not exceeding 360 KGS per unit.');
   terms.forEach(t=>{ merge(R);
     put(R,1,'•  '+t,{font:{size:10,color:{argb:'FF555555'}}, alignment:{wrapText:true,vertical:'top'}}); R++; });
 
@@ -8903,15 +8982,14 @@ window.qExportLclExcel = async function(){
         const s   = lclRowSell(r);
         const na  = (s == null);
         const bad = (s != null && s <= 0);          // refund ที่ยังไม่ตั้ง Min
-        const ts  = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
         if(na) naCount++; else shown++;
         aoa.push([
-          (r.pod||'') + (r.del ? ' / DEL: '+r.del : ''),
+          lclDestLabel(r),
           na ? 'N/A' : (bad ? 'ON REQUEST' : s),      // ตัวเลขจริง = จัดรูปแบบเป็นเงินได้
           na ? 'N/A' : (r.tt || '-'),
           na ? 'N/A' : (r.etdCfs || '-'),
           na ? 'N/A' : (r.carrier || '-'),
-          na ? 'N/A' : (ts ? 'T/S' : 'DIRECT'),
+          na ? 'N/A' : lclRoutingLabel(r),
           r.valid || gValid || ''
         ]);
         (na ? NA_ROWS : DATA_ROWS).push(aoa.length-1);
@@ -8929,6 +9007,8 @@ window.qExportLclExcel = async function(){
   terms.push('Transit time (T/T) is an estimate from the carrier and is not guaranteed.');
   if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0))
     terms.push('Ports marked T/S are served via transhipment.');
+  if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('IPI')>=0))
+    terms.push('IPI rates are all-in from origin to the inland point via Los Angeles, limited to 1 CBM not exceeding 360 KGS per unit.');
   aoa.push([]); aoa.push(['TERMS & CONDITIONS']);
   const TERM_HEAD = aoa.length-1, TERM_ROWS = [];
   terms.forEach(t=>{ aoa.push(['•  '+t]); TERM_ROWS.push(aoa.length-1); });
@@ -9266,9 +9346,8 @@ window.qExportLclPdf = function(){
       fillR(LM, y, TW, ROW_H, bg);
       strokeR(LM, y, TW, ROW_H, [225,225,225], 0.15);
 
-      const ts = String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0;
       const cells = [
-        (r.pod||'') + (r.del? ' / '+r.del : '') + (ts?'  (T/S)':''),
+        lclDestLabel(r),
         na ? 'N/A' : (bad ? 'ON REQUEST' : 'USD '+sell.toLocaleString()),
         na ? 'N/A' : (r.tt||'-'),
         na ? 'N/A' : (r.etdCfs||'-'),
@@ -9318,6 +9397,8 @@ window.qExportLclPdf = function(){
   if(subjto) terms.unshift('Subject to '+subjto+'.');
   if(order.some(k=>groups.get(k).some(r=>String(r.routing||'').toUpperCase().indexOf('TRANSHIP')>=0)))
     terms.push('Ports marked (T/S) are served via transhipment.');
+  if(rows.some(r=>String(r.routing||'').toUpperCase().indexOf('IPI')>=0))
+    terms.push('IPI rates are all-in from origin to the inland point via Los Angeles, limited to 1 CBM not exceeding 360 KGS per unit.');
   pageBreak(10 + terms.length*3.6);
   y += 6;
   T('TERMS & CONDITIONS', LM, y, 7.5, true, NAVY);
