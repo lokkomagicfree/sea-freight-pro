@@ -2288,7 +2288,9 @@ function commMonthlyTotals(){
     try{
       const sr = (typeof srLoad==='function') ? srLoad() : {};
       const manual = sr['manual_thb_profit_'+key];
-      basis = (manual!==undefined && manual!=='' ) ? Number(manual) : (mDb>0 ? mDb : null);
+      if(manual === '')             basis = null;              // ล้างเอง = ไม่มียอดจริง ใช้ที่ระบบคำนวณ
+      else if(manual !== undefined) basis = Number(manual);
+      else                          basis = (mDb>0 ? mDb : null);
     }catch(e){}
     let actual = null, rateUsed = null;
     if(basis > 0){
@@ -5670,6 +5672,8 @@ function renderMonthlySummary(groups,sortedKeys){
     // Pre-fill with saved manual THB profit, or fallback to CB profit
     const srDataNow = srLoad();
     const savedThbProfit = srDataNow['manual_thb_profit_'+key];
+    // undefined = ยังไม่เคยกรอก → ใส่ยอด Transit ให้เป็นค่าตั้งต้น
+    // ''        = ผู้ใช้ลบออกเอง → ปล่อยว่างไว้ อย่าเติมอะไรกลับ
     const commInputVal = savedThbProfit !== undefined ? savedThbProfit : (mDb>0 ? mDb : '');
     const _mRate = monthlyCommRateFor(commInputVal||0);
     const commInputDisplay = commInputVal>0 ? Math.round(commInputVal*_mRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(commMode==='tiered'?` (${(_mRate*100).toFixed(0)}%)`:'') : '—';
@@ -6436,7 +6440,7 @@ function recalcMonthlyComm(inp){
   window._monthlyCommTimer = setTimeout(()=>{
     const data = srLoad();
     if(raw>0) data['manual_thb_profit_'+monthKey] = raw;
-    else delete data['manual_thb_profit_'+monthKey];
+    else data['manual_thb_profit_'+monthKey] = '';   // ล้างเอง = จำไว้ว่าว่าง ห้ามเติมค่าอัตโนมัติกลับ
     srSave(data);
   }, 500);
 }
