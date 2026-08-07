@@ -5698,9 +5698,13 @@ function renderMonthlySummary(groups,sortedKeys){
       </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${dbCol}">${mDb?mDb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿':'—'}</td>
       <td style="padding:5px 8px;text-align:right">
-        <input type="number" min="0" step="100" placeholder="฿ profit" data-month="${key}" value="${commInputVal}" oninput="recalcMonthlyComm(this)"
+        <input type="number" min="0" step="100" data-month="${key}" value="${commInputVal}" oninput="recalcMonthlyComm(this)"
+          placeholder="${monthProfitThb>0?Math.round(monthProfitThb).toLocaleString('th-TH'):'฿ profit'}"
+          title="ใส่ยอด &quot;กำไร&quot; ของเดือนนี้เป็นบาท (ไม่ใช่ค่าคอม) — ระบบคำนวณได้ ${monthProfitThb>0?Math.round(monthProfitThb).toLocaleString('th-TH'):'—'} ฿ · ค่าคอมจะคิดให้เองในช่องถัดไป"
           style="width:110px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:4px 6px;text-align:right;outline:none"
+          data-profit="${Math.round(monthProfitThb)}"
           onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
+        <span id="mwarn_${mthKey}" style="display:none;color:var(--gold);font-size:12px;margin-left:3px;cursor:help">⚠</span>
       </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold)" id="mcomm_${mthKey}">${commInputDisplay}</td>
       <td style="padding:9px 8px;text-align:center;font-family:var(--mono);font-size:10px;color:${commDueCol}">${commDue}</td>
@@ -6379,6 +6383,14 @@ function recalcMonthlyComm(inp){
   const raw=parseFloat(inp.value)||0;
   const rate=monthlyCommRateFor(raw);
   const comm=Math.round(raw*rate);
+  // กันพิมพ์ผิด: ถ้าใส่เลขใกล้เคียง "ค่าคอม" แทนที่จะเป็น "กำไร" ให้เตือน
+  const warnEl = g('mwarn_'+key);
+  if(warnEl){
+    const pf = Number(inp.dataset.profit||0);
+    const looksLikeComm = raw>0 && pf>0 && raw < pf*0.5 && Math.abs(raw - pf*(window.commRate||0.25)) < pf*0.05;
+    warnEl.style.display = looksLikeComm ? '' : 'none';
+    if(looksLikeComm) warnEl.title = 'ตัวเลขนี้ใกล้เคียง "ค่าคอม" มากกว่า "กำไร" — ช่องนี้ต้องใส่กำไร (ระบบคำนวณได้ '+Math.round(pf).toLocaleString('th-TH')+' ฿)';
+  }
   const el=g('mcomm_'+key);
   if(el){
     el.textContent=raw>0?comm.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(commMode==='tiered'?` (${(rate*100).toFixed(0)}%)`:''):'—';
