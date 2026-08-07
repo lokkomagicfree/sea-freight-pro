@@ -2224,6 +2224,15 @@ function lclOceanTo(port, pol, carrier){
   res.sort((a,b)=> (lclCost(a)==null?Infinity:lclCost(a)) - (lclCost(b)==null?Infinity:lclCost(b)));
   return res[0] || null;
 }
+// ETD/CFS ของท่าปลายทางนั้น — เผื่อเรทที่ถูกที่สุดไม่ได้ระบุวันไว้ ไปหยิบจากเจ้าอื่นของท่าเดียวกัน
+function lclEtdOf(port, pol){
+  const want = String(port||'').toUpperCase().trim(); if(!want) return '';
+  const hit = (window.ALL_RATES||[]).find(r=> isLclRate(r) && !r.del && !r.via && r.etd_cfs
+    && _qPortMatch(r.pod, want) && (!pol || _qPortMatch(r.pol, pol)));
+  return hit ? hit.etd_cfs : '';
+}
+window.lclEtdOf = lclEtdOf;
+
 // คืนต้นทุนรวมที่ใช้จริง + คำอธิบายที่มา (ไว้โชว์ tooltip / เตือนเมื่อขาดขาเรือ)
 function lclResolveCost(r, pol){
   if(!r) return {cost:null, note:'', missing:false};
@@ -2235,7 +2244,8 @@ function lclResolveCost(r, pol){
   if(sea==null) return {cost:null, note:'เรทเรือถึง '+r.via+' ไม่มีราคา', missing:true};
   return { cost: Math.round((sea + (own||0))*100)/100,
            note: 'เรือถึง '+r.via+' $'+sea+' + inland $'+(own||0)+(oc.carrier?(' · '+oc.carrier):''),
-           missing:false, sea, inland:own, oceanRate:oc };
+           missing:false, sea, inland:own, oceanRate:oc,
+           etdCfs: r.etd_cfs || oc.etd_cfs || lclEtdOf(r.via, pol || r.pol) || '' };  // IPI ออกเรือวันเดียวกับท่าที่ผ่าน
 }
 window.lclOceanTo=lclOceanTo; window.lclResolveCost=lclResolveCost;
 
@@ -7630,8 +7640,11 @@ const LCL_TPL_REGION = [
   ['🧊 LCL — AFRICA / INDIAN OCEAN',['AFRICA','MAURITIUS']],
 ];
 function _lclTplRow(r){
+  // IPI ไม่มีวันออกเรือของตัวเอง → ใช้ของท่าที่ผ่าน (via) เหมือนกันเป๊ะ
+  let etd = r.etd_cfs || '';
+  if(!etd && r.via){ try{ etd = lclResolveCost(r, r.pol).etdCfs || ''; }catch(e){} }
   return { pod:r.pod, del:r.del||'', carrier:r.carrier||'', country:r.country||'',
-           tt:r.ft||'', etdCfs:r.etd_cfs||'', routing:r.routing||'DIRECT', valid:r.validity||'' };
+           tt:r.ft||'', etdCfs:etd, routing:r.routing||'DIRECT', valid:r.validity||'' };
 }
 function qBuildLclTemplatesFrom(rows){
   const tpl = {};
@@ -7653,13 +7666,27 @@ function qBuildLclTemplatesFrom(rows){
   // ท่าเรือทั่วโลก + inland อเมริกาทั้ง 2 ประตู (LAX / NYC) ในใบเดียว ไม่ต้องใส่ทีละ POD
   // เรียง: ประเทศ → ท่าเรือก่อน → แล้วเมือง inland · เมืองที่เข้าได้ 2 ทางจะอยู่ติดกันให้เทียบ
   const gate = r => /NEW YORK/i.test(r.via || '') ? 'NYC' : 'LAX';
-  // ปลายทางเดียวกันที่มี 2 บริการ (เช่น BELAWAN ตรง/ผ่านสิงคโปร์) เก็บตัวถูกสุดพอ
+  // ── ตัดปลายทางซ้ำ ───────────────────────────────────────────
+  // "NEW YORK" กับ "NEW YORK, NY" = ท่าเดียวกัน · NEWARK/NEW JERSEY/ELIZABETH = กลุ่มท่าเดียวกับ NY
+  // เก็บตัวถูกสุด แล้วดึงข้อมูลที่ตัวนั้นไม่มี (ETD/CFS, F/T, สายเรือ) จากตัวที่ตัดทิ้งมาเติมให้
+  const canon = v => {
+    let t = String(v||'').toUpperCase().replace(/\s+/g,' ').trim();
+    t = t.replace(/,\s*[A-Z]{2}$/,'');                       // ตัด ", NY" / ", NJ"
+    if(/^(NEWARK|NEW JERSEY|ELIZABETH)$/.test(t)) t = 'NEW YORK';
+    return t;
+  };
+  const NY_ALIAS = 'NEW YORK / NEWARK / NEW JERSEY / ELIZABETH';
   const cheapest = new Map();
   rows.forEach(r=>{
-    const k = String(r.pod||'').toUpperCase()+'|'+String(r.del||'').toUpperCase();
+    const k = canon(r.pod)+'|'+canon(r.del);
     const c = lclResolveCost(r, r.pol).cost;
     const cur = cheapest.get(k);
-    if(!cur || (c!=null && (cur.c==null || c < cur.c))) cheapest.set(k, {r, c});
+    if(!cur || (c!=null && (cur.c==null || c < cur.c))){
+      cheapest.set(k, {r: Object.assign({}, cur? cur.r : {}, r), c, alias:(cur&&cur.alias)||[]});
+    }
+    const e2 = cheapest.get(k);
+    ['etd_cfs','ft','carrier','country','routing'].forEach(f=>{ if(!e2.r[f] && r[f]) e2.r[f] = r[f]; });
+    if(canon(r.pod)==='NEW YORK' && !r.del) e2.r.pod = NY_ALIAS;
   });
   const allRows = [...cheapest.values()].map(x=>x.r).sort((x,y)=>
        String(x.country||'zz').localeCompare(String(y.country||'zz'))
@@ -8209,7 +8236,7 @@ window.qSyncRatesLCL = function(){
     row.costNote= rc.note;                   // "เรือถึง LAX $140 + inland $82"
     row.via     = r.via || '';
     row.tt      = r.ft || row.tt || '';
-    row.etdCfs  = r.etd_cfs || '';
+    row.etdCfs  = rc.etdCfs || r.etd_cfs || '';
     row.routing = r.routing || 'DIRECT';
     row.country = r.country || '';
     row._costRemark = r.remark || '';
@@ -8330,7 +8357,7 @@ window.qRefreshRowRate = function(id, mode){
         row.na=false;
         if(!row.carrier) row.carrier = (rc0.oceanRate && rc0.oceanRate.carrier) || r.carrier||'';
         row.cost = rc0.cost; row.costNote = rc0.note; row.via = r.via||'';
-        row.tt = r.ft||''; row.etdCfs = r.etd_cfs||'';
+        row.tt = r.ft||''; row.etdCfs = rc0.etdCfs || r.etd_cfs || '';
         row.routing = r.routing||'DIRECT'; row.country = r.country||'';
         const vt0 = _qValidText(r); if(vt0) row.valid = vt0;
       }
