@@ -2337,7 +2337,9 @@ window.lclLoadSeed = async function(silent){
   try{
     const d = await _lclUnpack();
     const rows = _lclExpand(d);
-    const key = r => (String(r.carrier||'').toUpperCase()+'|'+String(r.pod||'').toUpperCase()+'|LCL');
+    // ต้องมี del + via ในคีย์ด้วย ไม่งั้นเรท inland ทุกเมือง (pod เดียวกันหมด) จะยุบเหลือแถวเดียว
+    const key = r => [String(r.carrier||'').toUpperCase(), String(r.pod||'').toUpperCase(),
+                      String(r.del||'').toUpperCase(), String(r.via||'').toUpperCase(), 'LCL'].join('|');
     const cur = (window.ALL_RATES||[]).slice();
     const pos = new Map();
     cur.forEach((r,i)=>{ if(isLclRate(r)) pos.set(key(r), i); });
