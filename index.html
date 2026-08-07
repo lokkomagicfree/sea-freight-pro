@@ -7622,9 +7622,21 @@ const QUOTE_TEMPLATES_BUILTIN = {
   }
 };
 // เทมเพลตที่ผู้ใช้สร้างเอง — เก็บใน Firestore (data/quoteTemplates) + cache ใน localStorage
-const LS_QTPL = 'sfp_quote_templates_v1';
-let QUOTE_TEMPLATES_USER = {};
-try{ QUOTE_TEMPLATES_USER = JSON.parse(localStorage.getItem(LS_QTPL)||'{}'); }catch(e){ QUOTE_TEMPLATES_USER = {}; }
+const LS_QTPL_LEGACY = 'sfp_quote_templates_v1';          // คีย์เก่า (ใช้ร่วมกันทั้งเครื่อง)
+function qTplKey(){                                        // คีย์แคชแยกตามบัญชี
+  const u = (window._currentUid || '').trim();
+  return u ? ('sfp_quote_templates_v1__' + u) : '';
+}
+let QUOTE_TEMPLATES_USER = {};                             // ยังไม่รู้ว่าใครล็อกอิน → เริ่มจากว่างเสมอ
+let _qTplUid = null;
+function qTplReadCache(){
+  const k = qTplKey(); if(!k) return {};
+  try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; }
+}
+function qTplWriteCache(){
+  const k = qTplKey(); if(!k) return;                      // ไม่ล็อกอิน = ไม่เขียนแคช กันปนกัน
+  try{ localStorage.setItem(k, JSON.stringify(QUOTE_TEMPLATES_USER)); }catch(e){}
+}
 // ── เทมเพลต LCL — สร้างอัตโนมัติจากคลังเรท LCL (ใบ DIRECT ROUTING SERVICES) ──
 // ไม่ต้อง hard-code ปลายทาง · อัปเดตเรทรอบใหม่แล้วเทมเพลตอัปตามเอง
 let QUOTE_TEMPLATES_LCL = {};
@@ -7729,17 +7741,49 @@ function qAllTemplates(){
 // ให้โค้ดเดิมที่อ้าง QUOTE_TEMPLATES ยังใช้ได้
 Object.defineProperty(window, 'QUOTE_TEMPLATES', { get(){ return qAllTemplates(); } });
 async function qLoadUserTemplates(){
+  const u = (window._currentUid||'').trim();
+  if(!u){                                    // ยังไม่ล็อกอิน → ไม่โชว์เทมเพลตของใครทั้งนั้น
+    QUOTE_TEMPLATES_USER = {}; _qTplUid = null; qFillTemplateSelect(); return;
+  }
+  if(_qTplUid !== u){                        // สลับบัญชี → ล้างของคนก่อนหน้าทิ้งก่อน
+    QUOTE_TEMPLATES_USER = qTplReadCache();
+    _qTplUid = u;
+    qFillTemplateSelect();
+  }
   try{
     const snap = await window.fbGet('data/quoteTemplates');
     if(snap && snap.templates){
-      QUOTE_TEMPLATES_USER = snap.templates;
-      try{ localStorage.setItem(LS_QTPL, JSON.stringify(QUOTE_TEMPLATES_USER)); }catch(e){}
+      QUOTE_TEMPLATES_USER = snap.templates; // คลาวด์ของบัญชีนี้คือตัวจริง
+      qTplWriteCache();
       qFillTemplateSelect();
+    } else {
+      await qTplMigrateLegacy();             // บัญชีนี้ยังไม่มีเทมเพลตบนคลาวด์
     }
   }catch(e){ console.warn('quoteTemplates load', e); }
 }
+// เทมเพลตเก่าที่เคยเก็บรวมกันทั้งเครื่อง — ถามก่อนว่าจะย้ายมาเป็นของบัญชีนี้ไหม (ครั้งเดียว)
+async function qTplMigrateLegacy(){
+  let old = {};
+  try{ old = JSON.parse(localStorage.getItem(LS_QTPL_LEGACY)||'{}'); }catch(e){ return; }
+  const names = Object.keys(old||{});
+  if(!names.length) return;
+  const seen = 'sfp_qtpl_migrated__' + (window._currentUid||'');
+  try{ if(localStorage.getItem(seen)) return; }catch(e){}
+  try{ localStorage.setItem(seen,'1'); }catch(e){}
+  const who = window._currentEmail || 'บัญชีนี้';
+  if(!confirm('พบเทมเพลตเก่าในเครื่องนี้ '+names.length+' ชุด\n'+names.slice(0,8).join(', ')+(names.length>8?' …':'')
+    + '\n\nเทมเพลตเก่าเคยเก็บรวมกันทั้งเครื่อง ไม่ได้แยกบัญชี\n'
+    + 'ต้องการย้ายมาเป็นของ '+who+' ไหม?\n\nOK = ย้ายมา   |   Cancel = ไม่เอา (ของคนอื่น)')) return;
+  QUOTE_TEMPLATES_USER = Object.assign({}, old, QUOTE_TEMPLATES_USER);
+  await qPersistUserTemplates();
+  qFillTemplateSelect();
+  toast('📋 ย้ายเทมเพลตเก่า '+names.length+' ชุด มาเป็นของบัญชีนี้แล้ว');
+}
 async function qPersistUserTemplates(){
-  try{ localStorage.setItem(LS_QTPL, JSON.stringify(QUOTE_TEMPLATES_USER)); }catch(e){}
+  if(!(window._currentUid||'').trim()){
+    toast('⚠ ต้องล็อกอินก่อน เทมเพลตถึงจะเก็บเป็นของบัญชีคุณ'); return;
+  }
+  qTplWriteCache();
   try{ await window.fbSet('data/quoteTemplates', { templates: QUOTE_TEMPLATES_USER, updatedAt:new Date().toISOString() }); }
   catch(e){ toast('⚠ บันทึกขึ้นคลาวด์ไม่สำเร็จ (เก็บไว้ในเครื่องแล้ว)'); }
 }
@@ -11138,6 +11182,8 @@ onAuthStateChanged(auth, async user=>{
     if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
     try{ leadsApplyVisibility(); leadsLoad(); leadsPull(); }catch(e){}
+    // เทมเพลต Quotation เป็นของใครของมัน — สลับบัญชีแล้วต้องโหลดของบัญชีใหม่
+    try{ qLoadUserTemplates(); }catch(e){}
     await initFirestoreSync();
     // Push current jobs to Firestore so CS Portal can read them —
     // but ONLY if local differs from what we just loaded from cloud.
@@ -11317,8 +11363,10 @@ onAuthStateChanged(auth, async user=>{
     }, ()=>{});
   } else {
     _currentUser = null;
-    window._currentUser = null; window._currentEmail = '';
+    window._currentUser = null; window._currentEmail = ''; window._currentUid = '';
     try{ leadsApplyVisibility(); }catch(e){}
+    // ออกจากระบบ → ล้างเทมเพลตของบัญชีที่แล้วออกจากหน้าจอ
+    try{ QUOTE_TEMPLATES_USER = {}; _qTplUid = null; qFillTemplateSelect(); }catch(e){}
     if(overlay) overlay.style.display='flex';
     if(badge)   badge.style.display='none';
   }
