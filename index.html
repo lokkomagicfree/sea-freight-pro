@@ -2292,12 +2292,17 @@ function commMonthlyTotals(){
       else if(manual !== undefined) basis = Number(manual);
       else                          basis = (mDb>0 ? mDb : null);
     }catch(e){}
+    // กันกรอกผิดช่อง: ตัวเลขนี้ต้องเป็น "กำไร" ซึ่งย่อมมากกว่า "ค่าคอม" ที่คิดจากกำไรนั้นเสมอ
+    // ถ้าน้อยกว่าค่าคอมที่ระบบคำนวณได้ แปลว่าเผลอเอาค่าคอมมาใส่ → ทิ้ง ใช้ยอดระบบแทน
+    let badBasis = false;
+    if(basis > 0 && auto > 0 && basis < auto){ badBasis = true; basis = null; }
     let actual = null, rateUsed = null;
     if(basis > 0){
       rateUsed = (typeof monthlyCommRateFor==='function') ? monthlyCommRateFor(basis) : (window.commRate||0.25);
       actual = Math.round(basis * rateUsed);
     }
-    out[key] = { commThb: Math.round((actual!=null ? actual : auto)*100)/100,   // ตัวที่ CS Hub เอาไปคิด
+    out[key] = { badBasis,                                                     // กรอกเลขผิดประเภทไว้
+                 commThb: Math.round((actual!=null ? actual : auto)*100)/100,   // ตัวที่ CS Hub เอาไปคิด
                  autoThb:  Math.round(auto*100)/100,                            // ที่ระบบคำนวณเอง (ไว้เทียบ)
                  basisThb: basis!=null ? Math.round(basis*100)/100 : null,      // ยอด THB ที่กรอกเอง
                  rateUsed, isActual: actual!=null,
