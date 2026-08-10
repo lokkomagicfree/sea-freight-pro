@@ -1572,12 +1572,20 @@ function renderWorkBench(){
     _wbSet('wb_stat_todo',openTodos.length);
 
     // Alerts
+    // ถ้ายังไม่ได้โหลดลิสต์ (ผู้ใช้ยังไม่เคยเปิดแท็บ Pre-Bkg) ให้ดึงจาก cloud แล้ววาดใหม่รอบเดียว
+    if(!(window._preBkgList||[]).length && !window._wbPbkgLoading && typeof loadPreBkgList==='function'){
+      window._wbPbkgLoading = true;
+      loadPreBkgList().then(()=>{ window._wbPbkgLoading=false; try{ renderWorkBench(); }catch(e){} })
+                      .catch(()=>{ window._wbPbkgLoading=false; });
+    }
     const alerts=[];
     (window._preBkgList||[]).forEach(p=>{
       const st=(p.status||'pending');
-      if(['cancelled','released','booked'].includes(st)) return;   // ตัดสินใจแล้ว ไม่ต้องเตือน
+      // ตัดสินใจแล้ว/ปิดเคสแล้ว ไม่ต้องเตือน — rejected ก็คือลูกค้าไม่เอาแล้ว
+      if(['cancelled','released','booked','rejected'].includes(st)) return;
       const du=_wbDaysUntil(p.freeTime);
       if(du===null || du>7) return;                                 // แสดงเฉพาะที่ใกล้ (≤7 วัน) หรือเกิน
+      if(du < -30) return;                                          // เก่าเกิน 30 วัน ไม่ต้องรกหน้าจอ
       const reached = du<=0;
       let dstr=''; try{ const dt=new Date(p.freeTime); if(!isNaN(dt)) dstr=dt.toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }catch(e){}
       alerts.push({
@@ -5128,6 +5136,20 @@ window.fetchFuelPrice = async function(){
 let _preBkgList = [];
 let _preBkgLog = [];
 let _preBkgEditIdx = null;
+
+// ⚠ ตัวแปรนี้เป็น module scope — หน้า Work Bench (การ์ดเตือน "Pre-Booking ใกล้วัน Cancel",
+// สถิติ Pre-Bkg, จุดบนปฏิทิน) อ่านผ่าน window._preBkgList ถ้าไม่ผูก getter ไว้จะได้ undefined
+// ตลอด → การ์ดเตือนขึ้นว่า "ไม่มี Pre-Booking ใกล้วัน Cancel" ทั้งที่มี 186 รายการบน cloud
+Object.defineProperty(window, '_preBkgList', {
+  configurable: true,
+  get(){ return _preBkgList; },
+  set(v){ _preBkgList = Array.isArray(v) ? v : []; }
+});
+Object.defineProperty(window, '_preBkgLog', {
+  configurable: true,
+  get(){ return _preBkgLog; },
+  set(v){ _preBkgLog = Array.isArray(v) ? v : []; }
+});
 
 // ── Pre-Booking status model (shared shape with CS app) ──
 const PBKG_STATUSES = [
