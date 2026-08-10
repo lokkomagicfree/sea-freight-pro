@@ -1572,11 +1572,15 @@ function renderWorkBench(){
     _wbSet('wb_stat_todo',openTodos.length);
 
     // Alerts
-    // ถ้ายังไม่ได้โหลดลิสต์ (ผู้ใช้ยังไม่เคยเปิดแท็บ Pre-Bkg) ให้ดึงจาก cloud แล้ววาดใหม่รอบเดียว
-    if(!(window._preBkgList||[]).length && !window._wbPbkgLoading && typeof loadPreBkgList==='function'){
-      window._wbPbkgLoading = true;
-      loadPreBkgList().then(()=>{ window._wbPbkgLoading=false; try{ renderWorkBench(); }catch(e){} })
-                      .catch(()=>{ window._wbPbkgLoading=false; });
+    // ถ้ายังไม่ได้โหลดลิสต์ (ผู้ใช้ยังไม่เคยเปิดแท็บ Pre-Bkg) ให้ดึงจาก cloud "ครั้งเดียว"
+    // ⚠ ห้ามรีเซ็ตแฟล็กแล้วเรียก renderWorkBench ซ้ำแบบไม่มีเงื่อนไข — ถ้าลิสต์ว่างจริง
+    //   (ยังไม่ล็อกอิน / ไม่มีข้อมูล) จะวนไม่รู้จบจนจอค้าง (บั๊ก 10 Aug 2026)
+    if(!window._wbPbkgTried && !(window._preBkgList||[]).length && typeof loadPreBkgList==='function'){
+      window._wbPbkgTried = true;                       // ลองครั้งเดียวพอ
+      Promise.resolve()
+        .then(()=>loadPreBkgList())
+        .then(()=>{ if((window._preBkgList||[]).length){ try{ renderWorkBench(); }catch(e){} } })
+        .catch(()=>{});
     }
     const alerts=[];
     (window._preBkgList||[]).forEach(p=>{
@@ -5284,6 +5288,10 @@ window._applyPreBkgRemote = function(list, log){
   const modalOpen = document.getElementById('pbkg_modal')?.style.display === 'flex';
   if(!modalOpen && document.getElementById('page-prebooking')?.classList.contains('active')){
     try{ renderPreBooking(); }catch(e){}
+  }
+  // ข้อมูลมาถึงทีหลัง (หลังล็อกอิน/มีคนแก้จากฝั่ง CS) → รีเฟรชการ์ดเตือนบน Work Bench ด้วย
+  if(document.getElementById('page-workbench')?.classList.contains('active')){
+    try{ renderWorkBench(); }catch(e){}
   }
 };
 
