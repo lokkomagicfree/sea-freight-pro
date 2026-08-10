@@ -290,7 +290,9 @@ body{font-size:14px;font-weight:450}
   <div style="max-width:1280px;margin:0 auto">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
       <div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--text)">🗂 Work Bench</div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--text)">🗂 Work Bench
+          <span id="sfp_build_tag" style="font-family:var(--mono);font-size:10px;font-weight:600;color:var(--muted);vertical-align:middle;border:1px solid var(--border);border-radius:5px;padding:1px 6px;margin-left:8px">build —</span>
+        </div>
         <div id="wb_greeting" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
       </div>
       <button onclick="renderWorkBench()" class="btn btn-ghost" style="font-size:11px;padding:6px 14px">🔄 Refresh</button>
@@ -1480,6 +1482,44 @@ body{font-size:14px;font-weight:450}
 // SEA FREIGHT PRO — Complete JavaScript
 // ═══════════════════════════════════════════════════════════
 
+// ── BUILD STAMP + ตัวดักข้อผิดพลาดแบบเห็นด้วยตา ───────────────
+// ตอบคำถาม "เว็บที่เปิดอยู่เป็นเวอร์ชันไหน" และ "พังตรงไหน" โดยไม่ต้องเปิด F12
+// มี error เมื่อไหร่ → ขึ้นแถบแดงบนสุดของหน้าจอทันที แคปรูปส่งมาได้เลย
+window.SFP_BUILD = '2026-08-10c';
+console.log('%cSFP BUILD ' + window.SFP_BUILD, 'background:#0f6fa8;color:#fff;padding:2px 8px;border-radius:4px');
+(function(){
+  var shown = 0;
+  function banner(msg){
+    if(shown >= 3) return;                       // โชว์ไม่เกิน 3 อัน กันรก
+    shown++;
+    try{
+      var bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;left:0;right:0;top:'+((shown-1)*48)+'px;z-index:2147483647;'
+        + 'background:#b3261e;color:#fff;font:12px/1.45 ui-monospace,Menlo,monospace;padding:7px 34px 7px 12px;'
+        + 'white-space:pre-wrap;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+      bar.textContent = '⚠ SFP ' + window.SFP_BUILD + ' — ' + msg;
+      var x = document.createElement('span');
+      x.textContent = '✕';
+      x.style.cssText = 'position:absolute;right:10px;top:6px;cursor:pointer;font-weight:700';
+      x.onclick = function(){ bar.remove(); };
+      bar.appendChild(x);
+      (document.body || document.documentElement).appendChild(bar);
+    }catch(e){}
+  }
+  window.addEventListener('error', function(ev){
+    banner((ev.message||'error') + '  @' + String(ev.filename||'').split('/').pop() + ':' + ev.lineno + ':' + ev.colno);
+  });
+  window.addEventListener('unhandledrejection', function(ev){
+    var r = ev.reason;
+    banner('Promise: ' + ((r && (r.message||r.code)) || String(r)));
+  });
+  // ปั๊ม build ลงหัวหน้า Work Bench ให้เห็นด้วยตา ไม่ต้องเปิด console
+  document.addEventListener('DOMContentLoaded', function(){
+    var t = document.getElementById('sfp_build_tag');
+    if(t) t.textContent = 'build ' + window.SFP_BUILD;
+  });
+})();
+
 // ── Global state ──────────────────────────────────────────
 let ALL_RATES  = [];
 let savedJobs  = [];
@@ -1572,16 +1612,10 @@ function renderWorkBench(){
     _wbSet('wb_stat_todo',openTodos.length);
 
     // Alerts
-    // ถ้ายังไม่ได้โหลดลิสต์ (ผู้ใช้ยังไม่เคยเปิดแท็บ Pre-Bkg) ให้ดึงจาก cloud "ครั้งเดียว"
-    // ⚠ ห้ามรีเซ็ตแฟล็กแล้วเรียก renderWorkBench ซ้ำแบบไม่มีเงื่อนไข — ถ้าลิสต์ว่างจริง
-    //   (ยังไม่ล็อกอิน / ไม่มีข้อมูล) จะวนไม่รู้จบจนจอค้าง (บั๊ก 10 Aug 2026)
-    if(!window._wbPbkgTried && !(window._preBkgList||[]).length && typeof loadPreBkgList==='function'){
-      window._wbPbkgTried = true;                       // ลองครั้งเดียวพอ
-      Promise.resolve()
-        .then(()=>loadPreBkgList())
-        .then(()=>{ if((window._preBkgList||[]).length){ try{ renderWorkBench(); }catch(e){} } })
-        .catch(()=>{});
-    }
+    // ⚠ ห้ามโหลดข้อมูลจากในฟังก์ชัน render นี้เด็ดขาด (บทเรียน 10 Aug 2026: เคยใส่
+    //   load().then(()=>renderWorkBench()) แล้วเกิดลูป microtask ไม่รู้จบ → จอค้างทั้งหน้า)
+    //   ลิสต์ Pre-Booking จะถูกเติมโดย snapshot listener → _applyPreBkgRemote()
+    //   ซึ่งจะเรียก renderWorkBench() ให้เองเมื่อข้อมูลมาถึง
     const alerts=[];
     (window._preBkgList||[]).forEach(p=>{
       const st=(p.status||'pending');
@@ -5144,16 +5178,18 @@ let _preBkgEditIdx = null;
 // ⚠ ตัวแปรนี้เป็น module scope — หน้า Work Bench (การ์ดเตือน "Pre-Booking ใกล้วัน Cancel",
 // สถิติ Pre-Bkg, จุดบนปฏิทิน) อ่านผ่าน window._preBkgList ถ้าไม่ผูก getter ไว้จะได้ undefined
 // ตลอด → การ์ดเตือนขึ้นว่า "ไม่มี Pre-Booking ใกล้วัน Cancel" ทั้งที่มี 186 รายการบน cloud
-Object.defineProperty(window, '_preBkgList', {
-  configurable: true,
-  get(){ return _preBkgList; },
-  set(v){ _preBkgList = Array.isArray(v) ? v : []; }
-});
-Object.defineProperty(window, '_preBkgLog', {
-  configurable: true,
-  get(){ return _preBkgLog; },
-  set(v){ _preBkgLog = Array.isArray(v) ? v : []; }
-});
+try{
+  Object.defineProperty(window, '_preBkgList', {
+    configurable: true,
+    get(){ return _preBkgList; },
+    set(v){ _preBkgList = Array.isArray(v) ? v : []; }
+  });
+  Object.defineProperty(window, '_preBkgLog', {
+    configurable: true,
+    get(){ return _preBkgLog; },
+    set(v){ _preBkgLog = Array.isArray(v) ? v : []; }
+  });
+}catch(e){ console.warn('bind _preBkgList to window', e); }
 
 // ── Pre-Booking status model (shared shape with CS app) ──
 const PBKG_STATUSES = [
@@ -8996,7 +9032,38 @@ function qShowSrc(){
 }
 window.qShowSrc = qShowSrc;
 window.qSaveShowSrc = function(on){ try{ localStorage.setItem('sfp_q_show_src', on?'1':'0'); }catch(e){} };
-function qRowSrc(row){ return (row && (row.src || row._src)) || ''; }
+// คืนค่าติ๊ก "โชว์ FIX/FAK" ที่เคยตั้งไว้ตอนเปิดหน้าใหม่
+// (บั๊ก 10 Aug 2026: เซฟลง localStorage แล้วแต่ไม่เคยเอากลับมาใส่ช่อง → เปิดหน้ามาติ๊กหาย
+//  แต่ qShowSrc() อ่านจากช่องก่อนเสมอ เลยได้ false ทั้งที่ผู้ใช้เคยเปิดไว้)
+(function restoreShowSrc(){
+  const apply = ()=>{
+    const el = document.getElementById('q_show_src');
+    if(el) el.checked = (localStorage.getItem('sfp_q_show_src') === '1');
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+
+// ป้ายประเภทเรทของแถว — ปกติมาจาก row.src (เลือกเอง) หรือ row._src (ได้ตอน Sync)
+// ถ้าแถวไม่มีทั้งคู่ (เช่น โหลดจากเทมเพลต แล้วพิมพ์ราคาเอง) ให้ไปเทียบกับคลังเรทให้
+// ไม่งั้นติ๊ก "โชว์ FIX/FAK" แล้วไม่ขึ้นอะไรเลยทั้ง PDF / Excel / Email / LINE
+function qRowSrc(row){
+  if(!row) return '';
+  const direct = row.src || row._src;
+  if(direct) return direct;
+  try{
+    const pool = window.ALL_RATES || [];
+    if(!pool.length) return '';
+    const norm = s => String(s==null?'':s).trim().toUpperCase();
+    const car = norm(row.carrier), pod = norm(row.pod), del = norm(row.del);
+    const pol = norm(row.pol || (document.getElementById('q_pol')||{}).value || '');
+    if(!car || !pod) return '';
+    const hit = pool.find(r =>
+      norm(r.carrier)===car && norm(r.pod)===pod && norm(r.del)===del &&
+      (!pol || norm(r.pol)===pol));
+    return (hit && hit.source) || '';
+  }catch(e){ return ''; }
+}
 // commodity ที่ใช้เรท FIX ได้ — แนบท้ายเมื่อโชว์ FIX ให้ลูกค้า
 const Q_FIX_COMMODITY = [
  'Furniture','Retail Shelving','Auto parts','Tyre','Spare parts','Machinery and equipment','Forklift',
