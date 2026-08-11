@@ -14966,13 +14966,23 @@ window.__WWL_APP='SFP';
   cat.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false});
   window.addEventListener('touchend',up);
 
-  var sayT=null;
+  var sayT=null, bubbleOn=false;
+  // คำพูดต้องลอยตามหัวน้องตลอด ไม่ใช่ค้างอยู่ที่เดิมตอนน้องเดินหนี
+  function placeBubble(){
+    if(!bubbleOn) return;
+    var bw=bubble.offsetWidth||180, bh=bubble.offsetHeight||34, sc=stage().scale;
+    var left = pos.x + CW()/2 - bw/2;
+    left = Math.max(6, Math.min(W()-bw-6, left));
+    var top  = pos.y + hopY - bh - 10*sc;
+    if(top < 6) top = pos.y + hopY + CW()*0.72;          // ชนขอบบน → ย้ายไปใต้ตัว
+    top = Math.max(6, Math.min(H()-bh-6, top));
+    bubble.style.left=left+'px'; bubble.style.top=top+'px';
+  }
   function say(t,ms){ clearTimeout(sayT);
-    if(!t){ bubble.style.opacity='0'; return; }
-    bubble.textContent=t; bubble.style.opacity='1';
-    bubble.style.left=Math.min(W()-270,Math.max(4,pos.x))+'px';
-    bubble.style.top=Math.max(2,pos.y-38)+'px';
-    sayT=setTimeout(function(){ bubble.style.opacity='0'; },ms||2600); }
+    if(!t){ bubbleOn=false; bubble.style.opacity='0'; return; }
+    bubble.textContent=t; bubble.style.opacity='1'; bubbleOn=true;
+    placeBubble();
+    sayT=setTimeout(function(){ bubbleOn=false; bubble.style.opacity='0'; },ms||2600); }
   function fx(kind){
     var g=$('wc-fx');
     g.innerHTML={ heart:'<path d="M0 -104 q6 -9 13 -2 q5 6 -13 20 q-18 -14 -13 -20 q7 -7 13 2z" fill="#ff6b81"/>',
@@ -15303,7 +15313,7 @@ window.__WWL_APP='SFP';
     if(hopV!==0 || hopY<0){ hopV+=1.0; hopY+=hopV;
       if(hopY>=0){ hopY=0; hopV=0; squash=Math.max(squash,0.28); } }
     if(!dragging && !tease && now>stateUntil && !airborne()) nextState();
-    physics(); anim(now); place(); blink(now); keepClear(now); applyPose();
+    physics(); anim(now); place(); placeBubble(); blink(now); keepClear(now); applyPose();
     if(panel.style.display==='block' && (now|0)%600<20) renderPanel();
   }
 
