@@ -1132,6 +1132,13 @@ body{font-size:14px;font-weight:450}
                 oninput="qFilterRates();acSuggest(this,'qac_f_pod','pod')" onkeydown="acKey(event,'qac_f_pod')" autocomplete="off">
               <div id="qac_f_pod" class="ac-drop" style="display:none"></div></div>
           </div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
+            <div class="inp-group" style="position:relative"><label class="inp-lbl">DEL (Place of Delivery)</label>
+              <input spellcheck="false" class="inp" id="q_f_del" placeholder="เมืองปลายทางในแผ่นดิน เช่น Chicago…"
+                oninput="qFilterRates();acSuggest(this,'qac_f_del','del')" onkeydown="acKey(event,'qac_f_del')" autocomplete="off">
+              <div id="qac_f_del" class="ac-drop" style="display:none"></div></div>
+            <button onclick="qClearRateFilter()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px;white-space:nowrap">✕ ล้างช่องค้นหา</button>
+          </div>
         </div>
         <div id="q_route_count" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:6px"></div>
         <div style="max-height:400px;overflow-y:auto">
@@ -3317,7 +3324,7 @@ function acSuggest(inp,dropId,field){
   const q=inp.value.trim().toLowerCase();const drop=g(dropId);if(!drop)return;
   if(q.length<2){drop.style.display='none';return;}
   const seen=new Set(),matches=[];
-  for(const r of ALL_RATES){const val=(field==='pol'?r.pol:r.pod)||'';const k=val.toLowerCase();if(k.includes(q)&&!seen.has(k)&&val.trim()){seen.add(k);matches.push(val.trim());if(matches.length>=10)break;}}
+  for(const r of ALL_RATES){const val=(field==='pol'?r.pol:field==='del'?r.del:r.pod)||'';const k=val.toLowerCase();if(k.includes(q)&&!seen.has(k)&&val.trim()){seen.add(k);matches.push(val.trim());if(matches.length>=10)break;}}
   if(!matches.length){drop.style.display='none';return;}
   const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const hi=s=>s.replace(new RegExp('('+esc(q)+')','gi'),'<em>$1</em>');
@@ -8858,23 +8865,53 @@ function qLclCheck(){
 }
 window.qLclCheck = qLclCheck;
 
+window.qClearRateFilter = function(){
+  ['q_f_pol','q_f_pod','q_f_del'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  const c=document.getElementById('q_f_carrier'); if(c) c.value='';
+  qFilterRates();
+};
 function qFilterRates(){
   const car = (document.getElementById('q_f_carrier')?.value||'').toLowerCase();
-  const pol = (document.getElementById('q_f_pol')?.value||document.getElementById('q_pol')?.value||'').toLowerCase().trim();
-  const pod = (document.getElementById('q_f_pod')?.value||document.getElementById('q_pod')?.value||'').toLowerCase().trim();
+  // ⚠ ห้าม fallback ไปอ่าน q_pol / q_pod ของหัวใบเสนอราคา (บั๊ก 10 Aug 2026)
+  //   ช่องค้นหาว่างแต่ระบบแอบกรองด้วย POL ของหัวใบ → ขึ้น "0 routes found"
+  //   ทั้งที่คลังมีเรทอยู่ (เคส CNC → Chittagong มีแต่ POL แหลมฉบัง/ลาดกระบัง
+  //   แต่หัวใบตั้งเป็น Bangkok เลยโดนกรองทิ้งหมดโดยผู้ใช้ไม่เห็นสาเหตุ)
+  const pol = (document.getElementById('q_f_pol')?.value||'').toLowerCase().trim();
+  const pod = (document.getElementById('q_f_pod')?.value||'').toLowerCase().trim();
+  const del = (document.getElementById('q_f_del')?.value||'').toLowerCase().trim();
   const count_el = document.getElementById('q_route_count');
   const body_el  = document.getElementById('q_route_body');
-  if(!pol&&!pod&&!car){ if(body_el) body_el.innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>'; if(count_el) count_el.textContent=''; return; }
+  if(!pol&&!pod&&!car&&!del){ if(body_el) body_el.innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">พิมพ์ POL / POD / DEL หรือเลือก Carrier เพื่อค้นหา</td></tr>'; if(count_el) count_el.textContent=''; return; }
   const results = ALL_RATES.filter(r=>{
     if(car&&!(r.carrier||'').toLowerCase().includes(car)) return false;
     if(pol&&!(r.pol||'').toLowerCase().includes(pol)) return false;
     if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod)) return false;
+    if(del&&!(r.del||'').toLowerCase().includes(del)) return false;
     return true;
   }).sort((a,b)=>{
     const a20=parseFloat(a.gp20||a.hc40||0), b20=parseFloat(b.gp20||b.hc40||0);
     return a20-b20;
   }).slice(0,50);
-  if(count_el) count_el.textContent = results.length+' routes found';
+  // หา 0 เส้นทาง → บอกด้วยว่าเป็นเพราะช่องไหนกรองอยู่ จะได้ไม่ต้องเดา
+  if(count_el){
+    if(results.length){ count_el.innerHTML = results.length+' routes found'; }
+    else{
+      const relax = (skip)=> ALL_RATES.filter(r=>{
+        if(skip!=='car' && car && !(r.carrier||'').toLowerCase().includes(car)) return false;
+        if(skip!=='pol' && pol && !(r.pol||'').toLowerCase().includes(pol)) return false;
+        if(skip!=='pod' && pod && !(r.pod||'').toLowerCase().includes(pod) && !(r.del||'').toLowerCase().includes(pod)) return false;
+        if(skip!=='del' && del && !(r.del||'').toLowerCase().includes(del)) return false;
+        return true;
+      }).length;
+      const tips=[];
+      if(pol && relax('pol')) tips.push('ถ้าไม่กรอง POL จะเจอ '+relax('pol')+' เส้นทาง');
+      if(pod && relax('pod')) tips.push('ถ้าไม่กรอง POD จะเจอ '+relax('pod')+' เส้นทาง');
+      if(del && relax('del')) tips.push('ถ้าไม่กรอง DEL จะเจอ '+relax('del')+' เส้นทาง');
+      if(car && relax('car')) tips.push('ถ้าเลือก Carrier = All จะเจอ '+relax('car')+' เส้นทาง');
+      count_el.innerHTML = '0 routes found'
+        + (tips.length ? ' <span style="color:var(--gold)">· '+tips.join(' · ')+'</span>' : '');
+    }
+  }
   if(body_el) body_el.innerHTML = results.length ? results.map(r=>`
     <tr style="cursor:pointer" onmouseenter="this.style.background='var(--s2)'" onmouseleave="this.style.background=''">
       <td style="font-size:11px;padding:6px 8px">${r.carrier}<span class="src-badge ${srcCls(r.source,r)}" style="padding:1px 5px;border-radius:4px;font-size:9px;margin-left:5px;font-family:var(--mono)">${srcLabel(r.source,r)}</span></td>
