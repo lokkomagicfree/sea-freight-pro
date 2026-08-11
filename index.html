@@ -8298,6 +8298,40 @@ function _qPortMatch(a, b){
   const A=_qSegs(a), B=_qSegs(b);
   return A.some(x=> B.some(y=> x===y || x.startsWith(y) || y.startsWith(x)));
 }
+// ── "sub to" รายแถว — ตัดค่าใช้จ่ายที่เรทรวมมาแล้วออก (11 Aug 2026) ────────
+// เดิมยัดข้อความเหมารวมจากช่อง Subj to (เช่น "EBS, CIC, PCS, LSS, PSS, HEA,
+// ISD, EID, ETS at destination") ลงทุกแถวเหมือนกันหมด ทั้งที่เรทส่วนใหญ่รวม
+// ค่าพวกนี้มาแล้ว → ลูกค้าอ่านแล้วนึกว่าต้องจ่ายเพิ่ม
+// กติกาใหม่: เอารายการที่พิมพ์ไว้มาไล่ทีละตัว ถ้าเรทของแถวนั้นบอกว่า incl. แล้ว
+//            ให้ตัดทิ้ง · เหลือเฉพาะตัวที่ยังไม่รวม · แล้วต่อท้ายด้วย
+//            "Subject to" จริงของเรทเส้นทางนั้น (เช่น AMS USD30/Set)
+function qRateOfRow(row, fallbackPol){
+  if(!row) return null;
+  if(row._rateRef) return row._rateRef;
+  try{ return qFindRateForRow(row, fallbackPol || (document.getElementById('q_pol')||{}).value || ''); }
+  catch(e){ return null; }
+}
+function _qChargeCode(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function qRowSubjTo(row, manual, fallbackPol){
+  const r = qRateOfRow(row, fallbackPol);
+  // แถวที่ดึงเรทจากคลังได้ → ใช้ "Subject to" จริงของเส้นทางนั้นอย่างเดียว
+  // เรทพวกนี้เป็น all-in อยู่แล้ว (ช่อง Include Surcharge บอกไว้) ไม่ต้องไป
+  // ไล่ EBS/CIC/PCS/LSS/… ให้ลูกค้าอ่านซ้ำ · ตัวที่ "ยังไม่รวม" สายเรือจะเขียน
+  // ไว้ในช่อง Subject to เองอยู่แล้ว เช่น "exclude CIC USD20/20'GP … collect at
+  // destination" หรือค่าที่เก็บเพิ่มจริงอย่าง "AMS USD30/Set" · "ENS"
+  if(r) return String(r.subjto||'').trim();
+
+  // แถวที่พิมพ์เอง ไม่มีเรทอ้างอิง → ใช้ข้อความที่กรอกไว้ แต่ยังตัดตัวที่รู้ว่ารวมแล้วออก
+  const inclRaw = String((row && row.incl) || '').toUpperCase();
+  const inclSet = new Set(inclRaw.split(/[^A-Z0-9]+/).filter(Boolean));
+  const kept = String(manual||'').split(/\s*,\s*/).map(s=>s.trim()).filter(Boolean).filter(part=>{
+    const code = _qChargeCode(part.replace(/\s+at\s+destination\s*$/i,''));
+    return code && !inclSet.has(code);
+  });
+  return kept.join(', ');
+}
+window.qRowSubjTo = qRowSubjTo;
+
 function _qStat(r){
   // คิดจากวันที่จริง ณ วันนี้ (ไม่ใช้ valid_status ที่ค้างมาจากตอน publish)
   return (typeof liveStat==='function') ? liveStat(r)
@@ -8533,6 +8567,7 @@ window.qSyncRates = function(){
     // ใช้เรทงวดที่ยังไม่เริ่ม — ต้องบอกให้รู้ก่อนส่งลูกค้า
     if(_qStat(r)==='upcoming'){ soon++; soonList.push(row.pod+' ('+_qValidText(r)+')'); }
     row.na = false;
+    row._rateRef = r;                                 // จำเรทที่แมตช์ไว้ ใช้ตอนคิด "sub to" รายแถว
     if(!row.carrier) row.carrier = r.carrier || '';   // เว้นว่าง = เติมสายที่ถูกสุดให้
     if(!row.pol)     row.pol     = r.pol || fallbackPol || '';
     // สายเรือนี้มีหลายประเภทเรท (FIX / FAK / …) และยังไม่ได้เลือก → เก็บไว้ถามทีเดียว
@@ -9037,9 +9072,12 @@ function qBuildEmail(){
       if(row.incl&&row.incl.trim()) lines.push(`  (${row.incl.trim()})`);
       lines.push('');
     });
-    // Subj to
+    // Subj to — รวมเฉพาะค่าที่ยังไม่รวมในเรทของแถวในกลุ่มนี้
     const subjParts=['local charges both ends'];
-    if(subjto) subjParts.unshift(subjto);
+    const _rowSubj=[...new Set(rows.map(rw=>{
+      try{ return qRowSubjTo(rw, subjto, pol); }catch(e){ return subjto; }
+    }).filter(s=>s && s.trim()))];
+    if(_rowSubj.length) subjParts.unshift(_rowSubj.join(' · '));
     lines.push(`  Subj to ${subjParts.join(', ')}`);
     // เรท FIX ใช้ได้เฉพาะสินค้าตามรายการนี้
     const _fixNote = window.qFixCommodityNote(rows);
@@ -9557,7 +9595,7 @@ window.qExportExcelSheet = async function(){
       r.carrier || ''
     ].concat(showSrc ? [qRowSrc(r)] : [])
      .concat([
-      subjto,                                     // ว่างถ้าไม่ได้กรอก
+      qRowSubjTo(r, subjto, gPol),                // ตัดค่าที่เรทรวมมาแล้วออก
       r.det || '', r.dem || '', r.combined || '',
       r.direct || '', r.tt || '',
       r.valid || gValid || ''
@@ -9981,7 +10019,8 @@ window.exportRateSheetXLSX = function(){
         {v:row.pod||'—',                  col:BLK,  align:'left'},
         {v:row.del||'',                   col:MUTED,align:'left'},
         {v:r20?(r20+_pf).toLocaleString():NA, col:r20?GREEN:MUTED, align:'right'},
-        {v:(subjto?subjto+', ':'')+'local charges both ends', col:MUTED, align:'left'},
+        {v:(()=>{ const s=(typeof qRowSubjTo==='function')?qRowSubjTo(row,subjto,pol):subjto;
+                  return (s?s+', ':'')+'local charges both ends'; })(), col:MUTED, align:'left'},
         {v:v,                             col:GOLD, align:'center'},
       ] : [
         {v:row.pol||pol,                  col:MUTED,align:'left'},
@@ -14360,26 +14399,92 @@ function renderBestByPOD(){
 window.renderBestByPOD=renderBestByPOD;
 </script>
 
-<!-- 🐱 น้องแมวประจำออฟฟิศ -->
+<!-- 🐱 น้องแมวประจำออฟฟิศ v3 -->
 <script>
+window.__WWL_APP='SFP';
 /* ══════════════════════════════════════════════════════════════
-   🐱 น้องแมวประจำออฟฟิศ v2 — ใช้ร่วมกันทั้ง Sea Freight Pro และ CS Ops Hub
-   ลากวางได้ · หลบตอนเรากรอกข้อมูล · ให้อาหาร/อาบน้ำ/เล่นบอล · โตขึ้นได้
-   เดินขยับขาจริง หันซ้ายขวา · พักแล้วหมอบ · เลียขา · ทูหัวล้างหน้า
-   เลือกลายสีได้ · มีปุ่มเรียกน้อง
+   🐱 น้องแมวประจำออฟฟิศ v3 — ใช้ร่วมกันทั้ง Sea Freight Pro และ CS Ops Hub
+   · ทรงใหม่ อ้วนกลม 2 มุมมอง (มองตรง / มองข้าง) หันตามทางที่เดิน
+   · ลากด้วยเมาส์แล้วห้อยแกว่งตามแรงเหวี่ยง ปล่อยแล้วตกลงพื้นเด้ง
+   · ระบบเสื้อผ้า 4 ช่อง ปลดล็อกตามอายุ + ค่าความรัก · ชุดตามเทศกาล
+   · สุ่มพูดให้กำลังใจ (SFP=Sale · CS Hub=CS)
+   · เซฟตามอีเมลที่ล็อกอิน (Firestore) ไม่ใช่ตามเครื่อง
    ══════════════════════════════════════════════════════════════ */
 (function(){
   if (window.__wwlCat) return;
-  var LS='wwl_cat_v1', DAY=86400000;
+  var APP = (window.__WWL_APP === 'CS') ? 'CS' : 'SFP';
+  var DAY = 86400000;
 
-  var S={ born:Date.now(), food:70, clean:70, play:70, love:0, seen:Date.now(),
-          x:null, y:null, name:'เหมียว', coat:'orange', hidden:false };
-  try{ var raw=localStorage.getItem(LS); if(raw) S=Object.assign(S,JSON.parse(raw)); }catch(e){}
-  try{ if(localStorage.getItem('wwl_cat_off')==='1'){ S.hidden=true; localStorage.removeItem('wwl_cat_off'); } }catch(e){}
+  var S = { born:Date.now(), food:70, clean:70, play:70, love:0, seen:Date.now(),
+            x:null, y:null, name:'เหมียว', coat:'orange', hidden:false,
+            wear:{hat:'none',body:'none',face:'none',neck:'none'} };
 
-  function save(){ S.seen=Date.now(); try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){} }
+  function emailNow(){
+    try{
+      if(APP==='SFP') return String(window._currentEmail || (window._currentUser&&window._currentUser.email) || '').toLowerCase();
+      return String((window.CLOUD && window.CLOUD.user && window.CLOUD.user.email) || '').toLowerCase();
+    }catch(e){ return ''; }
+  }
+  function lsKey(){ var e=emailNow(); return 'wwl_cat_v3_' + (e || 'guest'); }
+
+  function normalize(o){
+    o = o || {};
+    var w = o.wear || {};
+    return { born:+o.born || Date.now(), food:clamp(+o.food||70), clean:clamp(+o.clean||70),
+             play:clamp(+o.play||70), love:Math.max(0,Math.min(999,+o.love||0)),
+             seen:+o.seen || Date.now(), x:o.x==null?null:+o.x, y:o.y==null?null:+o.y,
+             name:String(o.name||'เหมียว').slice(0,20), coat:o.coat||'orange', hidden:!!o.hidden,
+             wear:{ hat:w.hat||'none', body:w.body||'none', face:w.face||'none', neck:w.neck||'none' } };
+  }
   function clamp(v){ return Math.max(0,Math.min(100,v)); }
   function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+  try{ var raw=localStorage.getItem(lsKey()); if(raw) S=normalize(Object.assign(S,JSON.parse(raw))); }catch(e){}
+
+  var _saveT=null, _cloudHash='';
+  function save(){
+    S.seen=Date.now();
+    try{ localStorage.setItem(lsKey(), JSON.stringify(S)); }catch(e){}
+    clearTimeout(_saveT); _saveT=setTimeout(cloudSave, 2500);
+  }
+  async function cloudSave(){
+    var h=''; try{ h=JSON.stringify(S); }catch(e){}
+    if(h===_cloudHash) return;
+    try{
+      if(APP==='SFP'){
+        if(typeof window.fbSet!=='function' || !emailNow()) return;
+        await window.fbSet('data/catPet', S);
+      } else {
+        var C=window.CLOUD;
+        if(!C||!C.db||!C.fs||!C.user) return;
+        await C.fs.setDoc(C.fs.doc(C.db, (typeof metaColl==='function'?metaColl():'cshub_meta'),
+                                    'catPet_'+emailNow().replace(/[^a-z0-9]/g,'_')), S);
+      }
+      _cloudHash=h;
+    }catch(e){ console.warn('cat cloudSave',e); }
+  }
+  async function cloudLoad(){
+    try{
+      var snap=null;
+      if(APP==='SFP'){
+        if(typeof window.fbGet!=='function' || !emailNow()) return;
+        snap = await window.fbGet('data/catPet');
+      } else {
+        var C=window.CLOUD;
+        if(!C||!C.db||!C.fs||!C.user) return;
+        var d = await C.fs.getDoc(C.fs.doc(C.db,(typeof metaColl==='function'?metaColl():'cshub_meta'),
+                                  'catPet_'+emailNow().replace(/[^a-z0-9]/g,'_')));
+        snap = d && d.exists() ? d.data() : null;
+      }
+      if(!snap) { save(); return; }
+      var remote=normalize(snap);
+      if(remote.seen >= (S.seen||0)-60000){ S=remote; try{ _cloudHash=JSON.stringify(S); }catch(e){}
+        try{ localStorage.setItem(lsKey(), JSON.stringify(S)); }catch(e){}
+        paint(); face(); clampPos(); place(); renderPanel();
+      } else save();
+    }catch(e){ console.warn('cat cloudLoad',e); }
+  }
+  window.__wwlCatReload = cloudLoad;
 
   (function(){ var h=(Date.now()-(S.seen||Date.now()))/3600000;
     if(h>0){ S.food=clamp(S.food-h*4); S.clean=clamp(S.clean-h*2.5); S.play=clamp(S.play-h*3); } })();
@@ -14387,296 +14492,477 @@ window.renderBestByPOD=renderBestByPOD;
   function ageDays(){ return (Date.now()-S.born)/DAY; }
   function stage(){ var p=ageDays()+(S.love/40);
     if(p<3)  return {i:0,name:'ลูกแมว',scale:.62,next:3};
-    if(p<10) return {i:1,name:'วัยรุ่น',scale:.82,next:10};
-    if(p<21) return {i:2,name:'โตเต็มวัย',scale:1,next:21};
-    return {i:3,name:'แมวผู้ใหญ่',scale:1.08,next:null}; }
+    if(p<10) return {i:1,name:'วัยรุ่น',scale:.80,next:10};
+    if(p<21) return {i:2,name:'โตเต็มวัย',scale:.96,next:21};
+    return {i:3,name:'แมวผู้ใหญ่',scale:1.04,next:null}; }
   function mood(){ var m=Math.min(S.food,S.clean,S.play);
     if(m<20) return 'angry'; if(m<45) return 'clingy';
     if(S.food>80&&S.clean>80&&S.play>80) return 'love'; return 'kind'; }
   var MOOD_TH={angry:'โกรธ 😾',clingy:'อ้อน 🥺',love:'รัก 💗',kind:'ใจดี 😺'};
 
-  // ── ลายสีให้เลือก ─────────────────────────────────────────
   var COATS={
-    orange :{n:'ส้มลาย',   body:'#F7B267', head:'#F9BE78', mark:'#E08D3C', ear:'#F19B94', nose:'#E8807C', stripes:1, patch:0},
-    grey   :{n:'เทาลาย',   body:'#A9B4C0', head:'#BCC6D1', mark:'#7C8A99', ear:'#E5A9A9', nose:'#D98C8C', stripes:1, patch:0},
-    tuxedo :{n:'ขาว-ดำ',   body:'#3A3F47', head:'#454B54', mark:'#2A2E34', ear:'#E5A9A9', nose:'#D98C8C', stripes:0, patch:2},
-    calico :{n:'สามสี',    body:'#F5EFE6', head:'#FAF5EE', mark:'#E08D3C', ear:'#F19B94', nose:'#E8807C', stripes:0, patch:1},
-    cream  :{n:'ครีม',     body:'#F3DEC0', head:'#F8E8D2', mark:'#DCC09A', ear:'#F0B7B0', nose:'#E09A96', stripes:0, patch:0},
-    black  :{n:'ดำสนิท',   body:'#3B3F46', head:'#464B53', mark:'#2E3238', ear:'#C98A8A', nose:'#C97F7F', stripes:0, patch:0},
-    white  :{n:'ขาวหิมะ',  body:'#F2F4F7', head:'#FAFBFC', mark:'#DCE2E8', ear:'#F3B8B2', nose:'#E79A94', stripes:0, patch:0},
-    siamese:{n:'วิเชียรมาศ',body:'#EADFCE', head:'#F3EADC', mark:'#5A4636', ear:'#C99C93', nose:'#8A6A5C', stripes:0, patch:3}
+    orange :{n:'ส้มลาย',   body:'#E08D4E', stripe:'#C06E33', dark:'#CB7C3D', ear:'#E08B84', blush:'#F0A9A2'},
+    grey   :{n:'เทาลาย',   body:'#A9B4C0', stripe:'#7C8A99', dark:'#94A0AE', ear:'#E5A9A9', blush:'#EFB6B6'},
+    cream  :{n:'ครีม',     body:'#EBD3AE', stripe:'#D2B183', dark:'#DFC49A', ear:'#F0B7B0', blush:'#F3C0BA'},
+    calico :{n:'สามสี',    body:'#F2E7D8', stripe:'#D98A3C', dark:'#E3D2BC', ear:'#F0A9A2', blush:'#F4B3AD'},
+    tuxedo :{n:'ขาว-ดำ',   body:'#4A4F58', stripe:'#33373E', dark:'#3E434B', ear:'#E0A0A0', blush:'#C98F8F'},
+    black  :{n:'ดำสนิท',   body:'#4B4F56', stripe:'#3A3E45', dark:'#42464D', ear:'#C98A8A', blush:'#B98080'},
+    white  :{n:'ขาวหิมะ',  body:'#F2F0EC', stripe:'#DCD8D0', dark:'#E7E3DC', ear:'#F3B8B2', blush:'#F5C4BE'},
+    siamese:{n:'วิเชียรมาศ',body:'#EADFCE', stripe:'#8A6A52', dark:'#DCCDB6', ear:'#C99C93', blush:'#E0B5AC'}
   };
   function coat(){ return COATS[S.coat] || COATS.orange; }
 
-  // ── โครงร่างน้อง (SVG แยกชิ้นเพื่อขยับได้) ─────────────────
+  function nowTH(){ var d=new Date(); return {m:d.getMonth()+1, d:d.getDate(), h:d.getHours()}; }
+  function seasonOn(k){
+    var t=nowTH();
+    if(k==='santa')    return t.m===12;
+    if(k==='songkran') return t.m===4 && t.d>=10 && t.d<=20;
+    if(k==='krathong') return t.m===11;
+    return false;
+  }
+  var OUTFITS={
+    hat:{ label:'หมวก', items:{
+      none:{n:'ไม่ใส่'},
+      cap:{n:'แก๊ป', age:2},
+      beanie:{n:'หมวกไหมพรม', age:4},
+      party:{n:'หมวกปาร์ตี้', age:10},
+      capt:{n:'กัปตันเรือ', age:14},
+      hard:{n:'หมวกนิรภัย', love:200},
+      santa:{n:'ซานต้า', season:'santa'},
+      krathong:{n:'มงกุฎกระทง', season:'krathong'}
+    }},
+    body:{ label:'เสื้อ', items:{
+      none:{n:'ไม่ใส่'},
+      scarf:{n:'ผ้าพันคอ', love:25},
+      tee:{n:'เสื้อยืด', love:50},
+      sweat:{n:'สเวตเตอร์', age:7},
+      vest:{n:'เสื้อกั๊กท่าเรือ', love:120},
+      shirt:{n:'เสื้อเชิ้ตทำงาน', love:150},
+      songkran:{n:'ลายดอกสงกรานต์', season:'songkran'}
+    }},
+    face:{ label:'แว่น', items:{
+      none:{n:'ไม่ใส่'},
+      round:{n:'แว่นกลม', age:5},
+      sun:{n:'แว่นกันแดด', love:80},
+      mask:{n:'ผ้าปิดตานอน', love:100},
+    }},
+    neck:{ label:'ปลอกคอ', items:{
+      none:{n:'ไม่ใส่'},
+      bow:{n:'โบว์', love:10},
+      bell:{n:'กระดิ่ง', love:40},
+      tie:{n:'เนคไท', love:65},
+      tag:{n:'ปลอกคอป้ายชื่อ', age:9},
+    }}
+  };
+  function unlocked(slot,key){
+    var it=OUTFITS[slot].items[key]; if(!it) return false;
+    if(key==='none') return true;
+    if(it.season) return seasonOn(it.season);
+    if(it.age!=null  && ageDays() >= it.age) return true;
+    if(it.love!=null && S.love   >= it.love) return true;
+    return false;
+  }
+  function needText(slot,key){
+    var it=OUTFITS[slot].items[key]; if(!it||key==='none') return '';
+    if(it.season) return {santa:'เดือน ธ.ค.',songkran:'สงกรานต์ 10-20 เม.ย.',krathong:'เดือน พ.ย.'}[it.season]||'ตามเทศกาล';
+    if(it.age!=null)  return 'อายุ '+it.age+' วัน';
+    if(it.love!=null) return 'ความรัก '+it.love;
+    return '';
+  }
+  function autoSeasonWear(){
+    var changed=false;
+    ['hat','body'].forEach(function(sl){
+      var cur=S.wear[sl];
+      var it=OUTFITS[sl].items[cur];
+      if(it && it.season && !seasonOn(it.season)){ S.wear[sl]='none'; changed=true; }
+    });
+    if(seasonOn('santa') && S.wear.hat==='none'){ S.wear.hat='santa'; changed=true; }
+    else if(seasonOn('krathong') && S.wear.hat==='none'){ S.wear.hat='krathong'; changed=true; }
+    if(seasonOn('songkran') && S.wear.body==='none'){ S.wear.body='songkran'; changed=true; }
+    if(changed) save();
+  }
+
+  var CHEER_SFP=[
+    'พี่เป้ วันนี้ยิงเรทไปกี่เจ้าแล้วครับ 🐾','ลูกค้าเงียบไม่ได้แปลว่าไม่เอานะ ตามอีกทีเถอะ~',
+    'ปิดดีลไม่ได้ทุกวันหรอก แต่ยิงทุกวันได้ 💪','เรทแพงกว่าเจ้าอื่นนิดเดียว ถ้าเซอร์วิสดีลูกค้าอยู่ต่อ',
+    'อย่าลืมเช็ค validity ก่อนส่งใบเสนอราคานะครับ','วันนี้กำไรเท่าไหร่แล้ว? หนูเชียร์อยู่นะ 🎉',
+    'โทรหาลูกค้าเก่าสักเจ้าไหม บางทีเขารอเราติดต่ออยู่','เหนื่อยก็พักก่อน เดี๋ยวหนูเฝ้าจอให้ 😴',
+    'quote ไปแล้วอย่าลืม follow up ภายใน 2 วันนะ','เป้าเดือนนี้ใกล้แล้ว สู้ๆ นะพี่ 🚢'
+  ];
+  var CHEER_CS=[
+    'เช็ค cut-off วันนี้หรือยังครับ 🐾','SI ใกล้ปิดแล้วนะ อย่าลืมส่งเอกสาร',
+    'งานเยอะแค่ไหน ค่อยๆ ทำทีละใบนะ 💪','อย่าลืม paperless code ก่อนออก Booking PDF',
+    'ตรวจ VGM กับ CY closing อีกรอบนะครับ','วันนี้เคลียร์ไปกี่งานแล้ว เก่งมากเลย 🎉',
+    'ลูกค้าถามมาก็ตอบเท่าที่รู้ ไม่ต้องกดดันตัวเอง','เหนื่อยก็ลุกไปยืดเส้นหน่อยนะ เดี๋ยวหนูเฝ้าให้ 😴',
+    'ตู้ยังไม่ได้จองอย่าลืมแจ้งเซลล์นะครับ','ปิดงานได้ครบวันนี้ พรุ่งนี้สบายแน่ 🚢'
+  ];
+  function cheer(){ return pick(APP==='CS' ? CHEER_CS : CHEER_SFP); }
+
   var wrap=document.createElement('div');
   wrap.id='wwl-cat-wrap';
   wrap.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483000';
 
   var cat=document.createElement('div');
   cat.id='wwl-cat';
-  cat.style.cssText='position:absolute;width:104px;height:92px;pointer-events:auto;cursor:grab;'+
+  cat.style.cssText='position:absolute;width:150px;height:150px;pointer-events:auto;cursor:grab;'+
     'transition:opacity .25s;will-change:transform;user-select:none;-webkit-user-select:none;touch-action:none';
   cat.title='ลากไปวางได้ · คลิกเพื่อดูแลน้อง';
-
-  cat.innerHTML=
-  '<svg viewBox="0 0 130 112" width="100%" height="100%" style="overflow:visible">'+
-    '<ellipse id="wc-shadow" cx="62" cy="104" rx="32" ry="5" fill="rgba(0,0,0,.15)"/>'+
-    '<g id="wc-all">'+
-      '<g id="wc-tail"><path id="wc-tail-p" d="M92 78 q24 4 22 -17 q-2 -14 -13 -13 q-9 1 -7 10 q1 7 7 6" fill="none" stroke-width="9" stroke-linecap="round"/></g>'+
-      // ขาหลัง 2 ข้าง
-      '<g id="wc-leg-bl" class="wc-leg"><rect x="34" y="80" width="10" height="16" rx="5"/></g>'+
-      '<g id="wc-leg-br" class="wc-leg"><rect x="50" y="82" width="10" height="14" rx="5"/></g>'+
-      // ลำตัว
-      '<g id="wc-body"><ellipse id="wc-body-e" cx="62" cy="76" rx="33" ry="22"/>'+
-        '<g id="wc-body-mark" opacity="0">'+
-          '<path d="M46 60 q6 6 0 12" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
-          '<path d="M60 57 q6 7 0 14" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
-          '<path d="M74 59 q6 6 0 12" fill="none" stroke-width="3.5" stroke-linecap="round"/>'+
+  cat.innerHTML =
+  '<svg viewBox="-110 -160 220 240" width="100%" height="100%" style="overflow:visible">'+
+    '<ellipse id="wc-sh" cx="0" cy="72" rx="52" ry="7" fill="rgba(0,0,0,.15)"/>'+
+    '<g id="wc-tubB" opacity="0"><ellipse cx="0" cy="16" rx="66" ry="15" fill="#8ECAE6"/>'+
+      '<ellipse cx="0" cy="16" rx="56" ry="10" fill="#CDE8F6"/></g>'+
+    '<g id="wc-swing">'+
+      '<g id="wc-front">'+
+        '<path id="wc-tailF" d="M40 29 C 72 26 83 6 74 -12" fill="none" stroke="#CB7C3D" stroke-width="16" stroke-linecap="round"/>'+
+        '<g id="wc-hang" opacity="0">'+
+          '<g id="wc-hBL"><rect x="-33" y="24" width="17" height="42" rx="8.5" fill="#CB7C3D"/><ellipse cx="-24" cy="64" rx="10" ry="6.5" fill="#CB7C3D"/></g>'+
+          '<g id="wc-hBR"><rect x="16" y="24" width="17" height="42" rx="8.5" fill="#CB7C3D"/><ellipse cx="24" cy="64" rx="10" ry="6.5" fill="#CB7C3D"/></g>'+
+          '<g id="wc-hFL"><rect x="-37" y="0" width="18" height="43" rx="9" fill="#E08D4E"/><ellipse cx="-28" cy="42" rx="11" ry="7" fill="#E08D4E"/></g>'+
+          '<g id="wc-hFR"><rect x="19" y="0" width="18" height="43" rx="9" fill="#E08D4E"/><ellipse cx="28" cy="42" rx="11" ry="7" fill="#E08D4E"/></g>'+
         '</g>'+
-        '<g id="wc-body-patch" opacity="0"><path d="M62 55 q22 2 26 18 q-14 8 -26 4z"/></g>'+
+        '<g id="wc-bodyN">'+
+          '<path id="wc-bN" d="M0 -29 C 36 -29 46 -7 44 14 C 43 37 24 49 0 49 C -24 49 -43 37 -44 14 C -46 -7 -36 -29 0 -29 Z" fill="#E08D4E"/>'+
+          '<path id="wc-bNs" d="M-40 10 q-6 9 0 16 M-37 29 q-6 7 0 11 M40 10 q6 9 0 16 M37 29 q6 7 0 11" fill="none" stroke="#C06E33" stroke-width="6.5" stroke-linecap="round"/>'+
+          '<g id="wc-pawsN"><ellipse cx="-15" cy="44" rx="13" ry="7" fill="#E08D4E"/><ellipse cx="15" cy="44" rx="13" ry="7" fill="#E08D4E"/>'+
+            '<path d="M-15 38 v7 M15 38 v7" fill="none" stroke="#CB7C3D" stroke-width="2.2" stroke-linecap="round"/></g>'+
+        '</g>'+
+        '<g id="wc-bodyL" opacity="0">'+
+          '<path id="wc-bL" d="M0 -10 C 42 -10 56 4 55 22 C 53 39 30 46 0 46 C -30 46 -53 39 -55 22 C -56 4 -42 -10 0 -10 Z" fill="#E08D4E"/>'+
+          '<path id="wc-bLs" d="M-49 19 q-7 9 -1 16 M49 19 q7 9 1 16" fill="none" stroke="#C06E33" stroke-width="6.5" stroke-linecap="round"/>'+
+          '<path id="wc-tuck1" d="M-27 40 q0 -12 13 -12 q13 0 13 12 Z" fill="#CB7C3D"/>'+
+          '<path id="wc-tuck2" d="M1 40 q0 -12 13 -12 q13 0 13 12 Z" fill="#CB7C3D"/>'+
+          '<ellipse id="wc-tp1" cx="-14" cy="41" rx="14" ry="6.5" fill="#E08D4E"/>'+
+          '<ellipse id="wc-tp2" cx="14" cy="41" rx="14" ry="6.5" fill="#E08D4E"/>'+
+        '</g>'+
+        '<g id="wc-wearB"></g>'+
+        '<path id="wc-collar" d="M-35 -10 q35 22 70 0" fill="none" stroke="#C06E33" stroke-width="7" stroke-linecap="round"/>'+
+        '<g id="wc-wearN"></g>'+
+        '<g id="wc-paw" opacity="0">'+
+          '<path id="wc-pawArm" d="M-19 22 C -25 3 -22 -16 -12 -25" fill="none" stroke="#E08D4E" stroke-width="15" stroke-linecap="round"/>'+
+          '<ellipse id="wc-pawTip" cx="-10" cy="-28" rx="10" ry="8" fill="#E08D4E"/></g>'+
+        '<g id="wc-headF">'+
+          '<path id="wc-earFL" d="M-33 -73 l-3 -28 l23 19 Z" fill="#E08D4E"/>'+
+          '<path id="wc-earFLi" d="M-31 -74 l-2 -17 l14 11 Z" fill="#E08B84"/>'+
+          '<path id="wc-earFR" d="M33 -73 l3 -28 l-23 19 Z" fill="#E08D4E"/>'+
+          '<path id="wc-earFRi" d="M31 -74 l2 -17 l-14 11 Z" fill="#E08B84"/>'+
+          '<ellipse id="wc-faceF" cx="0" cy="-48" rx="44" ry="41" fill="#E08D4E"/>'+
+          '<path id="wc-hstF" d="M-17 -81 q3 10 0 15 M0 -84 q3 10 0 15 M17 -81 q3 10 0 15" fill="none" stroke="#C06E33" stroke-width="6" stroke-linecap="round"/>'+
+          '<path id="wc-whF" d="M-38 -58 h-11 M-40 -49 h-12 M-38 -41 h-11 M38 -58 h11 M40 -49 h12 M38 -41 h11" fill="none" stroke="#C06E33" stroke-width="3" stroke-linecap="round"/>'+
+          '<ellipse id="wc-blFL" cx="-33" cy="-34" rx="8" ry="5" fill="#F0A9A2"/>'+
+          '<ellipse id="wc-blFR" cx="33" cy="-34" rx="8" ry="5" fill="#F0A9A2"/>'+
+          '<g id="wc-eyeF">'+
+            '<ellipse cx="-17" cy="-48" rx="9" ry="10.5" fill="#2C2724"/><ellipse cx="17" cy="-48" rx="9" ry="10.5" fill="#2C2724"/>'+
+            '<circle cx="-20" cy="-52" r="3.4" fill="#fff"/><circle cx="14" cy="-52" r="3.4" fill="#fff"/>'+
+            '<circle cx="-13" cy="-43" r="1.6" fill="#fff"/><circle cx="21" cy="-43" r="1.6" fill="#fff"/></g>'+
+          '<g id="wc-eyeFw" opacity="0">'+
+            '<ellipse cx="-17" cy="-48" rx="10.5" ry="12.5" fill="#2C2724"/><ellipse cx="17" cy="-48" rx="10.5" ry="12.5" fill="#2C2724"/>'+
+            '<circle cx="-21" cy="-53" r="4" fill="#fff"/><circle cx="13" cy="-53" r="4" fill="#fff"/></g>'+
+          '<g id="wc-eyeFs" opacity="0">'+
+            '<path d="M-25 -48 q8 7 16 0" fill="none" stroke="#2C2724" stroke-width="3.2" stroke-linecap="round"/>'+
+            '<path d="M9 -48 q8 7 16 0" fill="none" stroke="#2C2724" stroke-width="3.2" stroke-linecap="round"/></g>'+
+          '<path d="M-4 -33 q4 -3 8 0 q-3 5 -8 0 Z" fill="#4A3A2E"/>'+
+          '<path id="wc-mouthF" d="M0 -29 q-5 6 -9 1 M0 -29 q5 6 9 1" fill="none" stroke="#4A3A2E" stroke-width="2.4" stroke-linecap="round"/>'+
+          '<path id="wc-tongueF" opacity="0" d="M0 -27 q5 6 0 10 q-5 -4 0 -10 Z" fill="#F2879E"/>'+
+          '<g id="wc-wearFa"></g>'+
+          '<g id="wc-wearH"></g>'+
+        '</g>'+
       '</g>'+
-      // ขาหน้า 2 ข้าง (ขาหน้าซ้ายใช้ยกเลีย/ล้างหน้า)
-      '<g id="wc-leg-fr" class="wc-leg"><rect x="74" y="82" width="10" height="14" rx="5"/></g>'+
-      '<g id="wc-leg-fl" class="wc-leg"><rect x="86" y="80" width="10" height="16" rx="5"/></g>'+
-      // หัว
-      '<g id="wc-head">'+
-        '<path id="wc-ear" d="M36 34 l2 -20 l17 12z M90 34 l-2 -20 l-17 12z"/>'+
-        '<path id="wc-ear-in" d="M40 30 l1.5 -12 l10 7z M86 30 l-1.5 -12 l-10 7z"/>'+
-        '<ellipse id="wc-face" cx="63" cy="43" rx="29" ry="26"/>'+
-        '<g id="wc-head-mark" opacity="0">'+
-          '<path d="M55 20 l2 9 M63 18 l0 10 M71 20 l-2 9" fill="none" stroke-width="3" stroke-linecap="round"/>'+
+      '<g id="wc-side" opacity="0">'+
+        '<path id="wc-tailS" d="M-48 -9 C -80 -14 -96 -32 -90 -49" fill="none" stroke="#CB7C3D" stroke-width="16" stroke-linecap="round"/>'+
+        '<g id="wc-lFB"><rect x="-39" y="4" width="18" height="39" rx="9" fill="#CB7C3D"/><ellipse cx="-30" cy="42" rx="11" ry="6.5" fill="#CB7C3D"/></g>'+
+        '<g id="wc-lBB"><rect x="20" y="4" width="18" height="39" rx="9" fill="#CB7C3D"/><ellipse cx="30" cy="42" rx="11" ry="6.5" fill="#CB7C3D"/></g>'+
+        '<path id="wc-bS" d="M-3 -33 C 33 -33 49 -13 48 7 C 46 30 26 42 -3 42 C -33 42 -52 30 -54 7 C -55 -13 -39 -33 -3 -33 Z" fill="#E08D4E"/>'+
+        '<path id="wc-bSs" d="M-25 -29 q4 16 1 23 M-6 -32 q4 17 1 25 M13 -30 q4 16 1 23" fill="none" stroke="#C06E33" stroke-width="6.5" stroke-linecap="round"/>'+
+        '<g id="wc-lF"><rect x="-35" y="6" width="19" height="39" rx="9.5" fill="#E08D4E"/><ellipse cx="-25" cy="44" rx="12" ry="7" fill="#E08D4E"/></g>'+
+        '<g id="wc-lB"><rect x="16" y="6" width="19" height="39" rx="9.5" fill="#E08D4E"/><ellipse cx="26" cy="44" rx="12" ry="7" fill="#E08D4E"/></g>'+
+        '<path id="wc-collarS" d="M25 -22 q30 19 62 -3" fill="none" stroke="#C06E33" stroke-width="7" stroke-linecap="round"/>'+
+        '<g id="wc-headS">'+
+          '<path id="wc-earSL" d="M38 -64 l-3 -26 l22 17 Z" fill="#E08D4E"/>'+
+          '<path id="wc-earSLi" d="M40 -65 l-1 -16 l13 10 Z" fill="#E08B84"/>'+
+          '<path id="wc-earSR" d="M74 -71 l7 -25 l-17 16 Z" fill="#E08D4E"/>'+
+          '<path id="wc-earSRi" d="M73 -70 l5 -15 l-12 10 Z" fill="#E08B84"/>'+
+          '<ellipse id="wc-faceS" cx="56" cy="-42" rx="38" ry="36" fill="#E08D4E"/>'+
+          '<path id="wc-hstS" d="M42 -72 q3 9 0 14 M56 -75 q3 9 0 14" fill="none" stroke="#C06E33" stroke-width="6" stroke-linecap="round"/>'+
+          '<ellipse id="wc-blS" cx="70" cy="-30" rx="7" ry="4.6" fill="#F0A9A2"/>'+
+          '<g id="wc-eyeS"><ellipse cx="74" cy="-43" rx="7" ry="9.5" fill="#2C2724"/>'+
+            '<circle cx="72" cy="-48" r="3" fill="#fff"/><circle cx="78" cy="-38" r="1.5" fill="#fff"/></g>'+
+          '<g id="wc-eyeSs" opacity="0"><path d="M67 -43 q7 7 14 0" fill="none" stroke="#2C2724" stroke-width="3.2" stroke-linecap="round"/></g>'+
+          '<path d="M88 -33 q4 -3 6 0 q-3 5 -6 0 Z" fill="#4A3A2E"/>'+
+          '<path d="M92 -29 q-4 6 -8 1" fill="none" stroke="#4A3A2E" stroke-width="2.4" stroke-linecap="round"/>'+
         '</g>'+
-        '<g id="wc-head-patch" opacity="0"><path d="M63 17 q17 3 20 20 q-10 8 -20 6z"/></g>'+
-        '<g id="wc-eyes">'+
-          '<ellipse class="wc-eye" cx="53" cy="42" rx="5.6" ry="6.6" fill="#3B2F2F"/>'+
-          '<ellipse class="wc-eye" cx="73" cy="42" rx="5.6" ry="6.6" fill="#3B2F2F"/>'+
-          '<circle class="wc-gl" cx="54.9" cy="39.6" r="2" fill="#fff"/><circle class="wc-gl" cx="74.9" cy="39.6" r="2" fill="#fff"/>'+
-        '</g>'+
-        '<g id="wc-eyes-shut" opacity="0" stroke="#3B2F2F" stroke-width="2.2" stroke-linecap="round" fill="none">'+
-          '<path d="M48 42 q5 4 10 0"/><path d="M68 42 q5 4 10 0"/></g>'+
-        '<path id="wc-brow-l" d="M47 32 l10 3" stroke="#7a4f24" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0"/>'+
-        '<path id="wc-brow-r" d="M79 32 l-10 3" stroke="#7a4f24" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0"/>'+
-        '<path id="wc-nose" d="M60 51 l3 3 l3 -3z"/>'+
-        '<path id="wc-mouth" d="M59 56 q4 4 8 0" stroke="#7a4f24" stroke-width="1.8" fill="none" stroke-linecap="round"/>'+
-        '<g id="wc-whisk" stroke-width="1.5" stroke-linecap="round" opacity=".75">'+
-          '<path d="M34 46 l-14 -3"/><path d="M34 50 l-14 2"/>'+
-          '<path d="M92 46 l14 -3"/><path d="M92 50 l14 2"/></g>'+
-        '<ellipse class="wc-blush" cx="44" cy="50" rx="4.5" ry="3" opacity=".5"/>'+
-        '<ellipse class="wc-blush" cx="82" cy="50" rx="4.5" ry="3" opacity=".5"/>'+
       '</g>'+
+      '<g id="wc-fx" opacity="0"></g>'+
     '</g>'+
-    '<g id="wc-fx" opacity="0"></g>'+
+    '<g id="wc-tubF" opacity="0"><g id="wc-foam"></g>'+
+      '<path d="M-70 14 q6 40 70 40 q64 0 70 -40 q-70 19 -140 0 Z" fill="#BDE0FE"/></g>'+
   '</svg>';
 
   var bubble=document.createElement('div');
-  bubble.style.cssText='position:absolute;pointer-events:none;background:#fff;color:#33404f;border:1px solid #e3e8ee;'+
-    'border-radius:12px;padding:5px 10px;font-size:12px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.12);'+
-    'opacity:0;transition:opacity .25s;white-space:nowrap;font-family:system-ui,-apple-system,sans-serif;max-width:250px';
+  bubble.style.cssText='position:absolute;max-width:260px;background:#fff;color:#243447;border:1px solid #e3e8ee;'+
+    'border-radius:12px;padding:7px 11px;font:12.5px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;'+
+    'box-shadow:0 6px 18px rgba(20,40,70,.14);opacity:0;transition:opacity .25s;pointer-events:none;white-space:pre-wrap';
 
   var panel=document.createElement('div');
   panel.style.cssText='position:absolute;pointer-events:auto;display:none;background:#fff;border:1px solid #e3e8ee;'+
-    'border-radius:14px;padding:11px 13px;box-shadow:0 12px 34px rgba(0,0,0,.18);'+
-    'font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#33404f;width:238px';
+    'border-radius:13px;padding:12px;width:262px;max-height:74vh;overflow:auto;'+
+    'font:12px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#243447;box-shadow:0 12px 34px rgba(20,40,70,.2)';
 
   var ball=document.createElement('div');
-  ball.style.cssText='position:absolute;width:20px;height:20px;border-radius:50%;display:none;'+
-    'background:radial-gradient(circle at 32% 30%,#ff8fa3,#e63950);box-shadow:0 2px 6px rgba(0,0,0,.25);pointer-events:none';
+  ball.style.cssText='position:absolute;width:22px;height:22px;border-radius:50%;background:#7ec97e;'+
+    'border:2px solid #5aa85a;display:none;pointer-events:none';
 
-  // ── ปุ่มเรียกน้อง ─────────────────────────────────────────
+  var bowl=document.createElement('div');
+  bowl.style.cssText='position:absolute;display:none;pointer-events:none;width:46px;height:30px';
+  bowl.innerHTML='<svg viewBox="0 0 60 40" width="100%" height="100%">'+
+    '<ellipse cx="30" cy="13" rx="26" ry="8" fill="#C9764A"/>'+
+    '<path d="M4 13 q4 22 26 22 q22 0 26 -22z" fill="#E39B63"/>'+
+    '<ellipse cx="30" cy="13" rx="20" ry="6" fill="#8D5524"/></svg>';
+
   var callBtn=document.createElement('button');
-  callBtn.id='wwl-cat-call';
-  callBtn.title='เรียกน้องแมว';
-  callBtn.textContent='🐾';
+  callBtn.id='wwl-cat-call'; callBtn.title='เรียกน้องแมว'; callBtn.textContent='🐾';
   callBtn.style.cssText='position:fixed;right:16px;bottom:16px;width:46px;height:46px;border-radius:50%;'+
-    'border:1px solid #e3e8ee;background:#fff;box-shadow:0 6px 18px rgba(0,0,0,.16);cursor:pointer;'+
-    'font-size:21px;line-height:1;pointer-events:auto;z-index:2147483001;transition:transform .15s';
+    'border:1px solid #e3e8ee;background:#fff;box-shadow:0 6px 18px rgba(20,40,70,.18);cursor:pointer;'+
+    'font-size:20px;line-height:1;z-index:2147483001;transition:transform .18s,opacity .2s';
   callBtn.onmouseenter=function(){ callBtn.style.transform='scale(1.1)'; };
   callBtn.onmouseleave=function(){ callBtn.style.transform='scale(1)'; };
 
-  // ชามข้าว (โผล่ตอนกินข้าว)
-  var bowl=document.createElement('div');
-  bowl.style.cssText='position:absolute;display:none;pointer-events:none;width:52px;height:34px';
-  bowl.innerHTML='<svg viewBox="0 0 60 40" width="100%" height="100%">'+
-    '<ellipse cx="30" cy="14" rx="21" ry="7" fill="#C97B4A"/>'+
-    '<path d="M9 14 q3 18 21 18 q18 0 21 -18z" fill="#E39B63"/>'+
-    '<ellipse cx="30" cy="14" rx="16" ry="5" fill="#8d5524"/>'+
-    '<circle cx="25" cy="13" r="3" fill="#a9713b"/><circle cx="34" cy="15" r="2.6" fill="#a9713b"/></svg>';
-
-  // กะละมัง + ฟองสบู่ (โผล่ตอนอาบน้ำ)
-  var tub=document.createElement('div');
-  tub.style.cssText='position:absolute;display:none;pointer-events:none;width:120px;height:60px';
-  tub.innerHTML='<svg viewBox="0 0 140 70" width="100%" height="100%" style="overflow:visible">'+
-    '<g id="wc-foam"></g>'+
-    '<path d="M14 26 q4 34 56 34 q52 0 56 -34z" fill="#BDE0FE"/>'+
-    '<ellipse cx="70" cy="26" rx="56" ry="11" fill="#8ECAE6"/>'+
-    '<ellipse cx="70" cy="26" rx="48" ry="8" fill="#CDE8F6"/></svg>';
-
-  wrap.appendChild(bowl); wrap.appendChild(tub);
-  wrap.appendChild(ball); wrap.appendChild(cat); wrap.appendChild(bubble); wrap.appendChild(panel);
+  wrap.appendChild(bowl); wrap.appendChild(ball);
+  wrap.appendChild(cat); wrap.appendChild(bubble); wrap.appendChild(panel);
   var root=document.body||document.documentElement;
   root.appendChild(wrap); root.appendChild(callBtn);
   var $=function(id){ return cat.querySelector('#'+id); };
 
-  // ── ทาสีตามลายที่เลือก ────────────────────────────────────
+  var WEAR_SVG={
+    hat:{
+      none:'',
+      cap:'<path d="M-32 -78 a32 29 0 0 1 64 0 z" fill="#2F6F8F"/><path d="M-33 -77 h66 a3 3 0 0 1 0 6 h-66 a3 3 0 0 1 0 -6z" fill="#245A75"/><path d="M29 -77 q25 1 25 9 q-22 3 -26 -5z" fill="#245A75"/><circle cx="0" cy="-106" r="4.5" fill="#245A75"/>',
+      beanie:'<path d="M-32 -74 a32 29 0 0 1 64 0 z" fill="#7A5EA8"/><path d="M-34 -76 h68 a6 6 0 0 1 0 12 h-68 a6 6 0 0 1 0 -12z" fill="#5E4788"/><circle cx="0" cy="-105" r="7" fill="#A692CC"/>',
+      party:'<path d="M0 -116 l-19 38 h38 z" fill="#F2C14E"/><path d="M-13 -91 h26 M-7 -103 h14" stroke="#E58BA6" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="0" cy="-119" r="6" fill="#E58BA6"/><path d="M-20 -78 h40 a4 4 0 0 1 0 8 h-40 a4 4 0 0 1 0 -8z" fill="#D9A93C"/>',
+      capt:'<path d="M-33 -80 a33 25 0 0 1 66 0 z" fill="#F4F1EA"/><path d="M-35 -80 h70 v10 h-70z" fill="#1E3A5F"/><path d="M-36 -70 q36 12 72 0 q-3 9 -36 9 q-33 0 -36 -9z" fill="#141F33"/><path d="M-6 -89 l6 -7 l6 7 l-6 7z" fill="#D9A441"/>',
+      hard:'<path d="M-30 -78 a30 29 0 0 1 60 0 z" fill="#EFB417"/><path d="M-38 -78 h76 a4 4 0 0 1 0 8 h-76 a4 4 0 0 1 0 -8z" fill="#D89C0C"/><path d="M-3 -106 h6 v28 h-6z" fill="#D89C0C"/>',
+      santa:'<path d="M-32 -75 q7 -39 45 -33 q22 4 16 25 q-6 19 -29 16 z" fill="#D94B4B"/><path d="M-35 -78 h70 a7 7 0 0 1 0 14 h-70 a7 7 0 0 1 0 -14z" fill="#F7F3EC"/><circle cx="32" cy="-97" r="9" fill="#F7F3EC"/>',
+      krathong:'<ellipse cx="0" cy="-80" rx="30" ry="9" fill="#7FBF6A"/><ellipse cx="0" cy="-84" rx="22" ry="7" fill="#A8D68F"/><path d="M-14 -88 q6 -10 14 -2 q8 -8 14 2 q-14 8 -28 0z" fill="#F6C9D8"/><path d="M-3 -94 h6 v7 h-6z" fill="#E8B33C"/><ellipse cx="0" cy="-96" rx="4" ry="6" fill="#F7DC8A"/>'
+    },
+    body:{
+      none:'',
+      scarf:'<path d="M-36 -9 q36 22 72 0 l2 11 q-38 22 -76 0z" fill="#B2453F"/><path d="M20 3 q12 16 4 32 q-12 3 -16 -4 q7 -15 3 -26z" fill="#C4534C"/>',
+      tee:'<path d="M-42 -6 q42 22 84 0 l4 33 q-45 15 -92 0z" fill="#3F8FBF"/><path d="M-17 -12 q17 12 34 0 q-17 15 -34 0z" fill="#2E7099"/><path d="M-14 16 h28 v5 h-28z" fill="#F7F3EC"/>',
+      sweat:'<path d="M-42 -7 q42 23 84 0 l5 37 q-46 16 -94 0z" fill="#C4655F"/><path d="M-19 -13 q19 13 38 0 q-19 16 -38 0z" fill="#A94F4A"/><path d="M-38 6 q38 16 76 0 M-36 17 q36 16 72 0" fill="none" stroke="#A94F4A" stroke-width="3"/>',
+      vest:'<path d="M-42 -6 q16 10 16 10 l-3 35 q-10 1 -17 -2z" fill="#EF7D1A"/><path d="M42 -6 q-16 10 -16 10 l3 35 q10 1 17 -2z" fill="#EF7D1A"/><path d="M-38 10 q10 4 10 4 M38 10 q-10 4 -10 4" fill="none" stroke="#F4F1EA" stroke-width="4.5"/><path d="M-36 23 q10 4 10 4 M36 23 q-10 4 -10 4" fill="none" stroke="#F4F1EA" stroke-width="4.5"/>',
+      shirt:'<path d="M-42 -6 q42 22 84 0 l4 33 q-45 15 -92 0z" fill="#F2F4F7"/><path d="M-15 -12 l15 15 l15 -15 l-7 -4 l-8 9 l-8 -9z" fill="#D7DEE7"/><circle cx="0" cy="9" r="2.2" fill="#B9C3CE"/><circle cx="0" cy="20" r="2.2" fill="#B9C3CE"/><path d="M20 6 h13 v11 h-13z" fill="#E4E9F0"/>',
+      songkran:'<path d="M-42 -6 q42 22 84 0 l4 33 q-45 15 -92 0z" fill="#F2F0E6"/><circle cx="-22" cy="8" r="5" fill="#EF7D9C"/><circle cx="0" cy="16" r="5" fill="#6FC3D6"/><circle cx="22" cy="6" r="5" fill="#F2C14E"/><circle cx="-10" cy="26" r="4" fill="#7FBF6A"/><circle cx="14" cy="24" r="4" fill="#EF7D9C"/>'
+    },
+    face:{
+      none:'',
+      round:'<circle cx="-17" cy="-48" r="14" fill="none" stroke="#3A3733" stroke-width="3"/><circle cx="17" cy="-48" r="14" fill="none" stroke="#3A3733" stroke-width="3"/><path d="M-3 -48 h6 M-31 -51 l-10 -4 M31 -51 l10 -4" fill="none" stroke="#3A3733" stroke-width="3" stroke-linecap="round"/>',
+      sun:'<path d="M-34 -57 h29 a3 3 0 0 1 3 3 v10 a7 7 0 0 1 -7 7 h-21 a7 7 0 0 1 -7 -7 v-10 a3 3 0 0 1 3 -3z" fill="#2C2724"/><path d="M5 -57 h29 a3 3 0 0 1 3 3 v10 a7 7 0 0 1 -7 7 h-21 a7 7 0 0 1 -7 -7 v-10 a3 3 0 0 1 3 -3z" fill="#2C2724"/><path d="M-5 -54 h10" fill="none" stroke="#2C2724" stroke-width="4"/>',
+      mask:'<path d="M-36 -58 h72 a5 5 0 0 1 5 5 v9 a10 10 0 0 1 -10 10 h-62 a10 10 0 0 1 -10 -10 v-9 a5 5 0 0 1 5 -5z" fill="#5B6B8C"/><path d="M-41 -52 h-6 M41 -52 h6" stroke="#5B6B8C" stroke-width="3" stroke-linecap="round"/><path d="M-14 -44 q6 -5 12 0" stroke="#8FA0C0" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
+    },
+    neck:{
+      none:'',
+      bow:'<path d="M-4 -6 l-19 -9 v19 z" fill="#D94B6A"/><path d="M4 -6 l19 -9 v19 z" fill="#D94B6A"/><circle cx="0" cy="-4" r="6" fill="#B93A57"/>',
+      bell:'<path d="M-32 -9 q32 20 64 0 l1 7 q-33 22 -66 0z" fill="#D94B4B"/><circle cx="0" cy="10" r="8" fill="#E8B33C"/><path d="M-6 10 h12" fill="none" stroke="#B98A22" stroke-width="2"/><circle cx="0" cy="14" r="2" fill="#B98A22"/>',
+      tie:'<path d="M-6 -11 l6 -6 l6 6 l-6 7z" fill="#33507C"/><path d="M-6 -3 h12 l4 21 l-10 8 l-10 -8z" fill="#4E74AE"/>',
+      tag:'<path d="M-32 -9 q32 20 64 0 l1 7 q-33 22 -66 0z" fill="#8A5A3B"/><circle cx="0" cy="11" r="7" fill="#E8B33C"/><circle cx="0" cy="11" r="2.4" fill="#B98A22"/>',
+    }
+  };
+  function renderWear(){
+    autoSeasonWear();
+    var w=S.wear;
+    $('wc-wearH').innerHTML  = WEAR_SVG.hat[w.hat]   || '';
+    $('wc-wearB').innerHTML  = WEAR_SVG.body[w.body] || '';
+    $('wc-wearFa').innerHTML = WEAR_SVG.face[w.face] || '';
+    $('wc-wearN').innerHTML  = WEAR_SVG.neck[w.neck] || '';
+  }
+
   function paint(){
     var c=coat();
-    $('wc-body-e').setAttribute('fill',c.body);
-    $('wc-face').setAttribute('fill',c.head);
-    $('wc-ear').setAttribute('fill',c.body);
-    $('wc-ear-in').setAttribute('fill',c.ear);
-    $('wc-nose').setAttribute('fill',c.nose);
-    $('wc-tail-p').setAttribute('stroke',c.body);
-    cat.querySelectorAll('.wc-leg rect').forEach(function(r){ r.setAttribute('fill',c.body); });
-    cat.querySelectorAll('.wc-blush').forEach(function(b){ b.setAttribute('fill',c.ear); });
-    $('wc-whisk').setAttribute('stroke',c.mark);
-    var bm=$('wc-body-mark'), hm=$('wc-head-mark');
-    bm.setAttribute('opacity', c.stripes?'.55':'0'); hm.setAttribute('opacity', c.stripes?'.55':'0');
-    bm.querySelectorAll('path').forEach(function(p){ p.setAttribute('stroke',c.mark); });
-    hm.querySelectorAll('path').forEach(function(p){ p.setAttribute('stroke',c.mark); });
-    var bp=$('wc-body-patch'), hp=$('wc-head-patch');
-    bp.setAttribute('opacity', c.patch?'.9':'0'); hp.setAttribute('opacity', c.patch?'.9':'0');
-    bp.querySelectorAll('path').forEach(function(p){ p.setAttribute('fill',c.mark); });
-    hp.querySelectorAll('path').forEach(function(p){ p.setAttribute('fill',c.mark); });
+    ['wc-bN','wc-bL','wc-bS','wc-faceF','wc-faceS','wc-earFL','wc-earFR','wc-earSL','wc-earSR','wc-pawTip']
+      .forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.body); });
+    ['wc-pawArm'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.body); });
+    ['wc-earFLi','wc-earFRi','wc-earSLi','wc-earSRi'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.ear); });
+    ['wc-blFL','wc-blFR','wc-blS'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.blush); });
+    ['wc-bNs','wc-bLs','wc-bSs','wc-hstF','wc-hstS','wc-whF','wc-collar','wc-collarS']
+      .forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.stripe); });
+    ['wc-tailF','wc-tailS'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.dark); });
+    ['wc-tuck1','wc-tuck2'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.dark); });
+    ['wc-tp1','wc-tp2'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.body); });
+    cat.querySelectorAll('#wc-lFB rect,#wc-lBB rect,#wc-lFB ellipse,#wc-lBB ellipse,#wc-hBL rect,#wc-hBR rect,#wc-hBL ellipse,#wc-hBR ellipse')
+      .forEach(function(e){ e.setAttribute('fill',c.dark); });
+    cat.querySelectorAll('#wc-lF rect,#wc-lB rect,#wc-lF ellipse,#wc-lB ellipse,#wc-hFL rect,#wc-hFR rect,#wc-hFL ellipse,#wc-hFR ellipse')
+      .forEach(function(e){ e.setAttribute('fill',c.body); });
+    cat.querySelectorAll('#wc-pawsN ellipse').forEach(function(e){ e.setAttribute('fill',c.body); });
+    cat.querySelectorAll('#wc-pawsN path').forEach(function(e){ e.setAttribute('stroke',c.dark); });
+    renderWear();
+  }
+  function face(){
+    var m=mood(), mo=$('wc-mouthF');
+    if(mo) mo.setAttribute('d', m==='love'
+      ? 'M0 -28 q-6 7 -11 1 M0 -28 q6 7 11 1'
+      : 'M0 -29 q-5 6 -9 1 M0 -29 q5 6 9 1');
   }
 
-  // ── ตำแหน่ง / ท่าทาง ──────────────────────────────────────
   var W=function(){return window.innerWidth;}, H=function(){return window.innerHeight;};
-  var pos={x:(S.x!=null?S.x:W()-170), y:(S.y!=null?S.y:H()-170)};
+  var pos={x:(S.x!=null?S.x:W()-200), y:(S.y!=null?S.y:H()-200)};
   var target={x:pos.x,y:pos.y};
   var facing=1, dragging=false, quiet=false, busy=false;
-  var state='loaf';           // walk | loaf | nap | lick | wash | sit
-  var stateUntil=0, bob=0, ballPos=null;
+  var state='sit', stateUntil=0, ballPos=null;
+  var vx=0, vy=0, ang=0, angV=0, legAng=0, legV=0, tailAng=0, tailV=0, squash=0;
+  var pxPrev=pos.x, pyPrev=pos.y, floorY=pos.y;
 
+  function CW(){ return 150*stage().scale; }
+  function clampPos(){
+    pos.x=Math.max(4,Math.min(W()-CW()-4,pos.x));
+    pos.y=Math.max(4,Math.min(H()-CW()*0.75-4,pos.y));
+  }
   function place(){
     var sc=stage().scale;
-    var lift = (state==='loaf'||state==='nap') ? 6 : 0;      // หมอบ = ตัวเตี้ยลง
-    cat.style.transform='translate('+pos.x+'px,'+(pos.y+lift+Math.sin(bob)*(state==='walk'?2.5:.8))+'px) '+
-      'scale('+(sc*facing)+','+sc+')';
-    cat.style.transformOrigin='50% 100%';
+    cat.style.width=(150*sc)+'px'; cat.style.height=(150*sc)+'px';
+    cat.style.transform='translate('+pos.x+'px,'+pos.y+'px) scale('+facing+',1) scale('+(1+squash*0.18)+','+(1-squash*0.22)+')';
+    cat.style.transformOrigin='50% 78%';
     placeProps(sc);
   }
-  // วางชามข้าว / กะละมัง ให้ติดตัวน้องเสมอ
   function placeProps(sc){
     if(state==='eat'){
+      bowl.style.display='block';
       bowl.style.width=(46*sc)+'px'; bowl.style.height=(30*sc)+'px';
-      bowl.style.left=(pos.x+(facing>0?62*sc:-8*sc))+'px';
-      bowl.style.top=(pos.y+60*sc)+'px';
-    }
-    if(state==='bath'){
-      tub.style.width=(124*sc)+'px'; tub.style.height=(62*sc)+'px';
-      tub.style.left=(pos.x-10*sc)+'px';
-      tub.style.top=(pos.y+36*sc)+'px';
-    }
+      bowl.style.left=(pos.x + (facing>0 ? 108*sc : -6*sc))+'px';
+      bowl.style.top=(pos.y + 82*sc)+'px';
+    } else bowl.style.display='none';
   }
-  function clampPos(){ pos.x=Math.max(4,Math.min(W()-108,pos.x)); pos.y=Math.max(4,Math.min(H()-104,pos.y)); }
 
-  // ท่าหมอบ: ลำตัวแบนลง ขาหดเข้า เงาแผ่กว้าง
+  function isSide(){ return state==='walk' || state==='eat'; }
+  function isRest(){ return state==='loaf' || state==='nap'; }
+  function airborne(){ return dragging || pos.y < floorY-1.5; }
+
   function applyPose(){
-    var loaf = (state==='loaf'||state==='nap');
-    var body=$('wc-body'), head=$('wc-head'), sh=$('wc-shadow');
-    body.setAttribute('transform', loaf ? 'translate(0,7) scale(1.06,0.80) translate(0,10)' : '');
-    head.setAttribute('transform', loaf ? 'translate(0,9)' : '');
-    sh.setAttribute('rx', loaf ? 36 : 32);
-    // อุปกรณ์ประกอบฉาก: ชามข้าว / กะละมังอาบน้ำ
-    bowl.style.display = (state==='eat')  ? 'block' : 'none';
-    tub.style.display  = (state==='bath') ? 'block' : 'none';
-    if(state!=='bath') foamClear();
-    placeProps(stage().scale);
-    cat.querySelectorAll('.wc-leg').forEach(function(g){
-      g.setAttribute('opacity', (loaf || state==='bath') ? '0' : '1');
-    });
-    $('wc-eyes').setAttribute('opacity', state==='nap' ? '0' : '1');
-    $('wc-eyes-shut').setAttribute('opacity', state==='nap' ? '1' : '0');
+    var side=isSide(), rest=isRest(), air=airborne();
+    $('wc-side').setAttribute('opacity', side?1:0);
+    $('wc-front').setAttribute('opacity', side?0:1);
+    $('wc-bodyN').setAttribute('opacity', (rest||air)?0:1);
+    $('wc-bodyL').setAttribute('opacity', rest?1:0);
+    $('wc-hang').setAttribute('opacity', air?1:0);
+    if(air){ $('wc-bodyN').setAttribute('opacity',1); $('wc-pawsN').setAttribute('opacity',0); }
+    else $('wc-pawsN').setAttribute('opacity',1);
+    $('wc-collar').setAttribute('opacity', rest?0:1);
+    $('wc-tailF').setAttribute('opacity', rest?0:1);
+    $('wc-paw').setAttribute('opacity', state==='lick'?1:0);
+    $('wc-tongueF').setAttribute('opacity', state==='lick'?1:0);
+    $('wc-tubB').setAttribute('opacity', state==='bath'?1:0);
+    $('wc-tubF').setAttribute('opacity', state==='bath'?1:0);
+    $('wc-eyeF').setAttribute('opacity', (state==='nap')?0:(air?0:1));
+    $('wc-eyeFw').setAttribute('opacity', air&&state!=='nap'?1:0);
+    $('wc-eyeFs').setAttribute('opacity', state==='nap'?1:0);
+    $('wc-eyeS').setAttribute('opacity', state==='nap'?0:1);
+    $('wc-eyeSs').setAttribute('opacity', state==='nap'?1:0);
+    $('wc-sh').setAttribute('opacity', state==='bath'?0:0.15);
+    if(state!=='bath'){ bubbles.length=0; $('wc-foam').innerHTML=''; }
   }
 
-  // ขาเดิน: สลับหน้า-หลังไขว้กันเหมือนแมวจริง
-  function legs(t){
-    var swing = state==='walk' ? Math.sin(t/95)*13 : 0;
-    var set=function(id,dir,pivotX){
-      var el=$(id); if(!el) return;
-      el.setAttribute('transform', state==='walk'
-        ? 'rotate('+(swing*dir)+' '+pivotX+' 82)' : '');
-    };
-    set('wc-leg-bl', 1, 39); set('wc-leg-br',-1, 55);
-    set('wc-leg-fr', 1, 79); set('wc-leg-fl',-1, 91);
-  }
-
-  // ── ท่าเลียขา / ทูหัวล้างหน้า ─────────────────────────────
-  var groomT=0;
-  function groom(t){
-    var head=$('wc-head'), fl=$('wc-leg-fl');
-    if(state==='lick'){
-      // ก้มหัวลงเลียขาหน้า + ขาหน้ายกนิดๆ
-      var k=Math.sin(t/180);
-      head.setAttribute('transform','rotate('+(16+k*5)+' 63 60) translate(0,6)');
-      fl.setAttribute('transform','rotate(-26 91 82)');
-      fl.setAttribute('opacity','1');
-    } else if(state==='wash'){
-      // ยกขาหน้าขึ้นถูหัวเป็นวงกลม (ทูหัว)
-      var a=t/150;
-      head.setAttribute('transform','rotate('+(Math.sin(a)*7-4)+' 63 60)');
-      fl.setAttribute('transform','translate('+(Math.cos(a)*5-14)+','+(Math.sin(a)*5-34)+') rotate(-55 91 82)');
-      fl.setAttribute('opacity','1');
+  var bubbles=[], bseed=0;
+  function anim(now){
+    var air=airborne();
+    var hy=0, hr=0, lift=0;
+    if(state==='walk'){
+      var s=Math.sin(now/155)*15;
+      $('wc-lF').setAttribute('transform','rotate('+s+' -25 8)');
+      $('wc-lB').setAttribute('transform','rotate('+(-s)+' 26 8)');
+      $('wc-lFB').setAttribute('transform','rotate('+(-s*0.75)+' -30 6)');
+      $('wc-lBB').setAttribute('transform','rotate('+(s*0.75)+' 30 6)');
+      $('wc-headS').setAttribute('transform','rotate('+(Math.sin(now/310)*3)+' 56 -42)');
+      $('wc-tailS').setAttribute('transform','rotate('+(Math.sin(now/300)*11)+' -48 -9)');
     } else if(state==='eat'){
-      // ก้มหน้าลงชาม เคี้ยวเป็นจังหวะ งั่มๆ
-      var e=Math.sin(t/150), chew=Math.abs(Math.sin(t/70));
-      head.setAttribute('transform','translate('+(facing>0?6:-6)+','+(16+e*4)+') rotate('+(14+e*4)+' 63 60) scale(1,'+(1-chew*0.05)+')');
-      fl.setAttribute('transform','');
-      fl.setAttribute('opacity','1');
-    } else if(state==='bath'){
-      // แช่กะละมัง ตัวโยกไปมา + ขาหน้าถูตัว + ฟองสบู่
-      var w=Math.sin(t/130);
-      head.setAttribute('transform','translate(0,6) rotate('+(w*7)+' 63 60)');
-      fl.setAttribute('transform','translate('+(Math.cos(t/120)*5-12)+','+(Math.sin(t/120)*4-30)+') rotate(-52 91 82)');
-      fl.setAttribute('opacity','1');
-      foam(t);
-    } else if(state!=='loaf' && state!=='nap'){
-      head.setAttribute('transform','');
+      ['wc-lF','wc-lB','wc-lFB','wc-lBB'].forEach(function(i){ $(i).setAttribute('transform',''); });
+      var e=Math.sin(now/160);
+      $('wc-headS').setAttribute('transform','translate(4,'+(22+e*5)+') rotate('+(26+e*4)+' 56 -42)');
+      $('wc-tailS').setAttribute('transform','rotate('+(Math.sin(now/400)*7)+' -48 -9)');
+    }
+    if(state==='sit') hr=Math.sin(now/700)*2;
+    else if(state==='loaf'){ hy=22; }
+    else if(state==='nap'){ hy=25; hr=-5; }
+    else if(state==='wash') hr=Math.sin(now/170)*8;
+    else if(state==='lick'){ var k=Math.sin(now/210); hr=-13+k*4; hy=5;
+      $('wc-paw').setAttribute('transform','rotate('+(k*7)+' -19 22)'); }
+    else if(state==='bath'){ hr=Math.sin(now/140)*7; hy=4; }
+    else if(state==='happy'){ hr=Math.sin(now/180)*5; }
+    if(air) hr=-ang*0.22;
+    $('wc-headF').setAttribute('transform','translate(0,'+hy+') rotate('+hr+' 0 -48)');
+    if(!air && !isRest()) $('wc-tailF').setAttribute('transform',
+      'rotate('+(state==='happy'?Math.sin(now/150)*24:Math.sin(now/560)*6)+' 40 29)');
+    if(state==='bath'){
+      if(now-bseed>150 && bubbles.length<14){ bseed=now;
+        bubbles.push({x:-52+Math.random()*104,y:14+Math.random()*7,r:3+Math.random()*5,
+                      v:0.3+Math.random()*0.5,s:Math.random()*6.3,b:now}); }
+      var o='';
+      for(var i=bubbles.length-1;i>=0;i--){ var b=bubbles[i], a=now-b.b;
+        if(a>2500){ bubbles.splice(i,1); continue; }
+        o+='<circle cx="'+(b.x+Math.sin(a/300+b.s)*5).toFixed(1)+'" cy="'+(b.y-a*b.v*0.045).toFixed(1)+
+           '" r="'+b.r.toFixed(1)+'" fill="#fff" opacity="'+Math.max(0,0.9-a/2900).toFixed(2)+'"/>';
+      }
+      o+='<ellipse cx="0" cy="-70" rx="30" ry="10" fill="#fff" opacity="0.82"/>';
+      $('wc-foam').innerHTML=o;
     }
   }
 
-  // ── ฟองสบู่ตอนอาบน้ำ ──────────────────────────────────────
-  var foamArr=[], foamSeed=0;
-  function foamClear(){ foamArr=[]; var g=tub.querySelector('#wc-foam'); if(g) g.innerHTML=''; }
-  function foam(t){
-    var g=tub.querySelector('#wc-foam'); if(!g) return;
-    if(t-foamSeed>170 && foamArr.length<16){
-      foamSeed=t;
-      foamArr.push({x:22+Math.random()*96, y:30+Math.random()*8, r:3+Math.random()*6,
-                    v:.25+Math.random()*.45, s:Math.random()*6.28, born:t});
-    }
-    var out='';
-    for(var i=foamArr.length-1;i>=0;i--){
-      var b=foamArr[i], age=t-b.born;
-      if(age>2600){ foamArr.splice(i,1); continue; }
-      var y=b.y-age*b.v*0.045, x=b.x+Math.sin(age/300+b.s)*4;
-      var op=Math.max(0, 0.85-age/3200);
-      out+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+b.r.toFixed(1)+'" fill="#ffffff" opacity="'+op.toFixed(2)+'"/>'+
-           '<circle cx="'+(x-b.r*0.3).toFixed(1)+'" cy="'+(y-b.r*0.3).toFixed(1)+'" r="'+(b.r*0.28).toFixed(1)+'" fill="#ffffff" opacity="'+(op*0.9).toFixed(2)+'"/>';
-    }
-    // ฟองกองบนหัวน้อง
-    out+='<ellipse cx="70" cy="24" rx="26" ry="9" fill="#ffffff" opacity="0.75"/>';
-    g.innerHTML=out;
+  function physics(){
+    var air=airborne();
+    var tgt = air ? Math.max(-38,Math.min(38,-vx*2.4)) : 0;
+    angV += (tgt-ang)*0.055; angV*=0.90; ang+=angV;
+    legV += ((air? ang*1.5 + vx*1.3 : 0)-legAng)*0.075; legV*=0.86; legAng+=legV;
+    tailV += ((air? -ang*1.1 - vx*1.5 : 0)-tailAng)*0.06; tailV*=0.88; tailAng+=tailV;
+    squash*=0.86;
+    var lg=Math.max(-32,Math.min(32,legAng));
+    $('wc-hFL').setAttribute('transform','rotate('+(lg*1.1)+' -28 2)');
+    $('wc-hFR').setAttribute('transform','rotate('+(lg*1.1)+' 28 2)');
+    $('wc-hBL').setAttribute('transform','rotate('+(lg*0.8)+' -24 26)');
+    $('wc-hBR').setAttribute('transform','rotate('+(lg*0.8)+' 24 26)');
+    if(air) $('wc-tailF').setAttribute('transform','rotate('+Math.max(-40,Math.min(40,tailAng))+' 40 29)');
+    $('wc-swing').setAttribute('transform','rotate('+ang+' 0 -86)');
   }
 
-  // ── เลือกกิจกรรมถัดไป — เน้นพัก ไม่เดินบ่อย ────────────────
-  function nextState(){
-    if(dragging||busy||quiet||ballPos) return;
-    var r=Math.random(), m=mood();
-    // หิว/สกปรกมาก จะไม่ค่อยหลับ เดินวนหาเจ้าของแทน
-    var napW = (m==='angry') ? .10 : .34;
-    if(r < napW)          go('nap',  14000+Math.random()*20000);
-    else if(r < napW+.28) go('loaf', 9000+Math.random()*12000);
-    else if(r < napW+.40) go('lick', 4500+Math.random()*3000);
-    else if(r < napW+.52) go('wash', 4500+Math.random()*3000);
-    else if(r < napW+.62) go('sit',  6000+Math.random()*6000);
-    else { // เดินสั้นๆ ไปใกล้ๆ ไม่ข้ามจอ
-      var d=110+Math.random()*180, a=Math.random()*Math.PI*2;
-      target.x=Math.max(10,Math.min(W()-118, pos.x+Math.cos(a)*d));
-      target.y=Math.max(10,Math.min(H()-114, pos.y+Math.sin(a)*d));
-      go('walk', 12000);
-    }
+  var grab={dx:0,dy:0,moved:false};
+  var dragPt=null, thrown=false;
+  function down(e){ var p=e.touches?e.touches[0]:e;
+    dragging=true; grab.moved=false; thrown=false;
+    grab.dx=p.clientX-pos.x; grab.dy=p.clientY-pos.y;
+    dragPt={x:pos.x,y:pos.y};
+    vx=0; vy=0; squash=0; floorY=pos.y;
+    cat.style.cursor='grabbing'; hidePanel(); e.preventDefault(); }
+  function move(e){ if(!dragging) return; var p=e.touches?e.touches[0]:e;
+    var nx=p.clientX-grab.dx, ny=p.clientY-grab.dy;
+    if(Math.abs(nx-pos.x)+Math.abs(ny-pos.y)>3) grab.moved=true;
+    dragPt={x:nx,y:ny}; e.preventDefault(); }
+  function up(){ if(!dragging) return; dragging=false; cat.style.cursor='grab';
+    // เหวี่ยงแรง = ปล่อยแล้วบินตกลงพื้นล่าง · วางเบาๆ = อยู่ตรงที่วางเลย ไม่ร่วง
+    thrown = (Math.abs(vx)+Math.abs(vy)) > 9;
+    if(thrown){ floorY = Math.max(pos.y, H()-CW()*0.82-10); }
+    else { vx=0; vy=0; floorY=pos.y; S.x=pos.x; S.y=pos.y; save(); }
+    if(grab.moved){ say(pick(['วางตรงนี้ก็ได้~','หวาดเสียวจัง!','โอ๊ะ ตกใจหมด']),1600); }
+    else { wake(); togglePanel(); } }
+  window.addEventListener('blur', function(){ if(dragging) up(); });
+  cat.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  cat.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false});
+  window.addEventListener('touchend',up);
+
+  var sayT=null;
+  function say(t,ms){ clearTimeout(sayT);
+    if(!t){ bubble.style.opacity='0'; return; }
+    bubble.textContent=t; bubble.style.opacity='1';
+    bubble.style.left=Math.min(W()-270,Math.max(4,pos.x))+'px';
+    bubble.style.top=Math.max(2,pos.y-38)+'px';
+    sayT=setTimeout(function(){ bubble.style.opacity='0'; },ms||2600); }
+  function fx(kind){
+    var g=$('wc-fx');
+    g.innerHTML={ heart:'<path d="M0 -104 q6 -9 13 -2 q5 6 -13 20 q-18 -14 -13 -20 q7 -7 13 2z" fill="#ff6b81"/>',
+      food:'<circle cx="0" cy="-100" r="8" fill="#8d5524"/><circle cx="-8" cy="-96" r="5" fill="#a9713b"/>',
+      bath:'<circle cx="-4" cy="-102" r="7" fill="#8ecae6" opacity=".9"/><circle cx="8" cy="-110" r="5" fill="#bde0fe"/>',
+      mad:'<path d="M-3 -114 l7 0 l-3 11 l-2 0z" fill="#e63950"/><circle cx="0" cy="-99" r="2.2" fill="#e63950"/>',
+      zzz:'<text x="-8" y="-104" font-size="13" fill="#8899aa" font-family="sans-serif">z</text>'+
+          '<text x="4" y="-114" font-size="10" fill="#8899aa" font-family="sans-serif">z</text>' }[kind]||'';
+    g.setAttribute('opacity','1'); g.style.transition='none'; g.style.transform='translateY(0)';
+    requestAnimationFrame(function(){ g.style.transition='opacity 1.4s,transform 1.4s';
+      g.style.transform='translateY(-22px)'; g.setAttribute('opacity','0'); });
   }
   function go(st, ms){
     state=st; stateUntil=performance.now()+ms;
@@ -14684,18 +14970,29 @@ window.renderBestByPOD=renderBestByPOD;
     applyPose();
     if(st==='nap') setTimeout(function(){ if(state==='nap') fx('zzz'); }, 900);
   }
-  function wake(){
-    if(state==='nap'||state==='loaf'){ go('sit',3000); say(pick(['หืม..ตื่นแล้ว','เมี๊ยว~','ง่วงอยู่เลย']),1600); }
+  function wake(){ if(isRest()){ go('sit',3000); say(pick(['หืม..ตื่นแล้ว','เมี๊ยว~','ง่วงอยู่เลย']),1600); } }
+  function nextState(){
+    if(dragging||busy||quiet||ballPos||airborne()) return;
+    var r=Math.random(), m=mood();
+    var napW=(m==='angry')?.10:.32;
+    if(r<napW)             go('nap',14000+Math.random()*20000);
+    else if(r<napW+.26)    go('loaf',9000+Math.random()*12000);
+    else if(r<napW+.36)    go('lick',4500+Math.random()*3000);
+    else if(r<napW+.46)    go('wash',4500+Math.random()*3000);
+    else if(r<napW+.58)    go('sit',6000+Math.random()*6000);
+    else { var d=110+Math.random()*200, a=Math.random()*Math.PI*2;
+      target.x=Math.max(10,Math.min(W()-CW()-10, pos.x+Math.cos(a)*d));
+      target.y=Math.max(10,Math.min(H()-CW()*0.8, pos.y+Math.sin(a)*d));
+      go('walk',12000); }
   }
 
-  // ── หลบเวลาเรากำลังพิมพ์ ───────────────────────────────────
   function isEditable(el){ if(!el) return false;
     var t=(el.tagName||'').toUpperCase();
     return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||el.isContentEditable; }
-  function overlaps(r,pad){ pad=pad||30; var sc=stage().scale, w=104*sc, h=92*sc;
+  function overlaps(r,pad){ pad=pad||30; var w=CW(), h=CW()*0.8;
     return !(pos.x>r.right+pad||pos.x+w<r.left-pad||pos.y>r.bottom+pad||pos.y+h<r.top-pad); }
   function dodge(r){
-    var sc=stage().scale, w=104*sc, h=92*sc;
+    var w=CW(), h=CW()*0.8;
     var spots=[{x:12,y:H()-h-12},{x:W()-w-12,y:H()-h-12},{x:12,y:12},{x:W()-w-12,y:12}]
       .filter(function(p){ return (p.x>r.right+24||p.x+w<r.left-24||p.y>r.bottom+24||p.y+h<r.top-24); });
     if(!spots.length) return;
@@ -14716,108 +15013,72 @@ window.renderBestByPOD=renderBestByPOD;
     }
   },true);
 
-  // ── ลากวาง ────────────────────────────────────────────────
-  var grab={dx:0,dy:0,moved:false};
-  function down(e){ var p=e.touches?e.touches[0]:e;
-    dragging=true; grab.moved=false; grab.dx=p.clientX-pos.x; grab.dy=p.clientY-pos.y;
-    cat.style.cursor='grabbing'; e.preventDefault(); }
-  function move(e){ if(!dragging) return; var p=e.touches?e.touches[0]:e;
-    var nx=p.clientX-grab.dx, ny=p.clientY-grab.dy;
-    if(Math.abs(nx-pos.x)+Math.abs(ny-pos.y)>3) grab.moved=true;
-    pos.x=nx; pos.y=ny; clampPos(); target.x=pos.x; target.y=pos.y; place(); e.preventDefault(); }
-  function up(){ if(!dragging) return; dragging=false; cat.style.cursor='grab';
-    S.x=pos.x; S.y=pos.y; save();
-    if(grab.moved){ go('sit',4000); say(pick(['วางตรงนี้ก็ได้~','หื้อ..ตกใจหมด','ที่นี่นั่งสบายดี']),1600); }
-    else { wake(); togglePanel(); } }
-  cat.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
-  cat.addEventListener('touchstart',down,{passive:false}); window.addEventListener('touchmove',move,{passive:false});
-  window.addEventListener('touchend',up);
-
-  // ── คำพูด / เอฟเฟกต์ ──────────────────────────────────────
-  var sayT=null;
-  function say(t,ms){ clearTimeout(sayT);
-    if(!t){ bubble.style.opacity='0'; return; }
-    bubble.textContent=t; bubble.style.opacity='1';
-    bubble.style.left=Math.min(W()-260,Math.max(4,pos.x))+'px';
-    bubble.style.top=Math.max(2,pos.y-30)+'px';
-    sayT=setTimeout(function(){ bubble.style.opacity='0'; },ms||2200); }
-  function fx(kind){
-    var g=$('wc-fx');
-    g.innerHTML={ heart:'<path d="M63 10 q7 -10 14 -2 q6 7 -14 22 q-20 -15 -14 -22 q7 -8 14 2z" fill="#ff6b81"/>',
-      food:'<circle cx="63" cy="15" r="9" fill="#8d5524"/><circle cx="55" cy="19" r="6" fill="#a9713b"/>',
-      bath:'<circle cx="55" cy="13" r="6" fill="#8ecae6" opacity=".85"/><circle cx="69" cy="9" r="8" fill="#bde0fe" opacity=".85"/>',
-      mad:'<path d="M59 7 l8 0 l-3 12 l-2 0z" fill="#e63950"/><circle cx="63" cy="23" r="2.4" fill="#e63950"/>',
-      zzz:'<text x="52" y="16" font-size="15" fill="#8899aa" font-family="sans-serif">z</text>'+
-          '<text x="66" y="8" font-size="11" fill="#8899aa" font-family="sans-serif">z</text>' }[kind]||'';
-    g.setAttribute('opacity','1'); g.style.transition='none'; g.style.transform='translateY(0)';
-    requestAnimationFrame(function(){ g.style.transition='opacity 1.4s,transform 1.4s';
-      g.style.transform='translateY(-24px)'; g.setAttribute('opacity','0'); });
-  }
-  function face(){
-    var m=mood(), mo=$('wc-mouth');
-    $('wc-brow-l').setAttribute('opacity',m==='angry'?'1':'0');
-    $('wc-brow-r').setAttribute('opacity',m==='angry'?'1':'0');
-    mo.setAttribute('d', m==='angry'?'M59 58 q4 -4 8 0' : m==='clingy'?'M59 56 q4 2 8 0'
-                        : m==='love'?'M58 55 q5 6 10 0' : 'M59 56 q4 4 8 0');
-  }
-
-  // ── ดูแลน้อง ──────────────────────────────────────────────
   var actT=[];
   function actTimer(fn,ms){ actT.push(setTimeout(fn,ms)); }
   function act(kind){
-    // ถ้ากำลังกิน/อาบอยู่แล้วกดใหม่ ให้เริ่มท่าใหม่ทันที ไม่ต้องรอ
     if(busy && (state==='eat'||state==='bath')){ actT.forEach(clearTimeout); actT=[]; busy=false; }
     if(busy) return; busy=true; wake();
     var wasAngry=mood()==='angry';
     if(kind==='food'){ S.food=clamp(S.food+34); S.love++; fx('food');
-      go('eat',5200);                                   // ทำท่ากินข้าว
+      facing=1; go('eat',5200);
       say(wasAngry?'หิวมากแล้วนะ! 😾':pick(['อร่อยจัง! 🐟','ขอบคุณนะ~','งั่มๆ 🍚']),2200);
       actTimer(function(){ if(state==='eat') say(pick(['งั่มๆ~','อร่อย! 😋','เพิ่มอีกได้ไหม']),1800); },2600);
       actTimer(function(){ busy=false; fx('heart'); go('lick',4200); },5200); }
-    else if(kind==='bath'){ S.clean=clamp(S.clean+40); S.love++; fx('bath');
-      go('bath',6000);                                  // ทำท่าอาบน้ำ มีฟองสบู่
+    else if(kind==='bath'){ S.clean=clamp(S.clean+40); S.love++; fx('bath'); go('bath',6000);
       say(pick(['สะอาดเอี่ยม! 🛁','เย็นดี~','ไม่ชอบน้ำ...แต่ก็ดี']),2200);
-      cat.animate([{filter:'brightness(1)'},{filter:'brightness(1.22)'},{filter:'brightness(1)'}],
-                  {duration:2000,iterations:3});
       actTimer(function(){ if(state==='bath') say(pick(['ฟองเยอะจัง! 🫧','ขนเปียกหมดแล้ว','เมี๊ยว~ 🧼']),1800); },3000);
       actTimer(function(){ busy=false; fx('heart'); go('wash',4500); },6000); }
     else if(kind==='ball'){ S.play=clamp(S.play+32); S.love++; throwBall();
       say(pick(['ลูกบอล! 🎾','ไล่จับได้แน่!','สนุกจัง~']),1800); }
-    S.love=Math.min(500,S.love); save(); face(); renderPanel();
+    S.love=Math.min(999,S.love); save(); face(); renderPanel();
   }
   function throwBall(){
-    ballPos={x:30+Math.random()*(W()-130), y:70+Math.random()*(H()-190)};
+    ballPos={x:30+Math.random()*(W()-160), y:70+Math.random()*(H()-220)};
     ball.style.display='block'; ball.style.transition='none';
-    ball.style.left=(pos.x+44)+'px'; ball.style.top=(pos.y+34)+'px';
+    ball.style.left=(pos.x+40)+'px'; ball.style.top=(pos.y+40)+'px';
     requestAnimationFrame(function(){
       ball.style.transition='left .55s cubic-bezier(.3,1.4,.6,1),top .55s cubic-bezier(.3,1.4,.6,1)';
       ball.style.left=ballPos.x+'px'; ball.style.top=ballPos.y+'px'; });
-    target.x=ballPos.x-36; target.y=ballPos.y-48; go('walk',6000);
+    target.x=ballPos.x-40; target.y=ballPos.y-40; go('walk',6000);
     setTimeout(function(){ ball.style.display='none'; ballPos=null; busy=false;
-      fx('heart'); say('จับได้แล้ว! 🐾',1600); go('sit',3000); },2700);
+      fx('heart'); say('จับได้แล้ว! 🐾',1600); go('happy',2500);
+      setTimeout(function(){ if(state==='happy') go('sit',3000); },2500); },2700);
   }
 
-  // ── แผงดูแล ───────────────────────────────────────────────
   var BTN='flex:1;border:1px solid #e3e8ee;background:#fff;border-radius:9px;padding:7px 4px;font-size:11.5px;'+
           'cursor:pointer;font-family:inherit;color:#33404f';
   var BTN2='border:none;background:none;color:#7a8a9c;font-size:11px;cursor:pointer;text-decoration:underline;'+
            'font-family:inherit;padding:0';
   function bar(l,v,c){ return '<div style="display:flex;align-items:center;gap:6px;margin:5px 0">'+
-    '<span style="width:48px;color:#7a8a9c;font-size:11px">'+l+'</span>'+
+    '<span style="width:44px;color:#7a8a9c;font-size:11px">'+l+'</span>'+
     '<span style="flex:1;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;display:inline-block">'+
     '<i style="display:block;height:100%;width:'+Math.round(v)+'%;background:'+c+'"></i></span>'+
-    '<b style="width:26px;text-align:right;font-size:11px;color:#5a6b7c">'+Math.round(v)+'</b></div>'; }
-  var ACT_TH={walk:'กำลังเดิน',loaf:'หมอบพัก',nap:'งีบหลับ 💤',lick:'เลียขา',wash:'ทูหัวล้างหน้า',
-              sit:'นั่งเฉยๆ',eat:'กำลังกินข้าว 🐟',bath:'กำลังอาบน้ำ 🫧'};
+    '<b style="width:24px;text-align:right;font-size:11px;color:#5a6b7c">'+Math.round(v)+'</b></div>'; }
+  var ACT_TH={walk:'กำลังเดิน',loaf:'หมอบพัก',nap:'งีบหลับ 💤',lick:'เลียขา',wash:'ล้างหน้า',
+              sit:'นั่งเฉยๆ',eat:'กินข้าว 🐟',bath:'อาบน้ำ 🫧',happy:'ดีใจ 🎉'};
   function renderPanel(){
     if(panel.style.display==='none') return;
     var st=stage(), pts=ageDays()+(S.love/40), prog=st.next?Math.min(100,pts/st.next*100):100;
+    var wearHtml='';
+    for(var sl in OUTFITS){
+      wearHtml += '<div style="margin-top:9px"><div style="font-size:11px;color:#7a8a9c;margin-bottom:4px">'+OUTFITS[sl].label+'</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+      for(var k in OUTFITS[sl].items){
+        var ok=unlocked(sl,k), on=S.wear[sl]===k, it=OUTFITS[sl].items[k];
+        wearHtml += '<button data-wear="'+sl+'" data-k="'+k+'" '+(ok?'':'disabled')+
+          ' title="'+(ok?it.n:'ปลดล็อกเมื่อ '+needText(sl,k))+'"'+
+          ' style="border:1px solid '+(on?'#e76f51':'#e3e8ee')+';background:'+(on?'#fdf1ec':'#fff')+
+          ';color:'+(ok?'#33404f':'#b9c2cc')+';border-radius:8px;font-size:10.5px;padding:3px 8px;'+
+          'cursor:'+(ok?'pointer':'not-allowed')+';font-family:inherit">'+it.n+(ok?'':' 🔒')+'</button>';
+      }
+      wearHtml += '</div></div>';
+    }
     panel.innerHTML=
       '<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">'+
         '<b style="font-size:13px">'+S.name+'</b>'+
         '<span style="font-size:11px;color:#7a8a9c">'+st.name+'</span>'+
         '<span style="margin-left:auto;font-size:11px">'+MOOD_TH[mood()]+'</span></div>'+
-      '<div style="font-size:11px;color:#7a8a9c;margin-bottom:6px">อายุ '+ageDays().toFixed(1)+' วัน · ตอนนี้'+(ACT_TH[state]||'')+'</div>'+
+      '<div style="font-size:11px;color:#7a8a9c;margin-bottom:6px">อายุ '+ageDays().toFixed(1)+' วัน · ความรัก '+S.love+' · ตอนนี้'+(ACT_TH[state]||'')+'</div>'+
       bar('อิ่ม',S.food,'#f4a259')+bar('สะอาด',S.clean,'#8ecae6')+bar('สนุก',S.play,'#90be6d')+
       '<div style="margin:7px 0 3px;font-size:11px;color:#7a8a9c">'+
         (st.next?('โตขึ้นอีก '+Math.max(0,st.next-pts).toFixed(1)+' แต้ม'):'โตเต็มที่แล้ว 🎉')+'</div>'+
@@ -14827,28 +15088,35 @@ window.renderBestByPOD=renderBestByPOD;
         '<button data-act="food" style="'+BTN+'">🐟 อาหาร</button>'+
         '<button data-act="bath" style="'+BTN+'">🛁 อาบน้ำ</button>'+
         '<button data-act="ball" style="'+BTN+'">🎾 บอล</button></div>'+
-      '<div style="margin-top:10px;font-size:11px;color:#7a8a9c;margin-bottom:5px">ลายสีน้อง</div>'+
+      '<div style="margin-top:11px;font-size:11px;color:#7a8a9c;margin-bottom:5px">ลายสีน้อง</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:5px">'+
         Object.keys(COATS).map(function(k){ var c=COATS[k];
-          return '<button data-coat="'+k+'" title="'+c.n+'" style="width:24px;height:24px;border-radius:50%;cursor:pointer;'+
-            'border:2px solid '+(S.coat===k?'#e76f51':'#e3e8ee')+';background:linear-gradient(135deg,'+c.head+' 50%,'+c.mark+' 50%)"></button>'; }).join('')+
+          return '<button data-coat="'+k+'" title="'+c.n+'" style="width:22px;height:22px;border-radius:50%;cursor:pointer;'+
+            'border:2px solid '+(S.coat===k?'#e76f51':'#e3e8ee')+';background:linear-gradient(135deg,'+c.body+' 50%,'+c.stripe+' 50%)"></button>'; }).join('')+
       '</div>'+
-      '<div style="margin-top:9px;display:flex;gap:10px;align-items:center">'+
+      '<div style="margin-top:10px;border-top:1px solid #eef1f5;padding-top:6px"><b style="font-size:11.5px">👕 เสื้อผ้า</b>'+wearHtml+'</div>'+
+      '<div style="margin-top:11px;display:flex;gap:10px;align-items:center">'+
         '<button data-act="rename" style="'+BTN2+'">✎ ตั้งชื่อ</button>'+
+        '<button data-act="cheer" style="'+BTN2+'">💬 ให้กำลังใจ</button>'+
         '<button data-act="hide" style="'+BTN2+'">ซ่อนน้อง</button></div>';
   }
   function showPanel(){ panel.style.display='block';
-    panel.style.left=Math.min(W()-250,Math.max(6,pos.x-70))+'px';
-    panel.style.top=Math.max(6,Math.min(H()-330,pos.y-250))+'px'; renderPanel(); }
+    panel.style.left=Math.min(W()-274,Math.max(6,pos.x-70))+'px';
+    panel.style.top=Math.max(6,Math.min(H()-360,pos.y-300))+'px'; renderPanel(); }
   function hidePanel(){ panel.style.display='none'; }
   function togglePanel(){ panel.style.display==='block'?hidePanel():showPanel(); }
-
   panel.addEventListener('click',function(e){
     var b=e.target.closest('button'); if(!b) return;
     var ck=b.getAttribute('data-coat');
     if(ck){ S.coat=ck; save(); paint(); renderPanel(); say('ลาย'+COATS[ck].n+'~',1600); return; }
+    var sl=b.getAttribute('data-wear');
+    if(sl){ var k=b.getAttribute('data-k');
+      if(!unlocked(sl,k)){ say('ยังใส่ไม่ได้ — '+needText(sl,k),2600); return; }
+      S.wear[sl]=k; save(); renderWear(); renderPanel();
+      say(k==='none'?'ถอดแล้ว~':'ใส่'+OUTFITS[sl].items[k].n+'แล้ว! 😺',1800); return; }
     var a=b.getAttribute('data-act');
     if(a==='hide'){ hideCat(); return; }
+    if(a==='cheer'){ say(cheer(),5000); fx('heart'); return; }
     if(a==='rename'){ var n=prompt('ตั้งชื่อน้องแมว:',S.name);
       if(n&&n.trim()){ S.name=n.trim().slice(0,20); save(); renderPanel(); say('ชื่อ '+S.name+' นะ!',2000); } return; }
     act(a);
@@ -14857,92 +15125,88 @@ window.renderBestByPOD=renderBestByPOD;
     if(!panel.contains(e.target)&&e.target!==cat&&!cat.contains(e.target)&&e.target!==callBtn) hidePanel();
   },true);
 
-  // ── โซนทำงาน: น้องจะไม่เข้าไปกวนบริเวณที่เรากำลังทำงานอยู่ ──
-  var lastWorkRect=null, lastWorkAt=0;
-  function markWork(el){
-    if(!el) return;
-    try{ var r=el.getBoundingClientRect();
-      if(r.width>0&&r.height>0){ lastWorkRect=r; lastWorkAt=performance.now(); } }catch(e){}
+  var blinkAt=0;
+  function blink(now){
+    if(state==='nap'||airborne()) return;
+    if(now<blinkAt) return;
+    blinkAt=now+2600+Math.random()*4200;
+    var side=isSide();
+    var op=side?$('wc-eyeS'):$('wc-eyeF'), sh=side?$('wc-eyeSs'):$('wc-eyeFs');
+    op.setAttribute('opacity','0'); sh.setAttribute('opacity','1');
+    setTimeout(function(){ if(state!=='nap'){ op.setAttribute('opacity','1'); sh.setAttribute('opacity','0'); } },130);
   }
+
+  var lastWorkRect=null, lastWorkAt=0, lastDodge=0;
   function isWorkEl(el){
     if(!el||!el.tagName) return false;
     if(isEditable(el)) return true;
     var t=el.tagName.toUpperCase();
-    if(t==='TD'||t==='TH') return true;                       // ตาราง Work Sheet / Shipments
+    if(t==='TD'||t==='TH') return true;
     if(el.getAttribute && el.getAttribute('role')==='textbox') return true;
     if(el.closest && el.closest('.ws-wrap,.grid-wrap,table,dialog,[role="dialog"],.modal')) return true;
     return false;
   }
-  document.addEventListener('focusin', function(e){ if(isWorkEl(e.target)) markWork(e.target); }, true);
-  document.addEventListener('click',   function(e){ if(isWorkEl(e.target)) markWork(e.target); }, true);
-  document.addEventListener('keydown', function(){
-    var a=document.activeElement; if(isWorkEl(a)) markWork(a);
-  }, true);
-
-  // คืนกรอบพื้นที่ที่ห้ามน้องทับ (ยังอุ่นอยู่ภายใน 12 วินาที)
+  function markWork(el){ if(!el) return;
+    try{ var r=el.getBoundingClientRect(); if(r.width>0&&r.height>0){ lastWorkRect=r; lastWorkAt=performance.now(); } }catch(e){} }
+  document.addEventListener('focusin',function(e){ if(isWorkEl(e.target)) markWork(e.target); },true);
+  document.addEventListener('click',  function(e){ if(isWorkEl(e.target)) markWork(e.target); },true);
   function workZone(){
     var a=document.activeElement;
     if(isWorkEl(a)){ try{ var r=a.getBoundingClientRect(); if(r.width>0) return r; }catch(e){} }
-    if(lastWorkRect && performance.now()-lastWorkAt < 12000) return lastWorkRect;
+    if(lastWorkRect && performance.now()-lastWorkAt<12000) return lastWorkRect;
     return null;
   }
-  // กันน้อง (และชามข้าว/กะละมัง) ไม่ให้ทับโซนทำงาน — เช็คทุกเฟรม
-  var lastDodge=0;
   function keepClear(now){
     if(dragging) return;
     var r=workZone(); if(!r){ if(!quiet) cat.style.opacity='1'; return; }
-    var pad=(state==='eat'||state==='bath') ? 70 : 34;   // ตอนกิน/อาบน้ำ เว้นที่ให้ของประกอบฉาก
+    var pad=(state==='eat'||state==='bath')?70:34;
     if(!overlaps(r,pad)){ if(!quiet) cat.style.opacity='1'; return; }
-    cat.style.opacity='.35';                              // ทับอยู่ = จางลงทันที ไม่บังตัวเลข
-    if(now-lastDodge < 900) return;
+    cat.style.opacity='.35';
+    if(now-lastDodge<900) return;
     lastDodge=now;
-    if(state==='eat'||state==='bath'){                    // กำลังกิน/อาบ ย้ายทั้งฉากไปมุมว่าง
-      var sp=freeSpot(r); if(sp){ pos.x=sp.x; pos.y=sp.y; target.x=pos.x; target.y=pos.y; clampPos(); place(); }
+    if(state==='eat'||state==='bath'){
+      var w=CW(),h=CW()*0.8;
+      var sp=[{x:W()-w-150,y:H()-h-16},{x:16,y:H()-h-16},{x:16,y:16},{x:W()-w-150,y:16}]
+        .filter(function(p){ return (p.x>r.right+30||p.x+w+150<r.left-30||p.y>r.bottom+30||p.y+h<r.top-30); })[0];
+      if(sp){ pos.x=sp.x; pos.y=sp.y; target.x=pos.x; target.y=pos.y; clampPos(); place(); }
     } else dodge(r);
   }
-  function freeSpot(r){
-    var sc=stage().scale, w=104*sc, h=92*sc;
-    var spots=[{x:W()-w-150,y:H()-h-16},{x:16,y:H()-h-16},{x:16,y:16},{x:W()-w-150,y:16}]
-      .filter(function(p){ return (p.x>r.right+30||p.x+w+150<r.left-30||p.y>r.bottom+30||p.y+h<r.top-30); });
-    return spots.length?spots[0]:null;
-  }
 
-  // ── กะพริบตา ──────────────────────────────────────────────
-  var blinkAt=0;
-  function blink(now){
-    if(state==='nap') return;
-    if(now<blinkAt) return;
-    blinkAt=now+2600+Math.random()*4200;
-    var e=$('wc-eyes'), s=$('wc-eyes-shut');
-    e.setAttribute('opacity','0'); s.setAttribute('opacity','1');
-    setTimeout(function(){ if(state!=='nap'){ e.setAttribute('opacity','1'); s.setAttribute('opacity','0'); } },130);
-  }
-
-  // ── ลูปหลัก ───────────────────────────────────────────────
   var last=0;
   function loop(now){
     requestAnimationFrame(loop);
     if(S.hidden) return;
     var dt=Math.min(48, now-last); last=now;
-
-    if(!dragging && state==='walk'){
+    floorY = Math.min(H()-CW()*0.78, Math.max(4, floorY));
+    if(dragging){
+      // ตอนถูกจับ ตำแหน่งมาจากเมาส์ล้วนๆ ไม่มีแรงโน้มถ่วงมายุ่ง
+      if(dragPt){
+        var ox=pos.x, oy=pos.y;
+        pos.x=dragPt.x; pos.y=dragPt.y; clampPos();
+        vx=pos.x-ox; vy=pos.y-oy;
+      }
+      floorY=pos.y;
+    } else if(thrown && (pos.y < floorY-1.5 || Math.abs(vy)>0.5)){
+      vy+=1.5; pos.y+=vy; vx*=0.94; pos.x+=vx;
+      if(pos.x<4){pos.x=4;vx=-vx*0.5;} if(pos.x>W()-CW()-4){pos.x=W()-CW()-4;vx=-vx*0.5;}
+      if(pos.y>=floorY){ if(vy>3){ squash=Math.min(1,vy/26); vy=-vy*0.34; } else { vy=0; vx=0; }
+        pos.y=floorY;
+        if(Math.abs(vy)<1.2){ thrown=false; vx=0; vy=0; S.x=pos.x; S.y=pos.y; save(); go('sit',3000); } }
+    } else if(state==='walk'){
       var dx=target.x-pos.x, dy=target.y-pos.y, d=Math.sqrt(dx*dx+dy*dy);
       if(d>2.5){
         var sp=(ballPos?0.115:0.055)*dt;
         pos.x+=dx/d*sp; pos.y+=dy/d*sp;
         if(Math.abs(dx)>2) facing = dx>0 ? 1 : -1;
-        bob+=dt/95;
       } else if(!ballPos){ go(pick(['loaf','loaf','nap','sit']), 8000+Math.random()*9000); }
-      clampPos();
-    } else { bob+=dt/460; }
-
-    if(!dragging && now>stateUntil) nextState();
-
-    legs(now); groom(now); place(); blink(now); keepClear(now);
+      clampPos(); floorY=pos.y;
+    } else { floorY=pos.y; }
+    pxPrev=pos.x; pyPrev=pos.y;
+    if(!dragging && now>stateUntil && !airborne()) nextState();
+    physics(); anim(now); place(); blink(now); keepClear(now); applyPose();
     if(panel.style.display==='block' && (now|0)%600<20) renderPanel();
   }
 
-  // ── ค่าสถานะลดลงตามเวลา ───────────────────────────────────
   setInterval(function(){
     if(S.hidden) return;
     S.food=clamp(S.food-1.1); S.clean=clamp(S.clean-0.7); S.play=clamp(S.play-0.9);
@@ -14952,48 +15216,55 @@ window.renderBestByPOD=renderBestByPOD;
     else if(m==='clingy' && Math.random()<0.22){ say(pick(['อ้อนๆ~ 🥺','มองอยู่นะ','เมี๊ยว...']),2200); }
   }, 60000);
 
-  // ── แสดง / ซ่อน + ปุ่มเรียกน้อง ───────────────────────────
+  function scheduleCheer(){
+    var wait = (10 + Math.random()*25) * 60000;
+    setTimeout(function(){
+      if(!S.hidden && !quiet && !dragging){ say(cheer(), 6000); fx('heart'); S.love=Math.min(999,S.love+1); save(); }
+      scheduleCheer();
+    }, wait);
+  }
+  scheduleCheer();
+  setInterval(autoSeasonWear, 3600000);
+
   function showCat(fromBtn){
     S.hidden=false; save();
     wrap.style.display='block'; cat.style.display='block';
     callBtn.style.opacity='.55'; callBtn.title='เรียกน้องแมว';
-    if(fromBtn){                       // เรียกแล้ววิ่งมาหาปุ่ม
-      var sc=stage().scale;
-      pos.x=Math.max(8, W()-104*sc-150); pos.y=Math.max(8, H()-92*sc-40);
+    if(fromBtn){
+      pos.x=Math.max(8, W()-CW()-150); pos.y=Math.max(8, H()-CW()*0.8-40);
+      floorY=pos.y; vx=vy=0; ang=angV=0;
       clampPos(); place(); paint(); face();
-      go('sit',3000); fx('heart'); say(pick(['มาแล้ว! 🐾','เรียกหนูเหรอ~','เมี๊ยว~ อยู่นี่']),2200);
+      go('happy',2200); fx('heart'); say(pick(['มาแล้ว! 🐾','เรียกหนูเหรอ~','เมี๊ยว~ อยู่นี่']),2200);
+      setTimeout(function(){ if(state==='happy') go('sit',3000); },2200);
     }
     applyPose();
   }
-  function hideCat(){
-    S.hidden=true; save(); hidePanel();
-    wrap.style.display='none'; callBtn.style.opacity='1';
-    callBtn.title='เรียกน้องแมวกลับมา';
-  }
-  callBtn.addEventListener('click', function(){
-    if(S.hidden) showCat(true);
-    else { showCat(true); showPanel(); }
-  });
+  function hideCat(){ S.hidden=true; save(); hidePanel();
+    wrap.style.display='none'; callBtn.style.opacity='1'; callBtn.title='เรียกน้องแมวกลับมา'; }
+  callBtn.addEventListener('click',function(){ showCat(true); if(!S.hidden) showPanel(); });
 
-  window.addEventListener('resize', function(){ clampPos(); place(); });
-  window.addEventListener('beforeunload', function(){ S.x=pos.x; S.y=pos.y; save(); });
+  window.addEventListener('resize',function(){ clampPos(); floorY=pos.y; place(); });
+  window.addEventListener('beforeunload',function(){ S.x=pos.x; S.y=pos.y; save(); });
 
-  // ── เริ่มทำงาน ────────────────────────────────────────────
   paint(); face(); clampPos(); place(); applyPose();
-  if(S.hidden){ wrap.style.display='none'; callBtn.style.opacity='1'; }
-  else callBtn.style.opacity='.55';
+  if(S.hidden){ wrap.style.display='none'; callBtn.style.opacity='1'; } else callBtn.style.opacity='.55';
   requestAnimationFrame(loop);
   setTimeout(function(){
     if(S.hidden) return;
     var h=new Date().getHours();
     say((h<12?'อรุณสวัสดิ์ ':h<18?'สวัสดีตอนบ่าย ':'สวัสดีตอนเย็น ')+'เมี๊ยว~ 🐾', 3000);
   }, 1400);
+  setTimeout(cloudLoad, 3000);
+  setInterval(function(){ if(emailNow()) cloudLoad(); }, 300000);
 
   window.__wwlCat = { show:function(){ showCat(true); }, hide:hideCat,
-                      feed:function(){ act('food'); }, bathe:function(){ act('bath'); },
-                      play:function(){ act('ball'); }, state:function(){ return {S:S, state:state}; } };
-  window.wwlCatShow = function(){ showCat(true); };
-  window.wwlCatHide = hideCat;
+    feed:function(){ act('food'); }, bathe:function(){ act('bath'); }, play:function(){ act('ball'); },
+    cheer:function(){ say(cheer(),6000); fx('heart'); },
+    state:function(){ return {S:S, state:state, app:APP, email:emailNow()}; },
+    reload:cloudLoad };
+  window.wwlCatShow=function(){ showCat(true); };
+  window.wwlCatHide=hideCat;
 })();
 </script>
+
 
