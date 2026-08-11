@@ -8531,9 +8531,14 @@ window.qSyncRates = function(){
     row.r40 = r.gp40 || '';
     row.r4h = r.hc40 || '';
     const vt = _qValidText(r); if(vt) row.valid = vt;
-    if(r.tt && !row.tt) row.tt = r.tt;
+    // T/T · DIRECT/T-S · Free time (DEM/DET/COMBINED) — ดึงจากคลังเรทมาเติมให้ครบ
+    if(r.tt && !row.tt)         row.tt     = r.tt;
     if(r.direct && !row.direct) row.direct = r.direct;
-    if(r.ft) row.combined = String(r.ft).replace(/\s*days?\s*$/i,'');   // F/T ที่ปลายทาง → ช่อง COMBINED
+    if(r.dem && !row.dem)       row.dem    = r.dem;
+    if(r.det && !row.det)       row.det    = r.det;
+    // มี DEM/DET แยกแล้ว ไม่ต้องยัดข้อความ free time ลงช่อง COMBINED ซ้ำ
+    const _comb = r.combined || ((r.dem || r.det) ? '' : r.ft);
+    if(_comb) row.combined = String(_comb).replace(/\s*days?\s*$/i,'');
     row._src = r.source || '';
     hit++;
   });
