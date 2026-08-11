@@ -14708,9 +14708,17 @@ window.__WWL_APP='SFP';
     'border-radius:13px;padding:12px;width:262px;max-height:74vh;overflow:auto;'+
     'font:12px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#243447;box-shadow:0 12px 34px rgba(20,40,70,.2)';
 
-  var ball=document.createElement('div');
-  ball.style.cssText='position:absolute;width:22px;height:22px;border-radius:50%;background:#7ec97e;'+
-    'border:2px solid #5aa85a;display:none;pointer-events:none';
+  var wand=document.createElement('div');
+  wand.style.cssText='position:fixed;width:74px;height:74px;display:none;pointer-events:none;z-index:2147483002';
+  wand.innerHTML='<svg viewBox="0 0 74 74" width="100%" height="100%" style="overflow:visible">'+
+    '<line x1="66" y1="70" x2="26" y2="26" stroke="#8A5A3B" stroke-width="4" stroke-linecap="round"/>'+
+    '<circle cx="26" cy="26" r="3.5" fill="#E8B33C"/>'+
+    '<g id="wand-f">'+
+      '<path d="M26 26 q-12 -14 -4 -22 q10 6 4 22z" fill="#F26D8B"/>'+
+      '<path d="M26 26 q-18 -6 -18 -16 q12 0 18 16z" fill="#6FC3D6"/>'+
+      '<path d="M26 26 q-2 -18 8 -22 q4 12 -8 22z" fill="#F2C14E"/>'+
+      '<path d="M26 26 q-16 4 -22 -2 q10 -8 22 2z" fill="#9BD17E"/>'+
+    '</g></svg>';
 
   var bowl=document.createElement('div');
   bowl.style.cssText='position:absolute;display:none;pointer-events:none;width:46px;height:30px';
@@ -14727,10 +14735,10 @@ window.__WWL_APP='SFP';
   callBtn.onmouseenter=function(){ callBtn.style.transform='scale(1.1)'; };
   callBtn.onmouseleave=function(){ callBtn.style.transform='scale(1)'; };
 
-  wrap.appendChild(bowl); wrap.appendChild(ball);
+  wrap.appendChild(bowl);
   wrap.appendChild(cat); wrap.appendChild(bubble); wrap.appendChild(panel);
   var root=document.body||document.documentElement;
-  root.appendChild(wrap); root.appendChild(callBtn);
+  root.appendChild(wrap); root.appendChild(callBtn); root.appendChild(wand);
   var $=function(id){ return cat.querySelector('#'+id); };
 
   var WEAR_SVG={
@@ -14807,7 +14815,7 @@ window.__WWL_APP='SFP';
   var pos={x:(S.x!=null?S.x:W()-200), y:(S.y!=null?S.y:H()-200)};
   var target={x:pos.x,y:pos.y};
   var facing=1, dragging=false, quiet=false, busy=false;
-  var state='sit', stateUntil=0, ballPos=null;
+  var state='sit', stateUntil=0, tease=null;
   var vx=0, vy=0, ang=0, angV=0, legAng=0, legV=0, tailAng=0, tailV=0, squash=0;
   var pxPrev=pos.x, pyPrev=pos.y, floorY=pos.y;
 
@@ -14972,7 +14980,7 @@ window.__WWL_APP='SFP';
   }
   function wake(){ if(isRest()){ go('sit',3000); say(pick(['หืม..ตื่นแล้ว','เมี๊ยว~','ง่วงอยู่เลย']),1600); } }
   function nextState(){
-    if(dragging||busy||quiet||ballPos||airborne()) return;
+    if(dragging||busy||quiet||tease||airborne()) return;
     var r=Math.random(), m=mood();
     var napW=(m==='angry')?.10:.32;
     if(r<napW)             go('nap',14000+Math.random()*20000);
@@ -15016,6 +15024,8 @@ window.__WWL_APP='SFP';
   var actT=[];
   function actTimer(fn,ms){ actT.push(setTimeout(fn,ms)); }
   function act(kind){
+    if(tease && kind!=='tease') endTease();          // กำลังเล่นไม้อยู่ กดอย่างอื่น = หยุดเล่นก่อน
+    if(tease && kind==='tease'){ endTease(); return; }
     if(busy && (state==='eat'||state==='bath')){ actT.forEach(clearTimeout); actT=[]; busy=false; }
     if(busy) return; busy=true; wake();
     var wasAngry=mood()==='angry';
@@ -15028,22 +15038,47 @@ window.__WWL_APP='SFP';
       say(pick(['สะอาดเอี่ยม! 🛁','เย็นดี~','ไม่ชอบน้ำ...แต่ก็ดี']),2200);
       actTimer(function(){ if(state==='bath') say(pick(['ฟองเยอะจัง! 🫧','ขนเปียกหมดแล้ว','เมี๊ยว~ 🧼']),1800); },3000);
       actTimer(function(){ busy=false; fx('heart'); go('wash',4500); },6000); }
-    else if(kind==='ball'){ S.play=clamp(S.play+32); S.love++; throwBall();
-      say(pick(['ลูกบอล! 🎾','ไล่จับได้แน่!','สนุกจัง~']),1800); }
+    else if(kind==='tease'){ startTease(); }
     S.love=Math.min(999,S.love); save(); face(); renderPanel();
   }
-  function throwBall(){
-    ballPos={x:30+Math.random()*(W()-160), y:70+Math.random()*(H()-220)};
-    ball.style.display='block'; ball.style.transition='none';
-    ball.style.left=(pos.x+40)+'px'; ball.style.top=(pos.y+40)+'px';
-    requestAnimationFrame(function(){
-      ball.style.transition='left .55s cubic-bezier(.3,1.4,.6,1),top .55s cubic-bezier(.3,1.4,.6,1)';
-      ball.style.left=ballPos.x+'px'; ball.style.top=ballPos.y+'px'; });
-    target.x=ballPos.x-40; target.y=ballPos.y-40; go('walk',6000);
-    setTimeout(function(){ ball.style.display='none'; ballPos=null; busy=false;
-      fx('heart'); say('จับได้แล้ว! 🐾',1600); go('happy',2500);
-      setTimeout(function(){ if(state==='happy') go('sit',3000); },2500); },2700);
+  // ── ไม้ตกแมว: กดปุ่มแล้วขยับเมาส์ไปมาเหนือหัวน้องเพื่อเล่นด้วย ──
+  function headPt(){ var sc=stage().scale; return { x:pos.x+75*sc, y:pos.y+52*sc }; }
+  function startTease(){
+    if(tease) return;
+    wake(); hidePanel();
+    wand.style.display='block';
+    tease={ until:performance.now()+16000, mx:-999, my:-999, moved:0, swatUntil:0, gained:0, look:0 };
+    go('sit',16000);
+    say('ขยับเมาส์ไปมาเหนือหัวหนูสิ! 🪶',3200);
   }
+  function endTease(){
+    if(!tease) return;
+    var got=Math.round(tease.gained);
+    wand.style.display='none';
+    tease=null; busy=false;
+    $('wc-paw').setAttribute('opacity',0);
+    if(got>0){ fx('heart'); go('happy',2400); say(pick(['สนุกจัง! 🐾','เล่นอีกนะ~','จับได้แล้ว!']),2200);
+      setTimeout(function(){ if(state==='happy') go('sit',3000); },2400); }
+    else say('อ้าว ไม่เล่นด้วยเหรอ~',2000);
+    save(); face(); renderPanel();
+  }
+  window.addEventListener('mousemove', function(e){
+    if(!tease) return;
+    wand.style.left=(e.clientX-24)+'px'; wand.style.top=(e.clientY-50)+'px';
+    var dx=e.clientX-tease.mx, dy=e.clientY-tease.my;
+    tease.mx=e.clientX; tease.my=e.clientY;
+    if(Math.abs(dx)>200||Math.abs(dy)>200) return;
+    var d=Math.sqrt(dx*dx+dy*dy);
+    var hp=headPt(), sc=stage().scale;
+    var near=Math.sqrt(Math.pow(e.clientX-hp.x,2)+Math.pow(e.clientY-hp.y,2)) < 130*sc;
+    tease.look=Math.max(-1,Math.min(1,(e.clientX-hp.x)/(120*sc)));
+    if(near && d>1.5){
+      tease.moved+=d;
+      tease.swatUntil=performance.now()+380;
+      if(tease.moved>55){ tease.moved=0; tease.gained++;
+        S.play=clamp(S.play+3); if(tease.gained%4===0) S.love=Math.min(999,S.love+1); }
+    }
+  }, {passive:true});
 
   var BTN='flex:1;border:1px solid #e3e8ee;background:#fff;border-radius:9px;padding:7px 4px;font-size:11.5px;'+
           'cursor:pointer;font-family:inherit;color:#33404f';
@@ -15056,6 +15091,7 @@ window.__WWL_APP='SFP';
     '<b style="width:24px;text-align:right;font-size:11px;color:#5a6b7c">'+Math.round(v)+'</b></div>'; }
   var ACT_TH={walk:'กำลังเดิน',loaf:'หมอบพัก',nap:'งีบหลับ 💤',lick:'เลียขา',wash:'ล้างหน้า',
               sit:'นั่งเฉยๆ',eat:'กินข้าว 🐟',bath:'อาบน้ำ 🫧',happy:'ดีใจ 🎉'};
+  function actLabel(){ return tease ? 'เล่นไม้ตกแมว 🪶' : (ACT_TH[state]||''); }
   function renderPanel(){
     if(panel.style.display==='none') return;
     var st=stage(), pts=ageDays()+(S.love/40), prog=st.next?Math.min(100,pts/st.next*100):100;
@@ -15078,7 +15114,7 @@ window.__WWL_APP='SFP';
         '<b style="font-size:13px">'+S.name+'</b>'+
         '<span style="font-size:11px;color:#7a8a9c">'+st.name+'</span>'+
         '<span style="margin-left:auto;font-size:11px">'+MOOD_TH[mood()]+'</span></div>'+
-      '<div style="font-size:11px;color:#7a8a9c;margin-bottom:6px">อายุ '+ageDays().toFixed(1)+' วัน · ความรัก '+S.love+' · ตอนนี้'+(ACT_TH[state]||'')+'</div>'+
+      '<div style="font-size:11px;color:#7a8a9c;margin-bottom:6px">อายุ '+ageDays().toFixed(1)+' วัน · ความรัก '+S.love+' · ตอนนี้'+actLabel()+'</div>'+
       bar('อิ่ม',S.food,'#f4a259')+bar('สะอาด',S.clean,'#8ecae6')+bar('สนุก',S.play,'#90be6d')+
       '<div style="margin:7px 0 3px;font-size:11px;color:#7a8a9c">'+
         (st.next?('โตขึ้นอีก '+Math.max(0,st.next-pts).toFixed(1)+' แต้ม'):'โตเต็มที่แล้ว 🎉')+'</div>'+
@@ -15087,7 +15123,7 @@ window.__WWL_APP='SFP';
       '<div style="display:flex;gap:6px;margin-top:10px">'+
         '<button data-act="food" style="'+BTN+'">🐟 อาหาร</button>'+
         '<button data-act="bath" style="'+BTN+'">🛁 อาบน้ำ</button>'+
-        '<button data-act="ball" style="'+BTN+'">🎾 บอล</button></div>'+
+        '<button data-act="tease" style="'+BTN+'">🪶 ไม้ตกแมว</button></div>'+
       '<div style="margin-top:11px;font-size:11px;color:#7a8a9c;margin-bottom:5px">ลายสีน้อง</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:5px">'+
         Object.keys(COATS).map(function(k){ var c=COATS[k];
@@ -15100,9 +15136,24 @@ window.__WWL_APP='SFP';
         '<button data-act="cheer" style="'+BTN2+'">💬 ให้กำลังใจ</button>'+
         '<button data-act="hide" style="'+BTN2+'">ซ่อนน้อง</button></div>';
   }
-  function showPanel(){ panel.style.display='block';
-    panel.style.left=Math.min(W()-274,Math.max(6,pos.x-70))+'px';
-    panel.style.top=Math.max(6,Math.min(H()-360,pos.y-300))+'px'; renderPanel(); }
+  function showPanel(){
+    panel.style.display='block'; panel.style.visibility='hidden';
+    renderPanel();
+    var pw=panel.offsetWidth||262, ph=panel.offsetHeight||360;
+    var cw=CW(), ch=CW()*0.8, gap=14;
+    var left = pos.x + cw + gap;                       // เปิดทางขวาของน้องก่อน
+    if(left + pw > W()-8) left = pos.x - pw - gap;     // ขวาไม่พอ → ไปซ้าย
+    if(left < 8){                                      // สองข้างไม่พอ → วางบน/ล่างแทน
+      left = Math.max(8, Math.min(W()-pw-8, pos.x + cw/2 - pw/2));
+      var below = pos.y + ch + gap;
+      panel.style.top = ((below + ph <= H()-8) ? below : Math.max(8, pos.y - ph - gap)) + 'px';
+      panel.style.left = left+'px'; panel.style.visibility='visible'; return;
+    }
+    var top = pos.y + ch/2 - ph/2;
+    top = Math.max(8, Math.min(H()-ph-8, top));
+    panel.style.left=left+'px'; panel.style.top=top+'px';
+    panel.style.visibility='visible';
+  }
   function hidePanel(){ panel.style.display='none'; }
   function togglePanel(){ panel.style.display==='block'?hidePanel():showPanel(); }
   panel.addEventListener('click',function(e){
@@ -15195,14 +15246,24 @@ window.__WWL_APP='SFP';
     } else if(state==='walk'){
       var dx=target.x-pos.x, dy=target.y-pos.y, d=Math.sqrt(dx*dx+dy*dy);
       if(d>2.5){
-        var sp=(ballPos?0.115:0.055)*dt;
+        var sp=0.055*dt;
         pos.x+=dx/d*sp; pos.y+=dy/d*sp;
         if(Math.abs(dx)>2) facing = dx>0 ? 1 : -1;
-      } else if(!ballPos){ go(pick(['loaf','loaf','nap','sit']), 8000+Math.random()*9000); }
+      } else { go(pick(['loaf','loaf','nap','sit']), 8000+Math.random()*9000); }
       clampPos(); floorY=pos.y;
     } else { floorY=pos.y; }
     pxPrev=pos.x; pyPrev=pos.y;
-    if(!dragging && now>stateUntil && !airborne()) nextState();
+    if(tease){
+      if(now>tease.until) endTease();
+      else {
+        var sw = now < tease.swatUntil;
+        $('wc-paw').setAttribute('opacity', sw?1:0);
+        $('wc-paw').setAttribute('transform','rotate('+(-30-tease.look*18)+' -19 22)');
+        $('wc-headF').setAttribute('transform','rotate('+(tease.look*13)+' 0 -48)');
+        if(tease.look> 0.35) facing=1; else if(tease.look<-0.35) facing=-1;
+      }
+    }
+    if(!dragging && !tease && now>stateUntil && !airborne()) nextState();
     physics(); anim(now); place(); blink(now); keepClear(now); applyPose();
     if(panel.style.display==='block' && (now|0)%600<20) renderPanel();
   }
@@ -15258,7 +15319,7 @@ window.__WWL_APP='SFP';
   setInterval(function(){ if(emailNow()) cloudLoad(); }, 300000);
 
   window.__wwlCat = { show:function(){ showCat(true); }, hide:hideCat,
-    feed:function(){ act('food'); }, bathe:function(){ act('bath'); }, play:function(){ act('ball'); },
+    feed:function(){ act('food'); }, bathe:function(){ act('bath'); }, play:function(){ act('tease'); },
     cheer:function(){ say(cheer(),6000); fx('heart'); },
     state:function(){ return {S:S, state:state, app:APP, email:emailNow()}; },
     reload:cloudLoad };
