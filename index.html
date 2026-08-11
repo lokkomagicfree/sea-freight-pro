@@ -14667,6 +14667,14 @@ window.__WWL_APP='SFP';
           '<g id="wc-wearFa"></g>'+
           '<g id="wc-wearH"></g>'+
         '</g>'+
+        '<g id="wc-reach" opacity="0">'+
+          '<path id="wc-armL" d="M-19 -4 C -26 -30 -25 -56 -19 -70" fill="none" stroke="#E08D4E" stroke-width="13" stroke-linecap="round"/>'+
+          '<path id="wc-armR" d="M19 -4 C 26 -30 25 -56 19 -70" fill="none" stroke="#E08D4E" stroke-width="13" stroke-linecap="round"/>'+
+          '<ellipse id="wc-pawL" cx="-19" cy="-74" rx="10" ry="8" fill="#E08D4E"/>'+
+          '<ellipse id="wc-pawR" cx="19" cy="-74" rx="10" ry="8" fill="#E08D4E"/>'+
+          '<path id="wc-pawLd" d="M-24 -78 v-4 M-19 -80 v-4 M-14 -78 v-4" stroke="#CB7C3D" stroke-width="2.4" stroke-linecap="round" fill="none"/>'+
+          '<path id="wc-pawRd" d="M14 -78 v-4 M19 -80 v-4 M24 -78 v-4" stroke="#CB7C3D" stroke-width="2.4" stroke-linecap="round" fill="none"/>'+
+        '</g>'+
       '</g>'+
       '<g id="wc-side" opacity="0">'+
         '<path id="wc-tailS" d="M-48 -9 C -80 -14 -96 -32 -90 -49" fill="none" stroke="#CB7C3D" stroke-width="16" stroke-linecap="round"/>'+
@@ -14788,7 +14796,9 @@ window.__WWL_APP='SFP';
     var c=coat();
     ['wc-bN','wc-bL','wc-bS','wc-faceF','wc-faceS','wc-earFL','wc-earFR','wc-earSL','wc-earSR','wc-pawTip']
       .forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.body); });
-    ['wc-pawArm'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.body); });
+    ['wc-pawArm','wc-armL','wc-armR'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.body); });
+    ['wc-pawL','wc-pawR'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.body); });
+    ['wc-pawLd','wc-pawRd'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('stroke',c.dark); });
     ['wc-earFLi','wc-earFRi','wc-earSLi','wc-earSRi'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.ear); });
     ['wc-blFL','wc-blFR','wc-blS'].forEach(function(id){ var e=$(id); if(e) e.setAttribute('fill',c.blush); });
     ['wc-bNs','wc-bLs','wc-bSs','wc-hstF','wc-hstS','wc-whF','wc-collar','wc-collarS']
@@ -14817,6 +14827,7 @@ window.__WWL_APP='SFP';
   var facing=1, dragging=false, quiet=false, busy=false;
   var state='sit', stateUntil=0, tease=null;
   var vx=0, vy=0, ang=0, angV=0, legAng=0, legV=0, tailAng=0, tailV=0, squash=0;
+  var hopY=0, hopV=0, nextHop=0, chasing=false;
   var pxPrev=pos.x, pyPrev=pos.y, floorY=pos.y;
 
   function CW(){ return 150*stage().scale; }
@@ -14827,7 +14838,9 @@ window.__WWL_APP='SFP';
   function place(){
     var sc=stage().scale;
     cat.style.width=(150*sc)+'px'; cat.style.height=(150*sc)+'px';
-    cat.style.transform='translate('+pos.x+'px,'+pos.y+'px) scale('+facing+',1) scale('+(1+squash*0.18)+','+(1-squash*0.22)+')';
+    cat.style.transform='translate('+pos.x+'px,'+(pos.y+hopY)+'px) scale('+facing+',1) scale('+(1+squash*0.18)+','+(1-squash*0.22)+')';
+    var shy=$('wc-sh'); if(shy){ shy.setAttribute('transform','translate(0,'+(-hopY/sc)+')');
+      shy.setAttribute('rx', Math.max(24, 52 + hopY*0.35)); }
     cat.style.transformOrigin='50% 78%';
     placeProps(sc);
   }
@@ -15047,16 +15060,17 @@ window.__WWL_APP='SFP';
     if(tease) return;
     wake(); hidePanel();
     wand.style.display='block';
-    tease={ until:performance.now()+16000, mx:-999, my:-999, moved:0, swatUntil:0, gained:0, look:0 };
+    tease={ until:performance.now()+16000, mx:-999, my:-999, moved:0, swatUntil:0, gained:0, look:0, above:false };
+    hopY=0; hopV=0; nextHop=0; chasing=false;
     go('sit',16000);
-    say('ขยับเมาส์ไปมาเหนือหัวหนูสิ! 🪶',3200);
+    say('เอาไม้มาลอยเหนือหัวหนูสิ เดี๋ยวกระโดดคว้า! 🪶',3600);
   }
   function endTease(){
     if(!tease) return;
     var got=Math.round(tease.gained);
     wand.style.display='none';
-    tease=null; busy=false;
-    $('wc-paw').setAttribute('opacity',0);
+    tease=null; busy=false; hopY=0; hopV=0; chasing=false;
+    $('wc-paw').setAttribute('opacity',0); $('wc-reach').setAttribute('opacity',0);
     if(got>0){ fx('heart'); go('happy',2400); say(pick(['สนุกจัง! 🐾','เล่นอีกนะ~','จับได้แล้ว!']),2200);
       setTimeout(function(){ if(state==='happy') go('sit',3000); },2400); }
     else say('อ้าว ไม่เล่นด้วยเหรอ~',2000);
@@ -15070,8 +15084,9 @@ window.__WWL_APP='SFP';
     if(Math.abs(dx)>200||Math.abs(dy)>200) return;
     var d=Math.sqrt(dx*dx+dy*dy);
     var hp=headPt(), sc=stage().scale;
-    var near=Math.sqrt(Math.pow(e.clientX-hp.x,2)+Math.pow(e.clientY-hp.y,2)) < 130*sc;
+    var near=Math.sqrt(Math.pow(e.clientX-hp.x,2)+Math.pow(e.clientY-hp.y,2)) < 150*sc;
     tease.look=Math.max(-1,Math.min(1,(e.clientX-hp.x)/(120*sc)));
+    tease.above = near && (e.clientY < hp.y - 12*sc);      // ไม้ลอยอยู่เหนือหัว = กระโดดคว้า
     if(near && d>1.5){
       tease.moved+=d;
       tease.swatUntil=performance.now()+380;
@@ -15091,7 +15106,7 @@ window.__WWL_APP='SFP';
     '<b style="width:24px;text-align:right;font-size:11px;color:#5a6b7c">'+Math.round(v)+'</b></div>'; }
   var ACT_TH={walk:'กำลังเดิน',loaf:'หมอบพัก',nap:'งีบหลับ 💤',lick:'เลียขา',wash:'ล้างหน้า',
               sit:'นั่งเฉยๆ',eat:'กินข้าว 🐟',bath:'อาบน้ำ 🫧',happy:'ดีใจ 🎉'};
-  function actLabel(){ return tease ? 'เล่นไม้ตกแมว 🪶' : (ACT_TH[state]||''); }
+  function actLabel(){ return tease ? (chasing?'วิ่งไล่ไม้ 🏃':'เล่นไม้ตกแมว 🪶') : (ACT_TH[state]||''); }
   function renderPanel(){
     if(panel.style.display==='none') return;
     var st=stage(), pts=ageDays()+(S.love/40), prog=st.next?Math.min(100,pts/st.next*100):100;
@@ -15246,7 +15261,7 @@ window.__WWL_APP='SFP';
     } else if(state==='walk'){
       var dx=target.x-pos.x, dy=target.y-pos.y, d=Math.sqrt(dx*dx+dy*dy);
       if(d>2.5){
-        var sp=0.055*dt;
+        var sp=(chasing?0.15:0.055)*dt;
         pos.x+=dx/d*sp; pos.y+=dy/d*sp;
         if(Math.abs(dx)>2) facing = dx>0 ? 1 : -1;
       } else { go(pick(['loaf','loaf','nap','sit']), 8000+Math.random()*9000); }
@@ -15256,13 +15271,37 @@ window.__WWL_APP='SFP';
     if(tease){
       if(now>tease.until) endTease();
       else {
-        var sw = now < tease.swatUntil;
-        $('wc-paw').setAttribute('opacity', sw?1:0);
-        $('wc-paw').setAttribute('transform','rotate('+(-30-tease.look*18)+' -19 22)');
-        $('wc-headF').setAttribute('transform','rotate('+(tease.look*13)+' 0 -48)');
+        var scT=stage().scale, hp2=headPt();
+        var ddx=tease.mx-hp2.x, ddy=tease.my-hp2.y;
+        var far = tease.mx>-900 && Math.sqrt(ddx*ddx+ddy*ddy) > 130*scT;
+        if(far){                                     // ไม้อยู่ไกล → วิ่งไล่
+          chasing=true;
+          target.x = Math.max(6, Math.min(W()-CW()-6, tease.mx - CW()*0.5));
+          target.y = Math.max(6, Math.min(H()-CW()*0.8, tease.my - CW()*0.32));
+          if(state!=='walk') go('walk',16000);
+        } else if(chasing){                          // ถึงแล้ว → หยุดคว้า
+          chasing=false; if(state==='walk') go('sit',16000);
+        }
+        var sw = !far && now < tease.swatUntil;
+        $('wc-paw').setAttribute('opacity', 0);
+        $('wc-reach').setAttribute('opacity', sw?1:0);
+        if(sw){
+          var wob=Math.sin(now/70)*7;                       // มือตะกุยไปมา
+          $('wc-reach').setAttribute('transform','rotate('+(tease.look*22+wob*0.4)+' 0 -4)');
+          $('wc-armL').setAttribute('transform','rotate('+(-wob)+' -19 -4)');
+          $('wc-armR').setAttribute('transform','rotate('+( wob)+' 19 -4)');
+          $('wc-pawL').setAttribute('transform','rotate('+(-wob)+' -19 -4)');
+          $('wc-pawR').setAttribute('transform','rotate('+( wob)+' 19 -4)');
+          $('wc-pawLd').setAttribute('transform','rotate('+(-wob)+' -19 -4)');
+          $('wc-pawRd').setAttribute('transform','rotate('+( wob)+' 19 -4)');
+          if(tease.above && now>nextHop && hopY===0){ hopV=-12.5; nextHop=now+640; }
+        }
+        $('wc-headF').setAttribute('transform','translate(0,'+(tease.above?-4:0)+') rotate('+(tease.look*13)+' 0 -48)');
         if(tease.look> 0.35) facing=1; else if(tease.look<-0.35) facing=-1;
       }
-    }
+    } else $('wc-reach').setAttribute('opacity',0);
+    if(hopV!==0 || hopY<0){ hopV+=1.0; hopY+=hopV;
+      if(hopY>=0){ hopY=0; hopV=0; squash=Math.max(squash,0.28); } }
     if(!dragging && !tease && now>stateUntil && !airborne()) nextState();
     physics(); anim(now); place(); blink(now); keepClear(now); applyPose();
     if(panel.style.display==='block' && (now|0)%600<20) renderPanel();
