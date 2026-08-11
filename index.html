@@ -8298,11 +8298,18 @@ function _qPortMatch(a, b){
   const A=_qSegs(a), B=_qSegs(b);
   return A.some(x=> B.some(y=> x===y || x.startsWith(y) || y.startsWith(x)));
 }
-function _qRateValid(r){
+function _qStat(r){
   // คิดจากวันที่จริง ณ วันนี้ (ไม่ใช้ valid_status ที่ค้างมาจากตอน publish)
-  const st = (typeof liveStat==='function') ? liveStat(r)
-           : (r.date_from||r.date_to ? calcStatus(r.date_from,r.date_to) : (r.valid_status||'active'));
-  return st === 'active';
+  return (typeof liveStat==='function') ? liveStat(r)
+       : (r.date_from||r.date_to ? calcStatus(r.date_from,r.date_to) : (r.valid_status||'active'));
+}
+function _qRateValid(r){
+  // รับทั้งที่ใช้ได้ตอนนี้ (active) และงวดหน้าที่ยังไม่เริ่ม (upcoming)
+  // — ปกติเสนอราคาล่วงหน้าให้ ETD เดือนหน้าอยู่แล้ว ถ้ารับแต่ active
+  //   พอสายเรือออกเรทงวดใหม่มาแทนงวดเก่า จะขึ้น N/A ทั้งที่คลังมีเรทอยู่
+  //   (เคส 11 Aug 2026: ONE ยุโรปมีแต่งวด 16-31 ส.ค. → ลิงก์ไม่ติดทั้งแถว)
+  const st = _qStat(r);
+  return st === 'active' || st === 'upcoming';
 }
 function _qValidText(r){
   let v = (r.validity||'').replace(/^RATE\s*/i,'').trim();
@@ -8344,7 +8351,11 @@ function qFindRateCandidates(row, fallbackPol, mode){
     res = res.filter(r=> srcLabel(r.source,r) === row.src);
   }
   const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
-  res.sort((a,b)=> price(a)-price(b));                      // ถูกสุดก่อน
+  // ใช้ได้ตอนนี้มาก่อนงวดหน้า · ในกลุ่มเดียวกันเรียงถูก→แพง
+  res.sort((a,b)=>{
+    const sa = _qStat(a)==='active' ? 0 : 1, sb = _qStat(b)==='active' ? 0 : 1;
+    return sa!==sb ? sa-sb : price(a)-price(b);
+  });
   return res;
 }
 // ประเภทเรททั้งหมดที่มีให้เลือกในแถวนี้ (ไม่กรอง src)
@@ -8506,8 +8517,8 @@ window.qSyncRates = function(){
   const pool = window.ALL_RATES || [];
   if(!pool.length) return toast('คลังเรทยังไม่โหลด ลองรีเฟรชหน้าอีกครั้ง');
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
-  let hit=0, na=0, skip=0;
-  const naList=[], swapped=[], ambiguous=[];
+  let hit=0, na=0, skip=0, soon=0;
+  const naList=[], swapped=[], ambiguous=[], soonList=[];
   qRateRows.forEach(row=>{
     row._synced = true;
     if(!row.pod || !String(row.pod).trim()){ skip++; return; }
@@ -8519,6 +8530,8 @@ window.qSyncRates = function(){
       na++; naList.push(row.pod + (row.del?(' / '+row.del):''));
       return;
     }
+    // ใช้เรทงวดที่ยังไม่เริ่ม — ต้องบอกให้รู้ก่อนส่งลูกค้า
+    if(_qStat(r)==='upcoming'){ soon++; soonList.push(row.pod+' ('+_qValidText(r)+')'); }
     row.na = false;
     if(!row.carrier) row.carrier = r.carrier || '';   // เว้นว่าง = เติมสายที่ถูกสุดให้
     if(!row.pol)     row.pol     = r.pol || fallbackPol || '';
@@ -8548,11 +8561,12 @@ window.qSyncRates = function(){
   if(info){
     info.innerHTML = `🔄 sync แล้ว · <span style="color:var(--green)">อัปเดต ${hit}</span>`+
       (ambiguous.length?` · <span style="color:var(--gold)">⚠ ${ambiguous.length} แถวมีหลายประเภทเรท — เลือกใน pop-up</span>`:'')+
+      (soon?` · <span style="color:var(--gold)">🔜 ${soon} แถวใช้เรทงวดหน้า (${soonList.slice(0,3).join(' · ')}${soonList.length>3?' …':''}) — ยังไม่เริ่ม เช็คก่อนส่งลูกค้า</span>`:'')+
       (na?` · <span style="color:var(--red)">N/A ${na} (${naList.slice(0,4).join(' · ')}${naList.length>4?' …':''})</span>`:'')+
       (skip?` · ข้าม ${skip} แถวที่ยังไม่ใส่ POD`:'')+
-      ` · จากคลัง ${pool.length} เรท (เฉพาะที่ยัง valid)`;
+      ` · จากคลัง ${pool.length} เรท (ที่ยังใช้ได้ + งวดหน้า)`;
   }
-  toast('🔄 Sync แล้ว — อัปเดต '+hit+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
+  toast('🔄 Sync แล้ว — อัปเดต '+hit+(soon?(' / งวดหน้า '+soon):'')+' / N/A '+na+(skip?(' / ข้าม '+skip):''));
 };
 
 const _qReTimer = {};
