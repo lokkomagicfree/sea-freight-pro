@@ -3237,14 +3237,46 @@ function openEditRate(idx){
   document.getElementById('er_ft').value=r.ft||'';
   document.getElementById('er_validity').value=r.validity||'';
   document.getElementById('er_src').value=r.source||'';
+  _erSet('er_tt',r.tt); _erSet('er_direct',r.direct); _erSet('er_dem',r.dem); _erSet('er_det',r.det);
+  _erSet('er_commodity',r.commodity); _erSet('er_subjto',r.subjto); _erSet('er_remark',r.remark);
+  var t=document.getElementById('er_title'); if(t) t.textContent='✏️ Edit Rate';
   m.dataset.idx=idx;
   m.style.display='flex';
 }
+function _erSet(id,val){ var e=document.getElementById(id); if(e) e.value=(val==null?'':val); }
+function _erGet(id){ var e=document.getElementById(id); return e? String(e.value||'').trim() : ''; }
+// ── เพิ่มเรทใหม่ด้วยฟอร์ม (แทนการแทรกแถวว่างให้แก้ใน cell) ──
+function addManualRate(){
+  var m=document.getElementById('edit_rate_modal'); if(!m) return;
+  ['er_carrier','er_pod','er_del','er_gp20','er_gp40','er_hc40','er_rf20','er_rf40','er_ft',
+   'er_tt','er_direct','er_dem','er_det','er_commodity','er_subjto','er_remark'].forEach(function(i){ _erSet(i,''); });
+  _erSet('er_pol','Laem Chabang, THAILAND');
+  _erSet('er_src','OTHER');
+  _erSet('er_validity', _erDefaultValidity());
+  var t=document.getElementById('er_title'); if(t) t.textContent='➕ เพิ่มเรทใหม่';
+  m.dataset.idx='new';
+  m.style.display='flex';
+  setTimeout(function(){ var c=document.getElementById('er_carrier'); if(c) c.focus(); },60);
+}
+function _erDefaultValidity(){
+  var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var d=new Date(), last=new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return d.getDate()+'-'+last+' '+M[d.getMonth()]+' '+d.getFullYear();
+}
+window.addManualRate=addManualRate;
 function saveEditRate(){
   const m=document.getElementById('edit_rate_modal');
-  const idx=parseInt(m.dataset.idx);
-  const r=ALL_RATES[idx]; if(!r) return;
+  const isNew = m.dataset.idx==='new';
+  const idx=isNew?-1:parseInt(m.dataset.idx);
+  const r=isNew ? {source:'OTHER',sheet:'Manual',del:'',commodity:'',remark:''} : ALL_RATES[idx];
+  if(!r) return;
   const N=v=>{const x=parseFloat(String(v).replace(/[$,]/g,''));return isNaN(x)?0:x;};
+  if(isNew){
+    if(!_erGet('er_carrier')) return toast('⚠ ใส่ชื่อสายเรือก่อนครับ');
+    if(!_erGet('er_pod'))     return toast('⚠ ใส่ POD ก่อนครับ');
+    if(!(N(_erGet('er_gp20'))||N(_erGet('er_gp40'))||N(_erGet('er_hc40'))||N(_erGet('er_rf20'))||N(_erGet('er_rf40'))))
+      return toast('⚠ ใส่ราคาอย่างน้อย 1 ช่องครับ');
+  }
   r.carrier=normalizeCarrier(document.getElementById('er_carrier').value.trim())||document.getElementById('er_carrier').value.trim();
   r.pol=document.getElementById('er_pol').value.trim();
   r.pod=document.getElementById('er_pod').value.trim();
@@ -3260,11 +3292,16 @@ function saveEditRate(){
   else if(r.gp20||r.gp40||r.hc40) r.container_type='DRY';
   r.validity=document.getElementById('er_validity').value.trim();
   r.source=document.getElementById('er_src').value.trim()||'OTHER';
+  r.tt=_erGet('er_tt'); r.direct=_erGet('er_direct');
+  r.dem=_erGet('er_dem'); r.det=_erGet('er_det');
+  r.commodity=_erGet('er_commodity'); r.subjto=_erGet('er_subjto'); r.remark=_erGet('er_remark');
   const[df,dt]=parseValidity(r.validity);
   r.date_from=df; r.date_to=dt; r.valid_status=calcStatus(df,dt);
+  if(isNew){ r.sheet='Manual'; ALL_RATES.unshift(r); }
   m.style.display='none';
   buildFilters(); applyFilter(); storageSave();
-  toast('✅ Rate updated');
+  toast(isNew ? '✅ เพิ่มเรทแล้ว — อย่าลืมกด "☁ เผยแพร่ให้ทุก account" ถ้าอยากให้คนอื่นเห็น'
+              : '✅ Rate updated');
 }
 window.openEditRate=openEditRate;
 window.saveEditRate=saveEditRate;
@@ -3293,16 +3330,6 @@ function editRateField(idx, field, val){
   applyFilter(); // re-render to update vDate/vBadge
 }
 
-function addManualRate(){
-  const r = {
-    pol: 'Laem Chabang', pod: '', carrier: '', source: 'OTHER',
-    gp20: 0, gp40: 0, hc40: 0, validity: '', date_from: '', date_to: '',
-    valid_status: 'unknown', sheet: 'Manual'
-  };
-  ALL_RATES.unshift(r); // add at top
-  buildFilters(); applyFilter(); storageSave();
-  toast('✅ เพิ่มเรทใหม่แล้ว — คลิก cell เพื่อแก้ไขครับ');
-}
 
 function renderCompare(filtered){
   const pol=v('f_pol').toLowerCase(),pod=v('f_pod').toLowerCase();
@@ -14178,7 +14205,7 @@ window.pasteBpdfVesselInfo = function(){
 <div id="edit_rate_modal" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:480px;padding:20px 22px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan)">✏️ Edit Rate</div>
+      <div id="er_title" style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan)">✏️ Edit Rate</div>
       <button onclick="document.getElementById('edit_rate_modal').style.display='none'" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -14194,6 +14221,13 @@ window.pasteBpdfVesselInfo = function(){
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">40'RF (USD)</label><input id="er_rf40" class="inp" type="number" style="width:100%;font-size:12px;margin-top:3px;color:var(--cyan)"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">F/T ที่ปลายทาง (วัน)</label><input id="er_ft" class="inp" style="width:100%;font-size:12px;margin-top:3px;color:var(--gold)" placeholder="e.g. 14"></div>
       <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">VALIDITY</label><input id="er_validity" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="e.g. 1-30 Jun"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">T/T (วัน)</label><input id="er_tt" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="เช่น 18 หรือ 15-18"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">DIRECT / T-S</label><input id="er_direct" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="DIRECT / T/S SIN / VIA LA"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">DEM (วัน)</label><input id="er_dem" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="4"></div>
+      <div><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">DET (วัน)</label><input id="er_det" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="10"></div>
+      <div style="grid-column:1/-1"><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">COMMODITY (ถ้าเป็นเรทผูกสินค้า)</label><input id="er_commodity" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="เช่น Furniture, Auto parts"></div>
+      <div style="grid-column:1/-1"><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">SUBJECT TO (ค่าที่ยังไม่รวม — ไปโชว์ในใบเสนอราคา)</label><input id="er_subjto" class="inp" style="width:100%;font-size:12px;margin-top:3px" placeholder="เช่น AMS USD30/Set + ENS"></div>
+      <div style="grid-column:1/-1"><label style="font-size:10px;color:var(--muted);font-family:var(--mono)">REMARK</label><input id="er_remark" class="inp" style="width:100%;font-size:12px;margin-top:3px"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <button onclick="saveEditRate()" class="btn btn-cyan" style="font-size:12px;padding:9px">💾 Save</button>
