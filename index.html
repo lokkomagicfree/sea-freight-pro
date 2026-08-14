@@ -1027,6 +1027,8 @@ body{font-size:14px;font-weight:450}
               <th id="q_col_rate" style="text-align:right;padding:5px 8px;color:var(--green);font-size:10px;font-family:var(--mono);min-width:80px">20 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 GP</th>
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
+              <th class="qrf" style="text-align:right;padding:5px 8px;color:#4fc3f7;font-size:10px;font-family:var(--mono);min-width:80px">20 RF</th>
+              <th class="qrf" style="text-align:right;padding:5px 8px;color:#4fc3f7;font-size:10px;font-family:var(--mono);min-width:80px">40 RF</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DEM</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DET</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:65px">COMBINED</th>
@@ -1047,6 +1049,9 @@ body{font-size:14px;font-weight:450}
           <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gold);white-space:nowrap;cursor:pointer"
             title="ติ๊กเพื่อโชว์ FIX / FAK ในเมล · PDF · Excel ที่ส่งลูกค้า (ถ้ามีแถว FIX จะแนบ Subj to commodity ของ FIX ให้ด้วย)">
             <input type="checkbox" id="q_show_src" onchange="qSaveShowSrc(this.checked);qPreview()"> โชว์ FIX/FAK ให้ลูกค้า</label>
+          <label id="q_show_rf_wrap" style="display:flex;align-items:center;gap:4px;font-size:10px;color:#4fc3f7;white-space:nowrap;cursor:pointer"
+            title="เปิดช่อง 20'RF / 40'RF สำหรับตู้เย็น · ถ้า sync เจอเรท RF ช่องนี้จะโผล่เอง">
+            <input type="checkbox" id="q_show_rf" onchange="qToggleRF()"> 🧊 ตู้เย็น (RF)</label>
         </div>
         <div id="q_lcl_bulk" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;padding:7px 9px;border:1px dashed rgba(255,140,0,.4);border-radius:8px;background:rgba(255,140,0,.05)">
           <span style="font-size:10px;font-family:var(--mono);color:#ff9f43;white-space:nowrap">🧊 ตั้งค่าทุกแถว</span>
@@ -7184,9 +7189,9 @@ function openGroupMailto(){
 
 // ── Quotation Page ─────────────────────────────────────────
 
-function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit='', del='', pol=''){
+function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier='', dem='', det='', combined='', direct='', tt='', profit='', del='', pol='', rf20='', rf40=''){
   const id = Date.now() + Math.random();
-  qRateRows.push({id, carrier, pol, pod, del, r20, r40, r4h, profit, dem, det, combined, direct, tt, valid});
+  qRateRows.push({id, carrier, pol, pod, del, r20, r40, r4h, rf20, rf40, profit, dem, det, combined, direct, tt, valid});
   qRenderRateRows();
   qPreview();
 }
@@ -7195,11 +7200,30 @@ function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier=
 function qIsLCL(){ return ((document.getElementById('q_type')||{}).value)==='LCL'; }
 window.qIsLCL = qIsLCL;
 
+// ตู้เย็น (REEFER) ใช้ 20'RF / 40'RF คนละราคากับตู้แห้ง
+// คอลัมน์ RF ซ่อนไว้ตอนไม่มีเรท RF — จะโผล่เองเมื่อ sync เจอ หรือติ๊กเอง
+function qHasRF(){
+  try{
+    const box = document.getElementById('q_show_rf');
+    if(box && box.checked) return true;
+    return (qRateRows||[]).some(r=> (parseFloat(r.rf20)||0) > 0 || (parseFloat(r.rf40)||0) > 0);
+  }catch(e){ return false; }
+}
+window.qHasRF = qHasRF;
+function qApplyRfCols(){
+  const on = qHasRF() && !qIsLCL();
+  try{ document.querySelectorAll('#q_rate_tbl .qrf').forEach(el=>{ el.style.display = on ? '' : 'none'; }); }catch(e){}
+  const w = document.getElementById('q_show_rf_wrap');
+  if(w) w.style.display = qIsLCL() ? 'none' : 'flex';
+}
+window.qApplyRfCols = qApplyRfCols;
+window.qToggleRF = function(){ qRenderRateRows(); qApplyRfCols(); qPreview(); };
+
 function qRenderRateRows(){
   const body = document.getElementById('q_rate_body');
   if(!body) return;
   if(!qRateRows.length){
-    body.innerHTML = '<tr><td colspan="16" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
+    body.innerHTML = '<tr><td colspan="18" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
     return;
   }
   if(qIsLCL()){ return qRenderRateRowsLCL(body); }
@@ -7223,6 +7247,10 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'r40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
       <td style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="r4h" class="inp" value="${row.r4h||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'r4h',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:var(--cyan);width:70px"></td>
+      <td class="qrf" style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="rf20" class="inp" value="${row.rf20||''}" placeholder="0"
+        oninput="qUpdateRate(${row.id},'rf20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:#4fc3f7;width:70px"></td>
+      <td class="qrf" style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="rf40" class="inp" value="${row.rf40||''}" placeholder="0"
+        oninput="qUpdateRate(${row.id},'rf40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:#4fc3f7;width:70px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.det||''}" placeholder="e.g. 5"
@@ -7246,6 +7274,7 @@ function qRenderRateRows(){
         style="border:none;background:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></td>
     </tr>`).join('');
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
+  qApplyRfCols();
 }
 
 // ── ตารางเรทแบบ LCL — คอลัมน์ตามใบเรท Grandlink ───────────────
@@ -8288,7 +8317,7 @@ window.qLoadTemplate = function(name){
   qRateRows = t.rows.map(r=>({
     id: Date.now()+Math.random(),
     carrier:'', pol: t.pol, pod: r.pod||'', del: r.del||'',
-    r20:'', r40:'', r4h:'', profit:'',
+    r20:'', r40:'', r4h:'', rf20:'', rf40:'', profit:'',
     dem: r.dem||'', det: r.det||'', combined: r.combined||'',
     direct: r.direct||'', tt: r.tt||'', valid:'',
     polLock: !!t.lockPol, _synced: true
@@ -8411,11 +8440,16 @@ function qFindRateCandidates(row, fallbackPol, mode){
   if(String(row.src||'').trim()){
     res = res.filter(r=> srcLabel(r.source,r) === row.src);
   }
-  const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || Infinity);
-  // ใช้ได้ตอนนี้มาก่อนงวดหน้า · ในกลุ่มเดียวกันเรียงถูก→แพง
+  const price = r => (+r.hc40 || +r.gp40 || +r.gp20 || +r.rf40 || +r.rf20 || Infinity);
+  // เรทตู้เย็นล้วน (ไม่มีราคาตู้แห้ง) — อย่าหยิบมาใช้เอง ต้องให้เลือกใน pop-up ก่อน
+  const isRF = r => !(+r.gp20 || +r.gp40 || +r.hc40) && !!(+r.rf20 || +r.rf40);
+  // ใช้ได้ตอนนี้มาก่อนงวดหน้า · ตู้แห้งมาก่อนตู้เย็น · ในกลุ่มเดียวกันเรียงถูก→แพง
   res.sort((a,b)=>{
     const sa = _qStat(a)==='active' ? 0 : 1, sb = _qStat(b)==='active' ? 0 : 1;
-    return sa!==sb ? sa-sb : price(a)-price(b);
+    if(sa!==sb) return sa-sb;
+    const ra = isRF(a)?1:0, rb = isRF(b)?1:0;
+    if(ra!==rb) return ra-rb;
+    return price(a)-price(b);
   });
   return res;
 }
@@ -8487,6 +8521,7 @@ window.qSrcPickApply = function(){
     if(r){
       x.row.na = false;
       x.row.r20 = r.gp20||''; x.row.r40 = r.gp40||''; x.row.r4h = r.hc40||'';
+      x.row.rf20 = r.rf20||''; x.row.rf40 = r.rf40||'';
       const vt = _qValidText(r); if(vt) x.row.valid = vt;
       if(r.tt) x.row.tt = r.tt;
       if(r.direct) x.row.direct = r.direct;
@@ -8587,6 +8622,7 @@ window.qSyncRates = function(){
     if(!r){
       row.na = true;
       row.r20 = 'N/A'; row.r40 = 'N/A'; row.r4h = 'N/A';
+      row.rf20 = ''; row.rf40 = '';
       row.valid = 'N/A';
       na++; naList.push(row.pod + (row.del?(' / '+row.del):''));
       return;
@@ -8605,6 +8641,8 @@ window.qSyncRates = function(){
     row.r20 = r.gp20 || '';
     row.r40 = r.gp40 || '';
     row.r4h = r.hc40 || '';
+    row.rf20 = r.rf20 || '';   // ตู้เย็น — ราคาแยกจากตู้แห้ง
+    row.rf40 = r.rf40 || '';
     const vt = _qValidText(r); if(vt) row.valid = vt;
     // T/T · DIRECT/T-S · Free time (DEM/DET/COMBINED) — ดึงจากคลังเรทมาเติมให้ครบ
     if(r.tt && !row.tt)         row.tt     = r.tt;
@@ -8637,7 +8675,7 @@ function qUpdateRate(id, field, val){
   if(!row) return;
   row[field] = val;
   // พิมพ์ราคาเองทับ N/A → ถือว่าไม่ใช่ N/A แล้ว
-  if((field==='r20'||field==='r40'||field==='r4h'||field==='cost') && val && !isNaN(parseFloat(val))) row.na = false;
+  if((field==='r20'||field==='r40'||field==='r4h'||field==='rf20'||field==='rf40'||field==='cost') && val && !isNaN(parseFloat(val))) row.na = false;
   // โหมด LCL: แก้ cost / profit / min แล้วอัปเดตราคาขายทันที ไม่ต้องไปยุ่งคลัง
   if(qIsLCL() && (field==='cost'||field==='profit'||field==='minSell'||field==='mpct')){ qLclCheck(); qPreview(); return; }
   // เปลี่ยนสายเรือ / POL / POD / DEL → ไปเช็คคลังเรทใหม่ (ไม่ค้างเรทเก่า)
@@ -8656,7 +8694,8 @@ function qPaintRow(row){
     const el = document.querySelector('[data-rid="'+row.id+'"][data-f="'+f+'"]');
     if(el && document.activeElement !== el) el.value = (val==null?'':val);
   };
-  ['carrier','r20','r40','r4h','valid','tt','direct','combined'].forEach(f=> put(f, row[f]));
+  ['carrier','r20','r40','r4h','rf20','rf40','valid','tt','direct','combined'].forEach(f=> put(f, row[f]));
+  try{ qApplyRfCols(); }catch(e){}   // เจอเรทตู้เย็นตอน refresh แถวเดียว → เปิดคอลัมน์ RF ให้ด้วย
   const tr = document.querySelector('tr[data-rowid="'+row.id+'"]');
   if(tr){
     tr.style.background = row.na ? 'rgba(200,60,45,.10)' : '';
@@ -8696,11 +8735,12 @@ window.qRefreshRowRate = function(id, mode){
   const fallbackPol = (document.getElementById('q_pol')||{}).value || '';
   const r = qFindRateForRow(row, fallbackPol, mode);
   if(!r){
-    row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.valid='N/A'; row._src='';
+    row.na = true; row.r20='N/A'; row.r40='N/A'; row.r4h='N/A'; row.rf20=''; row.rf40=''; row.valid='N/A'; row._src='';
   }else{
     row.na = false;
     if(!row.carrier) row.carrier = r.carrier || '';   // เว้นว่างเท่านั้นถึงเติมสายเรือให้
     row.r20 = r.gp20 || ''; row.r40 = r.gp40 || ''; row.r4h = r.hc40 || '';
+    row.rf20 = r.rf20 || ''; row.rf40 = r.rf40 || '';
     const vt = _qValidText(r); if(vt) row.valid = vt;
     if(r.tt) row.tt = r.tt;
     if(r.direct) row.direct = r.direct;
@@ -8753,17 +8793,21 @@ function qUpdateRateDisplay(id){
   const r20 = parseFloat(row.r20)||0;
   const r40 = parseFloat(row.r40)||0;
   const r4h = parseFloat(row.r4h)||0;
-  if(p && (r20||r4h)){
+  const rf20 = parseFloat(row.rf20)||0;
+  const rf40 = parseFloat(row.rf40)||0;
+  if(p && (r20||r4h||rf20||rf40)){
     const parts=[];
     if(r20) parts.push('20:'+(r20+p));
     if(r40) parts.push('40:'+(r40+p));
     if(r4h) parts.push('HC:'+(r4h+p));
+    if(rf20) parts.push('20RF:'+(rf20+p));
+    if(rf40) parts.push('40RF:'+(rf40+p));
     el.textContent = '→ '+parts.join(' / ');
   } else { el.textContent=''; }
   // GP warning (profit as % of base rate) — worst case across sizes
   const gpwEl = document.getElementById('gpw_'+id);
   if(gpwEl){
-    const bases=[r20,r40,r4h].filter(x=>x>0);
+    const bases=[r20,r40,r4h,rf20,rf40].filter(x=>x>0);
     if(p>0 && bases.length){
       const minGp = Math.min(...bases.map(b=>p/b*100));
       const w = gpMarginWarning(minGp);
@@ -8871,6 +8915,7 @@ window.qTypeChange = function(){
     }
   }
   qRenderRateRows();
+  qApplyRfCols();
   qLclCheck();
   qPreview();
 };
@@ -9017,7 +9062,7 @@ function qApplyRate(idx){
   const set = (id,val)=>{ const e=document.getElementById(id); if(e&&val) e.value=val; };
   set('q_pol', r.pol);
   const vd = r.validity || (r.date_from&&r.date_to ? r.date_from+' ~ '+r.date_to : '');
-  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'', r.dem||'', r.det||'', r.combined||'', r.direct||'', r.tt||'', '', r.del||'', r.pol||'');
+  qAddRateRow(r.pod, r.gp20||'', r.gp40||'', r.hc40||'', vd, '', r.carrier||'', r.dem||'', r.det||'', r.combined||'', r.direct||'', r.tt||'', '', r.del||'', r.pol||'', r.rf20||'', r.rf40||'');
   toast('✅ Added: '+r.carrier+' '+r.pol+' → '+r.pod);
   // Scroll to rate table so user can see the added row
   const tbl = document.getElementById('q_rate_tbl');
@@ -9067,7 +9112,9 @@ function qBuildEmail(){
       const parts=[];
       const _p=parseFloat(row.profit)||0;
       const _b20=parseFloat(row.r20)||0, _b40=parseFloat(row.r40)||0, _b4h=parseFloat(row.r4h)||0;
+      const _bf2=parseFloat(row.rf20)||0, _bf4=parseFloat(row.rf40)||0;
       const r20=_b20?_b20+_p:0, r40=_b40?_b40+_p:0, r4h=_b4h?_b4h+_p:0;
+      const rf20=_bf2?_bf2+_p:0, rf40=_bf4?_bf4+_p:0;
       if(isLCL){
         // LCL: ราคาที่ส่งลูกค้า = cost + profit (ไม่ต่ำกว่า Min) — ห้ามใช้ตัวเลข cost ตรงๆ
         const _sell = lclRowSell(row);
@@ -9093,6 +9140,8 @@ function qBuildEmail(){
       if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
       if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
       if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
+      if(rf20) parts.push(`20 RF: USD ${rf20.toLocaleString()}`);
+      if(rf40) parts.push(`40 RF: USD ${rf40.toLocaleString()}`);
       if(!parts.length) return;
       lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${row.pod||'POD'}${row.del?' / DEL: '+row.del:''}`);
       lines.push(`  ${parts.join(' / ')}`);
@@ -9597,7 +9646,11 @@ window.qExportExcelSheet = async function(){
   notes.forEach(n=>{ aoa.push([n]); NOTE_ROWS.push(aoa.length-1); });
   aoa.push([]);
   const showSrc = qShowSrc();
-  const HEAD = ['PORT DESTINATION','POL',isLCL?'per CBM':"20'","40'","40'hc",'carrier name']
+  // มีเรทตู้เย็นในใบนี้ไหม — ถ้ามีถึงจะเพิ่มคอลัมน์ 20'RF / 40'RF
+  const hasRF = !isLCL && rows.some(r=> (parseFloat(r.rf20)||0)>0 || (parseFloat(r.rf40)||0)>0 );
+  const HEAD = ['PORT DESTINATION','POL',isLCL?'per CBM':"20'","40'","40'hc"]
+    .concat(hasRF ? ["20'rf","40'rf"] : [])
+    .concat(['carrier name'])
     .concat(showSrc ? ['rate type'] : [])
     .concat(['sub to','DET','DEM','COMBINED','DIRECT OR T/S','TT','VALIDITY']);
   aoa.push(HEAD);
@@ -9618,9 +9671,10 @@ window.qExportExcelSheet = async function(){
       dest, pol,
       sell(r.r20, r.profit),
       isLCL ? '' : sell(r.r40, r.profit),
-      isLCL ? '' : sell(r.r4h, r.profit),
-      r.carrier || ''
-    ].concat(showSrc ? [qRowSrc(r)] : [])
+      isLCL ? '' : sell(r.r4h, r.profit)
+    ].concat(hasRF ? [sell(r.rf20, r.profit), sell(r.rf40, r.profit)] : [])
+     .concat([r.carrier || ''])
+     .concat(showSrc ? [qRowSrc(r)] : [])
      .concat([
       qRowSubjTo(r, subjto, gPol),                // ตัดค่าที่เรทรวมมาแล้วออก
       r.det || '', r.dem || '', r.combined || '',
@@ -9645,7 +9699,9 @@ window.qExportExcelSheet = async function(){
   }
 
   const ws = XL.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:36},{wch:18},{wch:10},{wch:10},{wch:10},{wch:14}]
+  ws['!cols'] = [{wch:36},{wch:18},{wch:10},{wch:10},{wch:10}]
+    .concat(hasRF ? [{wch:10},{wch:10}] : [])
+    .concat([{wch:14}])
     .concat(showSrc ? [{wch:10}] : [])
     .concat([{wch:34},{wch:7},{wch:7},{wch:11},{wch:15},{wch:9},{wch:16}]);
   ws['!freeze'] = { xSplit:0, ySplit:HROW+1 };
@@ -9677,7 +9733,8 @@ window.qExportExcelSheet = async function(){
     for(let r=HROW+1;r<=LASTROW;r++){
       const isNA = naRows.includes(r);
       for(let c=0;c<HEAD.length;c++){
-        const st = {border:BORDER, alignment:{horizontal:(c>=2&&c<=4)?'right':(c>=7?'center':'left'), vertical:'center'}};
+        const _sh = hasRF ? 2 : 0;   // มีคอลัมน์ RF → เลื่อนขอบเขตจัดชิดขวา/กึ่งกลางตามไปด้วย
+        const st = {border:BORDER, alignment:{horizontal:(c>=2&&c<=4+_sh)?'right':(c>=7+_sh?'center':'left'), vertical:'center'}};
         if(isNA) st.fill = {fgColor:{rgb:'FFD9D9D9'}};
         put(r,c,st);
       }
@@ -9985,6 +10042,8 @@ window.exportRateSheetXLSX = function(){
   y += 7;
 
   /* ── RATE TABLE ── */
+  // มีเรทตู้เย็นในใบนี้ไหม — ถ้ามีถึงจะเพิ่มคอลัมน์ 20'RF / 40'RF
+  const _pdfHasRF = !isLCL && rateRows.some(r=> (parseFloat(r.rf20)||0)>0 || (parseFloat(r.rf40)||0)>0 );
   // Column definitions
   const cols = isLCL ? [
     {label:'POL',        w:34, align:'left'},
@@ -9993,6 +10052,23 @@ window.exportRateSheetXLSX = function(){
     {label:'USD / CBM',  w:24, align:'right'},
     {label:'SUBJ TO',    w:78, align:'left'},
     {label:'VALID',      w:30, align:'center'},
+  ] : _pdfHasRF ? [
+    // มีเรทตู้เย็น → แทรก 20'RF / 40'RF แล้วบีบคอลัมน์อื่นให้พอดีหน้า
+    {label:'POL',        w:30, align:'left'},
+    {label:'POD',        w:34, align:'left'},
+    {label:'DEL',        w:24, align:'left'},
+    {label:"20'",        w:17, align:'right'},
+    {label:"40'",        w:17, align:'right'},
+    {label:"40'HC",      w:17, align:'right'},
+    {label:"20'RF",      w:15, align:'right'},
+    {label:"40'RF",      w:15, align:'right'},
+    {label:'CARRIER',    w:15, align:'center'},
+    {label:'DEM',        w:11, align:'center'},
+    {label:'DET',        w:11, align:'center'},
+    {label:'COMBINED',   w:13, align:'center'},
+    {label:'DIRECT/T/S', w:19, align:'center'},
+    {label:'T/T',        w:10, align:'center'},
+    {label:'VALID',      w:24, align:'center'},
   ] : [
     {label:'POL',        w:30, align:'left'},
     {label:'POD',        w:38, align:'left'},
@@ -10038,6 +10114,8 @@ window.exportRateSheetXLSX = function(){
       const r20 = parseFloat(row.r20)||0;
       const r40 = parseFloat(row.r40)||0;
       const r4h = parseFloat(row.r4h)||0;
+      const rf20 = parseFloat(row.rf20)||0;
+      const rf40 = parseFloat(row.rf40)||0;
       const NA  = row.na ? 'N/A' : '—';   // ไม่มีเรทที่ valid ในระบบ → N/A
 
       const _pf=parseFloat(row.profit)||0;
@@ -10056,6 +10134,10 @@ window.exportRateSheetXLSX = function(){
         {v:r20?(r20+_pf).toLocaleString():NA, col:r20?GREEN:MUTED, align:'right'},
         {v:r40?(r40+_pf).toLocaleString():NA, col:r40?GREEN:MUTED, align:'right'},
         {v:r4h?(r4h+_pf).toLocaleString():NA, col:r4h?GREEN:MUTED, align:'right'},
+      ].concat(_pdfHasRF ? [
+        {v:rf20?(rf20+_pf).toLocaleString():'—', col:rf20?GREEN:MUTED, align:'right'},
+        {v:rf40?(rf40+_pf).toLocaleString():'—', col:rf40?GREEN:MUTED, align:'right'},
+      ] : []).concat([
         {v:car,                           col:CYAN, align:'center'},
         {v:row.dem||'—',                  col:MUTED,align:'center'},
         {v:row.det||'—',                  col:MUTED,align:'center'},
@@ -10063,7 +10145,7 @@ window.exportRateSheetXLSX = function(){
         {v:row.direct||'—',               col:MUTED,align:'center'},
         {v:row.tt||'—',                   col:MUTED,align:'center'},
         {v:v,                             col:GOLD, align:'center'},
-      ];
+      ]);
 
       cx = LM;
       vals.forEach((cell,ci)=>{
@@ -10169,7 +10251,9 @@ function qCopyLine(){
       const pod=(row.pod||'').trim(); if(!pod) return;
       const _p=parseFloat(row.profit)||0;
       const _b20=parseFloat(row.r20)||0,_b40=parseFloat(row.r40)||0,_b4h=parseFloat(row.r4h)||0;
+      const _bf2=parseFloat(row.rf20)||0,_bf4=parseFloat(row.rf40)||0;
       const r20=_b20?_b20+_p:0,r40=_b40?_b40+_p:0,r4h=_b4h?_b4h+_p:0;
+      const rf20=_bf2?_bf2+_p:0,rf40=_bf4?_bf4+_p:0;
       const parts=[];
       if(isLCL){
         if(r20) parts.push(`USD ${r20.toLocaleString()} / CBM (W/M, min 1 CBM)`);
@@ -10177,6 +10261,8 @@ function qCopyLine(){
         if(r20) parts.push(`20 GP: USD ${r20.toLocaleString()}`);
         if(r40&&r40!==r4h) parts.push(`40 GP: USD ${r40.toLocaleString()}`);
         if(r4h) parts.push(`40 HC: USD ${r4h.toLocaleString()}`);
+        if(rf20) parts.push(`20 RF: USD ${rf20.toLocaleString()}`);
+        if(rf40) parts.push(`40 RF: USD ${rf40.toLocaleString()}`);
       }
       lines.push(`  ${(row.pol||pol)?((row.pol||pol)+' - '):''}${pod}`);
       if(parts.length) lines.push(`  ${parts.join(' / ')} `);
