@@ -14472,24 +14472,148 @@ window.pasteBpdfVesselInfo = function(){
 </div>
 
 <div id="best_pod_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
-  <div style="background:var(--s1,#141a2a);color:var(--text,#e8ecf4);max-width:1000px;width:94%;max-height:86vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
+  <div style="background:var(--s1);color:var(--text);max-width:1180px;width:96%;max-height:88vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.4)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <h3 style="margin:0;font-size:15px">Best Rate per POD <span style="font-size:11px;color:var(--muted,#8b95a7);font-weight:400">(active only - top 3 cheapest per container size)</span></h3>
-      <button onclick="document.getElementById('best_pod_modal').style.display='none'" style="border:none;background:rgba(255,255,255,.12);color:inherit;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">x</button>
+      <h3 id="bp_title" style="margin:0;font-size:15px">🏆 เรทถูกสุดต่อ POD</h3>
+      <button onclick="document.getElementById('best_pod_modal').style.display='none'"
+        style="border:1px solid var(--border2);background:var(--s2);color:var(--text);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px">✕</button>
     </div>
-    <input id="best_pod_search" placeholder="search POD / carrier" oninput="renderBestByPOD()" style="width:100%;padding:7px 10px;margin-bottom:8px;border:1px solid var(--border2,#334);border-radius:6px;font-size:12px;background:var(--s2,#0e1320);color:inherit;box-sizing:border-box">
+
+    <!-- แถบตั้งค่า -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <input id="best_pod_search" placeholder="ค้นหา POD / สายเรือ" oninput="renderBestByPOD()"
+        style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px;background:var(--s2);color:var(--text)">
+      <select id="bp_mode" onchange="bpSetMode(this.value)" title="โหมดแสดงผล"
+        style="padding:7px 8px;border:1px solid var(--border2);border-radius:6px;font-size:12px;background:var(--s2);color:var(--text)">
+        <option value="best">🏆 จัดอันดับถูกสุด</option>
+        <option value="cmp">⚖️ เทียบประเภทเรท</option>
+      </select>
+      <select id="bp_pol" onchange="renderBestByPOD()" title="ท่าต้นทาง — คนละท่าคนละราคา ควรเลือกให้ตรงกับลูกค้า"
+        style="padding:7px 8px;border:1px solid var(--border2);border-radius:6px;font-size:12px;background:var(--s2);color:var(--text)">
+        <option value="">ทุกท่าต้นทาง</option>
+        <option>Laem Chabang</option><option>Bangkok</option><option>Lat Krabang</option><option>Songkhla</option>
+      </select>
+      <select id="bp_size" onchange="renderBestByPOD()" title="ขนาดตู้ (ใช้ในโหมดเทียบ)"
+        style="display:none;padding:7px 8px;border:1px solid var(--border2);border-radius:6px;font-size:12px;background:var(--s2);color:var(--text)">
+        <option value="hc40">40 HC</option><option value="gp40">40 GP</option><option value="gp20">20 GP</option>
+        <option value="rf40">40 RF</option><option value="rf20">20 RF</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gold);white-space:nowrap;cursor:pointer"
+        title="รวมเรทงวดหน้าที่ยังไม่เริ่มใช้ด้วย">
+        <input type="checkbox" id="bp_soon" onchange="renderBestByPOD()"> 🔜 รวมงวดหน้า</label>
+    </div>
+
+    <!-- ชิปเลือกประเภทเรท -->
+    <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <span id="bp_src_hint" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-right:2px">ประเภทเรท:</span>
+      <span id="bp_src_chips" style="display:flex;gap:5px;flex-wrap:wrap"></span>
+    </div>
+
     <div id="best_pod_body"></div>
   </div>
 </div>
 <script>
 window._CARRIER_FREETIME = window._CARRIER_FREETIME || {"COSCO":"10 WD","WHL":"10 CD","YML":"14 CD","ONE":"","CMA":"","MSC":"","HPL":"","OOCL":"","ZIM":""};
-function showBestByPOD(){ var m=document.getElementById('best_pod_modal'); if(m){ m.style.display='flex'; renderBestByPOD(); } }
+
+// สถานะของหน้าต่างเทียบเรท — best = จัดอันดับ · cmp = เทียบประเภทเรทกันเอง
+var _bpState = { mode:'best', src:'', cmp:[] };
+
+function showBestByPOD(){
+  var m=document.getElementById('best_pod_modal');
+  if(!m) return;
+  m.style.display='flex';
+  bpRenderChips();
+  renderBestByPOD();
+}
 window.showBestByPOD=showBestByPOD;
+
+// ประเภทเรทที่มีจริงในคลัง (เรียงตามจำนวนแถว)
+function bpSources(){
+  var c={};
+  (window.ALL_RATES||[]).forEach(function(r){ var s=(r.source||'OTHER'); c[s]=(c[s]||0)+1; });
+  return Object.keys(c).sort(function(a,b){ return c[b]-c[a]; });
+}
+function bpSetMode(v){
+  _bpState.mode = v;
+  var sz=document.getElementById('bp_size');
+  if(sz) sz.style.display = (v==='cmp') ? '' : 'none';
+  var t=document.getElementById('bp_title');
+  if(t) t.textContent = (v==='cmp') ? '⚖️ เทียบประเภทเรทต่อ POD' : '🏆 เรทถูกสุดต่อ POD';
+  var h=document.getElementById('bp_src_hint');
+  if(h) h.textContent = (v==='cmp') ? 'เลือกมาเทียบ (2-4 ประเภท):' : 'ประเภทเรท:';
+  // เข้าโหมดเทียบครั้งแรก — ตั้ง FAK vs FIX ให้เลย เป็นคู่ที่ใช้บ่อยสุด
+  if(v==='cmp' && !_bpState.cmp.length){
+    var have=bpSources();
+    _bpState.cmp = ['FAK','FIX'].filter(function(x){ return have.indexOf(x)>-1; });
+    if(_bpState.cmp.length<2) _bpState.cmp = have.slice(0,2);
+  }
+  bpRenderChips(); renderBestByPOD();
+}
+window.bpSetMode=bpSetMode;
+
+function bpToggleSrc(s){
+  if(_bpState.mode==='cmp'){
+    var i=_bpState.cmp.indexOf(s);
+    if(i>-1) _bpState.cmp.splice(i,1);
+    else { if(_bpState.cmp.length>=4) return toast('เทียบได้ทีละไม่เกิน 4 ประเภทครับ'); _bpState.cmp.push(s); }
+  } else {
+    _bpState.src = (_bpState.src===s) ? '' : s;
+  }
+  bpRenderChips(); renderBestByPOD();
+}
+window.bpToggleSrc=bpToggleSrc;
+
+function bpRenderChips(){
+  var wrap=document.getElementById('bp_src_chips'); if(!wrap) return;
+  var cmp=(_bpState.mode==='cmp');
+  var list=bpSources();
+  // นับเฉพาะเรทที่ยังใช้ได้จริงตามตัวกรองตอนนี้ — ประเภทที่หมดอายุยกชุดจะได้เห็นว่าเลือกไปก็ไม่มีอะไร
+  var cnt={}; bpPool().forEach(function(r){ var s=(r.source||'OTHER'); cnt[s]=(cnt[s]||0)+1; });
+  var dead=[];
+  var html='';
+  if(!cmp) html+= bpChip('ทั้งหมด', _bpState.src==='', "bpToggleSrc('')", null);
+  list.forEach(function(s){
+    var n=cnt[s]||0;
+    if(!n) dead.push(s);
+    var on = cmp ? (_bpState.cmp.indexOf(s)>-1) : (_bpState.src===s);
+    html += bpChip(s, on, "bpToggleSrc('"+s+"')", n);
+  });
+  if(dead.length) html += '<span style="font-size:10px;color:var(--red);font-family:var(--mono);margin-left:4px" '
+    + 'title="เรทชุดนี้หมดอายุทั้งหมดแล้ว ต้องขอไฟล์เรทรอบใหม่จากสายเรือ">⚠ หมดอายุยกชุด: '+dead.join(' · ')+'</span>';
+  wrap.innerHTML=html;
+}
+function bpChip(label, on, click, n){
+  var empty = (n===0);
+  return '<span onclick="'+click+'" title="'+(empty?'ไม่มีเรทที่ยังไม่หมดอายุในประเภทนี้':'')+'" '
+    + 'style="cursor:pointer;padding:3px 10px;border-radius:12px;font-size:10.5px;font-family:var(--mono);'
+    + (on ? 'background:var(--red);color:#fff;border:1px solid var(--red);font-weight:700'
+          : 'background:var(--s2);color:var(--muted);border:1px solid var(--border2)')
+    + (empty && !on ? ';opacity:.4;text-decoration:line-through' : '')
+    + '">'+label+(n!=null?' <span style="opacity:.7">'+n+'</span>':'')+'</span>';
+}
+
+// ── ดึงเรทที่เข้าเงื่อนไขแถบตั้งค่า ──────────────────────────────
+function bpPool(){
+  var isThai=window.isThaiPOL||function(){return true;};
+  var soon=(document.getElementById('bp_soon')||{}).checked;
+  var pol=((document.getElementById('bp_pol')||{}).value||'').toLowerCase().trim();
+  return (window.ALL_RATES||[]).filter(function(r){
+    var st=liveStat(r);
+    if(st!=='active' && !(soon && st==='upcoming')) return false;
+    if(!isThai(r.pol)) return false;
+    if(pol && String(r.pol||'').toLowerCase().indexOf(pol)<0) return false;
+    return true;
+  });
+}
+function bpPolShort(p){ return String(p||'').replace(/,\s*THAILAND\s*$/i,'').trim(); }
+function bpMoney(v){ return '$'+Number(v).toLocaleString(); }
+
 function renderBestByPOD(){
+  if(_bpState.mode==='cmp') return bpRenderCompare();
   var sb=document.getElementById('best_pod_search');
   var q=(sb&&sb.value||'').toLowerCase().trim();
-  var isThai=window.isThaiPOL||function(){return true;};
-  var rates=(window.ALL_RATES||[]).filter(function(r){return liveStat(r)==='active' && isThai(r.pol);});
+  var want=_bpState.src;
+  var rates=bpPool().filter(function(r){ return !want || (r.source||'OTHER')===want; });
   var FIELDS=[['gp20','20GP'],['gp40','40GP'],['hc40','40HC'],['rf40','40RF']];
   var byPod={};
   rates.forEach(function(r){
@@ -14497,32 +14621,107 @@ function renderBestByPOD(){
     if(!byPod[key]) byPod[key]={pod:r.pod};
     FIELDS.forEach(function(f){ var v=r[f[0]]; if(v&&v>0){
       var slot=byPod[key][f[0]] || (byPod[key][f[0]]={});
-      if(!slot[r.carrier] || v<slot[r.carrier].rate) slot[r.carrier]={rate:v,carrier:r.carrier,source:r.source};
+      // ยึดตามสายเรือ+ประเภทเรท จะได้ไม่ถูกเรทชุดเดียวกันกินอันดับหมด
+      var k=r.carrier+'|'+(r.source||'');
+      if(!slot[k] || v<slot[k].rate) slot[k]={rate:v,carrier:r.carrier,source:r.source,pol:bpPolShort(r.pol),del:r.del||'',stat:liveStat(r)};
     }});
   });
   function top3(slot){ if(!slot) return []; return Object.keys(slot).map(function(k){return slot[k];}).sort(function(a,b){return a.rate-b.rate;}).slice(0,3); }
   var MEDAL=['🥇','🥈','🥉'];
   var pods=Object.keys(byPod).map(function(k){return byPod[k];})
-    .filter(function(p){ if(!q) return true; var hay=(p.pod||'').toLowerCase(); FIELDS.forEach(function(f){ top3(p[f[0]]).forEach(function(x){hay+=' '+(x.carrier||'').toLowerCase();}); }); return hay.indexOf(q)>-1; })
+    .filter(function(p){ if(!q) return true; var hay=(p.pod||'').toLowerCase(); FIELDS.forEach(function(f){ top3(p[f[0]]).forEach(function(x){hay+=' '+(x.carrier||'').toLowerCase()+' '+(x.source||'').toLowerCase();}); }); return hay.indexOf(q)>-1; })
     .sort(function(a,b){return (a.pod||'').localeCompare(b.pod||'');});
-  var h='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border2,#334)">'
+  var h='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border2)">'
     +'<th style="padding:6px;text-align:left">POD</th>'+FIELDS.map(function(f){return '<th style="padding:6px;text-align:right">'+f[1]+'</th>';}).join('')+'<th style="padding:6px;text-align:center">F/T</th></tr></thead><tbody>';
   pods.forEach(function(p){
-    h+='<tr style="border-bottom:1px solid rgba(255,255,255,.06)"><td style="padding:6px;font-weight:600;vertical-align:top">'+(p.pod||'-')+'</td>';
+    h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:600;vertical-align:top">'+(p.pod||'-')+'</td>';
     FIELDS.forEach(function(f){ var t=top3(p[f[0]]);
-      if(!t.length){ h+='<td style="padding:6px;text-align:right;color:var(--muted,#556);vertical-align:top">-</td>'; return; }
-      var cell=t.map(function(x,i){ return '<div style="white-space:nowrap;'+(i===0?'':'opacity:.75;')+'margin-bottom:'+(i<t.length-1?'3px':'0')+'">'+MEDAL[i]+' <span style="color:#2ecc71;font-weight:'+(i===0?'700':'500')+';font-family:monospace">$'+x.rate.toLocaleString()+'</span> <span style="font-size:9px;color:var(--muted,#8b95a7)">'+(x.carrier||'')+(x.source?' '+x.source:'')+'</span></div>'; }).join('');
+      if(!t.length){ h+='<td style="padding:6px;text-align:right;color:var(--muted);vertical-align:top">-</td>'; return; }
+      var cell=t.map(function(x,i){
+        return '<div style="white-space:nowrap;'+(i===0?'':'opacity:.7;')+'margin-bottom:'+(i<t.length-1?'3px':'0')+'">'
+          + MEDAL[i]+' <span style="color:#177245;font-weight:'+(i===0?'700':'500')+';font-family:var(--mono)">'+bpMoney(x.rate)+'</span>'
+          + ' <span style="font-size:10px;color:var(--muted)">'+(x.carrier||'')+'</span>'
+          + (x.source?' <span style="font-size:9px;color:var(--gold)">'+x.source+'</span>':'')
+          + (x.stat==='upcoming'?' <span style="font-size:9px;color:var(--gold)">🔜</span>':'')
+          + '</div>';
+      }).join('');
       h+='<td style="padding:6px;text-align:right;vertical-align:top">'+cell+'</td>';
     });
     var t1=(top3(p.hc40)[0]||top3(p.gp40)[0]||top3(p.gp20)[0]||top3(p.rf40)[0]||{});
     var ft=(window._CARRIER_FREETIME||{})[t1.carrier||'']||'';
-    h+='<td style="padding:6px;text-align:center;font-size:11px;color:var(--muted,#8b95a7);vertical-align:top" title="Free Time of '+(t1.carrier||'')+'">'+(ft||'-')+'</td></tr>';
+    h+='<td style="padding:6px;text-align:center;font-size:11px;color:var(--muted);vertical-align:top" title="Free Time ของ '+(t1.carrier||'')+'">'+(ft||'-')+'</td></tr>';
   });
-  h+='</tbody></table><div style="font-size:11px;color:var(--muted,#8b95a7);margin-top:8px">'+pods.length+' POD - 🥇1 🥈2 🥉3 = อันดับเรทถูกสุด - green = ราคา - carrier ต่อท้าย - F/T ตามคาร์ริเออร์อันดับ 1</div>';
+  h+='</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:8px">'+pods.length+' POD · 🥇🥈🥉 = อันดับถูกสุด · ตัวเลขเขียว = ราคา · ต่อท้าย = สายเรือ + ประเภทเรท · 🔜 = เรทงวดหน้า</div>';
   var body=document.getElementById('best_pod_body');
-  if(body) body.innerHTML = pods.length ? h : '<div style="padding:20px;text-align:center;color:var(--muted,#8b95a7)">no active rate</div>';
+  if(body) body.innerHTML = pods.length ? h : '<div style="padding:20px;text-align:center;color:var(--muted)">ไม่มีเรทที่ตรงเงื่อนไข — ลองเอาตัวกรองออก หรือติ๊ก "รวมงวดหน้า"</div>';
 }
 window.renderBestByPOD=renderBestByPOD;
+
+// ── โหมดเทียบประเภทเรทกันเอง (FAK vs FIX vs …) ─────────────────
+function bpRenderCompare(){
+  var body=document.getElementById('best_pod_body'); if(!body) return;
+  var srcs=_bpState.cmp.slice();
+  if(srcs.length<2){
+    body.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted)">เลือกประเภทเรทที่จะเทียบอย่างน้อย 2 อย่างจากชิปด้านบนครับ</div>';
+    return;
+  }
+  var sb=document.getElementById('best_pod_search');
+  var q=(sb&&sb.value||'').toLowerCase().trim();
+  var size=((document.getElementById('bp_size')||{}).value)||'hc40';
+  var SZLBL={gp20:"20'GP",gp40:"40'GP",hc40:"40'HC",rf20:"20'RF",rf40:"40'RF"}[size];
+  var byPod={};
+  bpPool().forEach(function(r){
+    var s=(r.source||'OTHER'); if(srcs.indexOf(s)<0) return;
+    var pod=(r.pod||'').trim(); if(!pod) return;
+    var v=r[size]; if(!(v>0)) return;
+    var row = byPod[pod] || (byPod[pod]={pod:pod});
+    if(!row[s] || v<row[s].rate) row[s]={rate:v,carrier:r.carrier,pol:bpPolShort(r.pol),del:r.del||'',stat:liveStat(r)};
+  });
+  var pods=Object.keys(byPod).map(function(k){return byPod[k];})
+    .filter(function(p){
+      if(q){ var hay=p.pod.toLowerCase(); srcs.forEach(function(s){ if(p[s]) hay+=' '+(p[s].carrier||'').toLowerCase(); }); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+  // มีครบทุกประเภทที่เลือกมาก่อน (เทียบได้จริง) แล้วค่อยเรียงตามส่วนต่างมาก→น้อย
+  pods.forEach(function(p){
+    var vals=srcs.map(function(s){ return p[s] ? p[s].rate : null; }).filter(function(v){ return v!=null; });
+    p._n=vals.length;
+    p._min=vals.length?Math.min.apply(null,vals):0;
+    p._gap=vals.length>1 ? Math.max.apply(null,vals)-p._min : 0;
+  });
+  pods.sort(function(a,b){ return (b._n-a._n) || (b._gap-a._gap) || a.pod.localeCompare(b.pod); });
+
+  var h='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:2px solid var(--border2)">'
+    + '<th style="padding:6px;text-align:left">POD</th>'
+    + srcs.map(function(s){ return '<th style="padding:6px;text-align:right">'+s+'</th>'; }).join('')
+    + '<th style="padding:6px;text-align:right">ส่วนต่าง</th><th style="padding:6px;text-align:center">ถูกสุด</th></tr></thead><tbody>';
+  var winCount={};
+  pods.forEach(function(p){
+    h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px;font-weight:600">'+p.pod+'</td>';
+    var winner='';
+    srcs.forEach(function(s){
+      var x=p[s];
+      if(!x){ h+='<td style="padding:6px;text-align:right;color:var(--muted)">—</td>'; return; }
+      var best=(x.rate===p._min && p._n>1);
+      if(best && !winner) winner=s;
+      h+='<td style="padding:6px;text-align:right;white-space:nowrap'+(best?';background:rgba(23,114,69,.10)':'')+'">'
+        + '<span style="font-family:var(--mono);font-weight:'+(best?'700':'500')+';color:'+(best?'#177245':'var(--text)')+'">'+bpMoney(x.rate)+'</span>'
+        + '<div style="font-size:9.5px;color:var(--muted)">'+(x.carrier||'')+(x.del?' · via '+x.pod:'')+' · '+x.pol+(x.stat==='upcoming'?' 🔜':'')+'</div></td>';
+    });
+    if(winner) winCount[winner]=(winCount[winner]||0)+1;
+    h+='<td style="padding:6px;text-align:right;font-family:var(--mono);color:'+(p._gap>0?'var(--red)':'var(--muted)')+'">'
+      + (p._n>1 ? (p._gap>0?'-'+bpMoney(p._gap):'เท่ากัน') : '<span style="font-size:10px">เทียบไม่ได้</span>') + '</td>'
+      + '<td style="padding:6px;text-align:center;font-size:10.5px;font-family:var(--mono);color:var(--gold)">'+(p._n>1?(winner||''):'—')+'</td></tr>';
+  });
+  var full=pods.filter(function(p){return p._n>1;}).length;
+  h+='</tbody></table><div style="font-size:11px;color:var(--muted);margin-top:8px">'
+    + 'ขนาดตู้ <b>'+SZLBL+'</b> · '+pods.length+' POD (เทียบได้จริง '+full+' POD ที่มีเรทครบ 2 ประเภทขึ้นไป) · '
+    + 'ช่องเขียว = ถูกสุดของแถวนั้น · "ส่วนต่าง" = ประหยัดได้เท่าไหร่ถ้าเลือกตัวถูกสุด · เรียงจากส่วนต่างมากไปน้อย'
+    + (Object.keys(winCount).length ? '<br>สรุปผู้ชนะ: '+Object.keys(winCount).sort(function(a,b){return winCount[b]-winCount[a];}).map(function(k){return k+' ชนะ '+winCount[k]+' POD';}).join(' · ') : '')
+    + '</div>';
+  body.innerHTML = pods.length ? h : '<div style="padding:20px;text-align:center;color:var(--muted)">ไม่มี POD ที่มีเรทของประเภทที่เลือก — ลองเปลี่ยนขนาดตู้ หรือติ๊ก "รวมงวดหน้า"</div>';
+}
+window.bpRenderCompare=bpRenderCompare;
 </script>
 
 <!-- 🐱 น้องแมวประจำออฟฟิศ v3 -->
