@@ -4519,7 +4519,15 @@ function saveShipment(){
     siCutoff:v('s_si_cutoff')||'', vgmCutoff:v('s_vgm_cutoff')||'', docCutoff:v('s_doc_cutoff')||'', gateClosing:v('s_gate_closing')||'',
     cyrtn:[v('s_cy_date')?'CY '+v('s_cy_date'):'',v('s_rtn_date')?'RTN '+v('s_rtn_date'):''].filter(Boolean).join(' / '),
     connote:v2('s_connote'),
-    pol:window._selPol||'',pod:window._selPod||'',del:g('s_del')?.value||window._selDel||'',
+    pol:window._selPol||'',pod:window._selPod||'',
+    // ช่องที่ผู้ใช้เห็นเป็นตัวตัดสิน — ถ้าเว้นว่างแปลว่าตั้งใจเว้น ห้ามไปหยิบค่าเก่าจากตัวแปรเงามาใส่
+    del:(function(){
+      const _e=g('s_del');
+      let _d=_e ? String(_e.value||'').trim() : String(window._selDel||'').trim();
+      const _p=String(window._selPod||'').trim();
+      if(_d && _p && _d.toUpperCase()===_p.toUpperCase()) _d='';   // DEL เท่ากับ POD = ท่าตรง ไม่ใช่ IPI
+      return _d;
+    })(),
     selCarrier:window._selCarrier||'',selLabel:g('sel_label')?g('sel_label').textContent:'',
     lkb: g('lkb_toggle')?.checked || false,
     bkk: g('bkk_toggle')?.checked || false,
@@ -4710,6 +4718,8 @@ function clearForm(){
   ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del','s_cbm'].forEach(id=>{const e=g(id);if(e)e.value='';});
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   { const st=g('s_type'); if(st) st.value='FCL'; const qc=g('s_qty_card'),cc=g('s_cbm_card'); if(qc)qc.style.display=''; if(cc)cc.style.display='none'; }
+  // ตัวแปรเงาของ POL/POD/DEL/CARRIER ต้องล้างด้วย ไม่งั้นงานใหม่จะได้ค่าของงานก่อนหน้าแบบเงียบๆ
+  window._selPol=''; window._selPod=''; window._selDel=''; window._selCarrier='';
   const lkbTog=g('lkb_toggle'); if(lkbTog) lkbTog.checked=false;
   const bkkTog=g('bkk_toggle'); if(bkkTog) bkkTog.checked=false;
   const lkbInfo=g('lkb_arb_info'); if(lkbInfo){lkbInfo.style.display='none';lkbInfo.innerHTML='';}
@@ -6240,9 +6250,14 @@ function applyOwnBookingPdf(lines){
   n+=set('s_rtn_date', fmt(g('Turn-In Date')));
   n+=set('s_hscode', /please advise/i.test(g('HS. Code'))?'':g('HS. Code'));
   const por=g('Port of Receive'), pol=g('Port of Loading'), pod=g('Port of Discharge'), dest=g('Final Destination');
+  // สำคัญ: ทุกช่องต้อง "เซ็ตหรือล้าง" เสมอ ห้ามปล่อยให้ค่าของ booking ก่อนหน้าค้างอยู่
+  // (เคยเกิดบั๊ก DEL ค้างเป็น Chicago ทุกงาน เพราะ PDF ที่ไม่มี Final Destination ไม่ได้ล้างค่าเดิม)
   if(pol||por){ window._selPol = pol||por; n+=set('r_pol_sel', pol||por); n+=set('rate_pol', pol||por); }
+  else { window._selPol=''; }
   if(pod){ window._selPod = pod; n+=set('r_pod_sel', pod); n+=set('rate_pod', pod); }
+  else { window._selPod=''; }
   if(dest && pod && dest.toUpperCase()!==pod.toUpperCase()){ window._selDel = dest; n+=set('s_del', dest); }
+  else { window._selDel=''; const _dEl=document.getElementById('s_del'); if(_dEl) _dEl.value=''; }
   if(ctn.length && typeof window.setCtnRowsFromPdfList==='function') window.setCtnRowsFromPdfList(ctn);
   // เก็บข้อมูลของฟอร์ม Booking PDF ไว้ให้ครบ จะได้ออก PDF ใบเดิมซ้ำได้
   window._ownPdfBpdf = {
