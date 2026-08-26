@@ -1088,6 +1088,8 @@ body{font-size:14px;font-weight:450}
           <button onclick="qLclApplyBulk()" class="btn btn-ghost" style="font-size:11px;padding:3px 12px;color:#B35C00;border-color:rgba(255,140,0,.6)">✓ ใช้กับทุกแถว</button>
           <span id="q_lcl_warn" style="font-size:10px;font-family:var(--mono);color:var(--red)"></span>
         </div>
+        <div id="q_update_alert" style="display:none;margin-bottom:6px;padding:7px 10px;border-radius:8px;
+             border:1px solid rgba(183,128,10,.45);background:rgba(255,242,204,.55);font-size:11px;line-height:1.5"></div>
         <div id="q_sync_info" style="font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:4px"></div>
       </div>
 
@@ -7303,6 +7305,62 @@ function _qOurPrice(row){
   const base=parseFloat(row[map[size]])||0;
   return base ? base + (parseFloat(row.profit)||0) : 0;
 }
+// ราคาที่กรอกอยู่ในแถวตอนนี้ (ยังไม่บวก + Profit) ตามขนาดตู้ที่แถวนั้นใช้
+function _qRowBase(row){
+  const map={gp20:'r20',gp40:'r40',hc40:'r4h',rf20:'rf20',rf40:'rf40'};
+  return parseFloat(row[map[_qSizeOf(row)]])||0;
+}
+// มีอะไรให้อัปเดตไหม → {type:'expired'|'cheaper', save, rate, carrier}
+function qRowUpdate(row){
+  try{
+    if(!row || !String(row.pod||'').trim()) return null;
+    const m=qMarketStats(row);
+    if(!m || !m.best) return null;
+    const cur=_qRowBase(row);
+    const ref=row._rateRef;
+    const stale = ref ? (_qStat(ref)==='expired') : false;
+    if(stale) return {type:'expired', rate:m.best.r, carrier:m.best.carrier,
+                      save:(cur? Math.max(0, cur-m.lo):0), to:m.lo};
+    if(cur>0 && m.lo < cur) return {type:'cheaper', rate:m.best.r, carrier:m.best.carrier,
+                      save:cur-m.lo, to:m.lo};
+    return null;
+  }catch(e){ return null; }
+}
+window.qRowUpdate=qRowUpdate;
+
+// แถบสรุปเหนือตาราง — เรียกทุกครั้งที่วาดตารางใหม่
+function qUpdateAlertBar(){
+  const box=document.getElementById('q_update_alert'); if(!box) return;
+  if(qIsLCL()){ box.style.display='none'; return; }
+  const list=(qRateRows||[]).map(r=>({row:r, u:qRowUpdate(r)})).filter(x=>x.u);
+  if(!list.length){ box.style.display='none'; box.innerHTML=''; return; }
+  const exp=list.filter(x=>x.u.type==='expired');
+  const chp=list.filter(x=>x.u.type==='cheaper');
+  const save=list.reduce((s,x)=>s+(x.u.save||0),0);
+  const names=n=>n.map(x=>x.row.pod).slice(0,4).join(' · ')+(n.length>4?' …':'');
+  let h='';
+  if(exp.length) h+='<div style="color:var(--red);font-weight:700">⚠ '+exp.length+' แถวใช้เรทที่หมดอายุแล้ว — '+names(exp)+'</div>';
+  if(chp.length) h+='<div style="color:#B35C00;font-weight:700">🔻 '+chp.length+' แถวมีเรทใหม่ที่ถูกกว่า — '+names(chp)+'</div>';
+  if(save>0) h+='<div style="color:#177245">เปลี่ยนทั้งหมดแล้วถูกลงรวม <b>$'+Math.round(save).toLocaleString()+'</b></div>';
+  h+='<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">'
+   + '<button onclick="qReplaceAllUpdates()" class="btn btn-ghost" style="font-size:10.5px;padding:3px 12px;color:#177245;border-color:rgba(23,114,69,.5)">✓ เปลี่ยนให้ทุกแถว</button>'
+   + '<button onclick="qDismissUpdates()" class="btn btn-ghost" style="font-size:10.5px;padding:3px 12px">ไว้ก่อน</button>'
+   + '<span style="font-size:10px;color:var(--muted);align-self:center">หรือกดที่ป้ายในแถวเพื่อเปลี่ยนทีละแถว</span></div>';
+  box.innerHTML=h; box.style.display = window._qUpdDismiss ? 'none' : '';
+}
+window.qUpdateAlertBar=qUpdateAlertBar;
+window.qDismissUpdates=function(){ window._qUpdDismiss=true; const b=document.getElementById('q_update_alert'); if(b) b.style.display='none'; };
+window.qReplaceAllUpdates=function(){
+  const list=(qRateRows||[]).map(r=>({row:r,u:qRowUpdate(r)})).filter(x=>x.u);
+  if(!list.length) return toast('ไม่มีแถวที่ต้องเปลี่ยน');
+  let save=0, fix=0;
+  list.forEach(x=>{ _qFillRowFromRate(x.row, x.u.rate); save+=(x.u.save||0); if(_qFixWarn(x.u.rate)) fix++; });
+  window._qUpdDismiss=false;
+  qRenderRateRows(); qPreview();
+  toast('✓ เปลี่ยนเรทให้ '+list.length+' แถว'+(save>0?' · ถูกลงรวม $'+Math.round(save).toLocaleString():'')
+       +(fix?' · ⚠ '+fix+' แถวได้เรทผูกชนิดสินค้า':''));
+};
+
 function qMarketCell(row){
   const m=qMarketStats(row);
   if(!m){
@@ -7320,7 +7378,17 @@ function qMarketCell(row){
     const txt = our<=m.lo ? 'ถูกสุดในตลาด' : (diff===0?'เท่าค่ากลาง':(diff<0?diff+'% ต่ำกว่ากลาง':'+'+diff+'% สูงกว่ากลาง'));
     verdict='<div style="font-size:9px;color:'+col+';font-weight:700">'+txt+'</div>';
   }
-  return '<div style="line-height:1.35;white-space:nowrap;cursor:pointer" onclick="qApplyCheapestRow('+row.id+')"'
+  const u=qRowUpdate(row);
+  const badge = !u ? '' :
+    '<div onclick="event.stopPropagation();qApplyCheapestRow('+row.id+')" '
+    + 'style="cursor:pointer;margin-bottom:3px;padding:2px 5px;border-radius:5px;font-size:9.5px;font-weight:700;white-space:nowrap;'
+    + (u.type==='expired' ? 'background:rgba(192,57,43,.12);color:var(--red);border:1px solid rgba(192,57,43,.35)"'
+                          : 'background:rgba(183,128,10,.15);color:#B35C00;border:1px solid rgba(183,128,10,.4)"')
+    + ' title="'+(u.type==='expired'?'เรทที่ใช้อยู่หมดอายุแล้ว':'คลังเรทมีของถูกกว่า')
+    + ' — เปลี่ยนเป็น '+u.carrier+' $'+Number(u.to).toLocaleString()+'">'
+    + (u.type==='expired' ? '⚠ หมดอายุ — เปลี่ยน?' : '🔻 ถูกกว่า $'+Number(u.save).toLocaleString()+' — เปลี่ยน?')
+    + '</div>';
+  return badge + '<div style="line-height:1.35;white-space:nowrap;cursor:pointer" onclick="qApplyCheapestRow('+row.id+')"'
        + ' title="เรท '+m.sizeLabel+' ของ '+m.n+' สายเรือในเส้นทางนี้ · ถูกสุด '+m.best.carrier+' — คลิกเพื่อดึงเรทถูกสุดมาใส่แถวนี้">'
        + '<div style="font-size:10px"><span style="color:var(--muted)">ต่ำ </span><b style="color:#177245">'+f(m.lo)+'</b></div>'
        + '<div style="font-size:10px"><span style="color:var(--muted)">กลาง </span><b>'+f(m.mid)+'</b></div>'
@@ -7476,6 +7544,7 @@ function qRenderRateRows(){
     </tr>`).join('');
   qRateRows.forEach(r=>{ try{ qUpdateRateDisplay(r.id); }catch(e){} });
   qApplyRfCols();
+  try{ qUpdateAlertBar(); }catch(e){}
 }
 
 // ── ตารางเรทแบบ LCL — คอลัมน์ตามใบเรท Grandlink ───────────────
