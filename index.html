@@ -1035,6 +1035,8 @@ body{font-size:14px;font-weight:450}
               <th style="text-align:right;padding:5px 8px;color:var(--cyan);font-size:10px;font-family:var(--mono);min-width:80px">40 HC</th>
               <th class="qrf" style="text-align:right;padding:5px 8px;color:#4fc3f7;font-size:10px;font-family:var(--mono);min-width:80px">20 RF</th>
               <th class="qrf" style="text-align:right;padding:5px 8px;color:#4fc3f7;font-size:10px;font-family:var(--mono);min-width:80px">40 RF</th>
+              <th style="text-align:right;padding:5px 8px;color:#7A5500;font-size:10px;font-family:var(--mono);min-width:104px"
+                  title="ราคาตลาดของเส้นทางนี้ในคลังเรท — ถูกสุด / กลาง / แพงสุด ของแต่ละสายเรือ (เฉพาะเรทที่ยังใช้ได้)">MARKET</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DEM</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:55px">DET</th>
               <th style="text-align:center;padding:5px 8px;color:var(--muted);font-size:10px;font-family:var(--mono);min-width:65px">COMBINED</th>
@@ -1049,6 +1051,8 @@ body{font-size:14px;font-weight:450}
         </div>
         <div style="display:flex;gap:6px;margin-bottom:4px">
           <button onclick="qAddRateRow()" class="btn btn-ghost" style="font-size:11px;flex:1">+ Add POD / Rate</button>
+          <button onclick="qPickCheapest()" class="btn btn-ghost" style="font-size:11px;flex:1;color:#177245;border-color:rgba(23,114,69,.45)"
+            title="ดึงเรทที่ถูกที่สุดและยังใช้ได้ของทุกแถวมาใส่ให้ — ทับสายเรือที่พิมพ์ไว้ กดซ้ำเพื่อย้อนกลับ">⚡ เรทถูกสุด</button>
           <button onclick="qSyncRates()" class="btn btn-ghost" style="font-size:11px;flex:1;color:var(--cyan);border-color:var(--cyan)"
             title="ดึงเรทล่าสุดจากคลังเรทตาม POL / POD / DEL ของแต่ละแถว (เฉพาะเรทที่ยัง valid)">🔄 Sync Rate จากคลังเรท</button>
           <span style="font-size:9px;color:var(--muted);white-space:nowrap;line-height:1.3">ใส่ชื่อเรือ = ล็อกเรือนั้น<br>เว้นว่าง = เลือกเรือถูกสุดให้</span>
@@ -7221,6 +7225,140 @@ function qAddRateRow(pod='', r20='', r40='', r4h='', valid='', incl='', carrier=
 function qIsLCL(){ return ((document.getElementById('q_type')||{}).value)==='LCL'; }
 window.qIsLCL = qIsLCL;
 
+// ══ ราคาตลาด + ดึงเรทถูกสุด (26 ส.ค. 2026) ══════════════════════
+// "ตลาด" = เรทของเส้นทางเดียวกันในคลัง ที่ยังใช้ได้ (active + งวดหน้า)
+// นับสายเรือละ 1 ราคา (ถูกสุดของสายนั้น) แล้วดู ถูกสุด / กลาง / แพงสุด
+function _qSizeOf(row){
+  if((parseFloat(row.rf40)||0)>0 || (parseFloat(row.rf20)||0)>0) return (parseFloat(row.rf40)||0)>0 ? 'rf40':'rf20';
+  if((parseFloat(row.r4h)||0)>0) return 'hc40';
+  if((parseFloat(row.r40)||0)>0) return 'gp40';
+  if((parseFloat(row.r20)||0)>0) return 'gp20';
+  return 'hc40';                                   // ยังไม่มีราคา → ยึด 40'HC เป็นหลัก
+}
+const _QSIZELBL={gp20:"20'",gp40:"40'",hc40:"40'HC",rf20:"20'RF",rf40:"40'RF"};
+function qMarketStats(row, fallbackPol){
+  try{
+    if(!row || !String(row.pod||'').trim()) return null;
+    const pol = fallbackPol || (document.getElementById('q_pol')||{}).value || '';
+    const cands = qFindRateCandidates(Object.assign({}, row, {carrier:'', src:''}), pol);
+    if(!cands || !cands.length) return null;
+    const size=_qSizeOf(row);
+    const perCarrier={};
+    cands.forEach(r=>{
+      const v=parseFloat(r[size])||0; if(v<=0) return;
+      const c=String(r.carrier||'?').toUpperCase();
+      if(!perCarrier[c] || v<perCarrier[c].v) perCarrier[c]={v, r};
+    });
+    const list=Object.keys(perCarrier).map(c=>({carrier:c, v:perCarrier[c].v, r:perCarrier[c].r}))
+                     .sort((a,b)=>a.v-b.v);
+    if(!list.length) return null;
+    const vals=list.map(x=>x.v), n=vals.length;
+    const mid = n%2 ? vals[(n-1)/2] : Math.round((vals[n/2-1]+vals[n/2])/2);
+    return {n, size, sizeLabel:_QSIZELBL[size]||size,
+            lo:vals[0], mid, hi:vals[n-1], best:list[0], list};
+  }catch(e){ return null; }
+}
+window.qMarketStats=qMarketStats;
+
+// เรทที่ผูกชนิดสินค้า (FIX) ใช้กับสินค้านอกลิสต์ไม่ได้ — ต้องเตือนทุกครั้งที่หยิบมาใช้
+function _qFixWarn(r){
+  if(!r) return '';
+  const com=String(r.commodity||'').trim();
+  if(com) return 'เรทนี้ใช้ได้เฉพาะ: '+(com.length>70?com.slice(0,70)+'…':com);
+  if(String(r.source||'').toUpperCase()==='FIX') return 'เป็นเรท FIX ผูกชนิดสินค้า';
+  return '';
+}
+
+// ราคาที่เรากำลังเสนอในแถวนี้ (รวม + Profit แล้ว) ไว้เทียบกับตลาด
+function _qOurPrice(row){
+  const size=_qSizeOf(row);
+  const map={gp20:'r20',gp40:'r40',hc40:'r4h',rf20:'rf20',rf40:'rf40'};
+  const base=parseFloat(row[map[size]])||0;
+  return base ? base + (parseFloat(row.profit)||0) : 0;
+}
+function qMarketCell(row){
+  const m=qMarketStats(row);
+  if(!m) return '<span style="font-size:10px;color:var(--muted)">—</span>';
+  const f=v=>'$'+Number(v).toLocaleString();
+  const our=_qOurPrice(row);
+  let verdict='';
+  if(our>0){
+    const diff=Math.round((our-m.mid)/m.mid*100);
+    const col = our<=m.lo ? '#177245' : (our<=m.mid ? '#177245' : 'var(--red)');
+    const txt = our<=m.lo ? 'ถูกสุดในตลาด' : (diff===0?'เท่าค่ากลาง':(diff<0?diff+'% ต่ำกว่ากลาง':'+'+diff+'% สูงกว่ากลาง'));
+    verdict='<div style="font-size:9px;color:'+col+';font-weight:700">'+txt+'</div>';
+  }
+  return '<div style="line-height:1.35;white-space:nowrap;cursor:pointer" onclick="qApplyCheapestRow('+row.id+')"'
+       + ' title="เรท '+m.sizeLabel+' ของ '+m.n+' สายเรือในเส้นทางนี้ · ถูกสุด '+m.best.carrier+' — คลิกเพื่อดึงเรทถูกสุดมาใส่แถวนี้">'
+       + '<div style="font-size:10px"><span style="color:var(--muted)">ต่ำ </span><b style="color:#177245">'+f(m.lo)+'</b></div>'
+       + '<div style="font-size:10px"><span style="color:var(--muted)">กลาง </span><b>'+f(m.mid)+'</b></div>'
+       + '<div style="font-size:10px"><span style="color:var(--muted)">สูง </span>'+f(m.hi)+'</div>'
+       + '<div style="font-size:9px;color:var(--muted)">'+m.n+' สาย · '+m.sizeLabel+'</div>'
+       + verdict + '</div>';
+}
+window.qMarketCell=qMarketCell;
+
+// เอาเรทของ rate มาใส่แถว (ใช้ร่วมกันทั้งปุ่มรวมและคลิกทีละแถว)
+function _qFillRowFromRate(row, r){
+  row.na=false; row._rateRef=r;
+  row.carrier = r.carrier||'';
+  row.src     = (typeof srcLabel==='function') ? srcLabel(r.source, r) : (r.source||'');
+  row._src    = r.source||'';
+  if(!row.pol) row.pol = r.pol||'';
+  row.r20=r.gp20||''; row.r40=r.gp40||''; row.r4h=r.hc40||'';
+  row.rf20=r.rf20||''; row.rf40=r.rf40||'';
+  const vt=_qValidText(r); if(vt) row.valid=vt;
+  if(r.tt)     row.tt=r.tt;
+  if(r.direct) row.direct=r.direct;
+  if(r.dem)    row.dem=r.dem;
+  if(r.det)    row.det=r.det;
+  const _c = r.combined || ((r.dem||r.det) ? '' : r.ft);
+  if(_c) row.combined=String(_c).replace(/\s*days?\s*$/i,'');
+}
+// คลิกที่ช่อง MARKET = ดึงเรทถูกสุดของแถวนั้น
+window.qApplyCheapestRow=function(id){
+  const row=qRateRows.find(r=>r.id===id); if(!row) return;
+  const m=qMarketStats(row);
+  if(!m || !m.best) return toast('ไม่พบเรทที่ยังใช้ได้ในเส้นทางนี้');
+  _qFillRowFromRate(row, m.best.r);
+  qRenderRateRows(); qPreview();
+  const w=_qFixWarn(m.best.r);
+  toast('⚡ '+row.pod+' → '+m.best.carrier+' $'+Number(m.best.v).toLocaleString()+' ('+m.sizeLabel+') ถูกสุดจาก '+m.n+' สาย'+(w?' · ⚠ '+w:''));
+};
+
+// ปุ่มรวม: ดึงเรทถูกสุดให้ทุกแถว · กดซ้ำ = ย้อนกลับ
+let _qCheapUndo=null;
+window.qPickCheapest=function(){
+  if(!qRateRows.length) return toast('ยังไม่มีแถว — กด "+ Add POD / Rate" ก่อน');
+  if(_qCheapUndo){                                   // กดซ้ำ = undo
+    qRateRows = JSON.parse(_qCheapUndo); _qCheapUndo=null;
+    qRenderRateRows(); qPreview();
+    return toast('↩ ย้อนกลับเป็นเรทก่อนหน้าแล้ว');
+  }
+  const snap=JSON.stringify(qRateRows);
+  let hit=0, miss=[], saved=0;
+  qRateRows.forEach(row=>{
+    if(!String(row.pod||'').trim()) return;
+    const before=_qOurPrice(row);
+    const m=qMarketStats(row);
+    if(!m || !m.best){ row.na=true; miss.push(row.pod); return; }
+    _qFillRowFromRate(row, m.best.r);
+    if(before>0){ const after=_qOurPrice(row); if(after<before) saved+=(before-after); }
+    hit++;
+  });
+  if(!hit) return toast('ไม่พบเรทที่ยังใช้ได้เลยสักแถว');
+  _qCheapUndo=snap;
+  const fixRows=qRateRows.filter(r=>r._rateRef && _qFixWarn(r._rateRef));
+  qRenderRateRows(); qPreview();
+  const info=document.getElementById('q_sync_info');
+  if(info) info.innerHTML='⚡ ดึงเรทถูกสุดแล้ว <span style="color:#177245">'+hit+' แถว</span>'
+    + (saved>0?' · ประหยัดรวม <span style="color:#177245">$'+Math.round(saved).toLocaleString()+'</span>':'')
+    + (miss.length?' · <span style="color:var(--red)">ไม่พบเรท '+miss.length+' ('+miss.slice(0,3).join(' · ')+')</span>':'')
+    + (fixRows.length?' · <span style="color:var(--gold)">⚠ '+fixRows.length+' แถวได้เรทที่ผูกชนิดสินค้า — เช็คสินค้าลูกค้าก่อนเสนอ</span>':'')
+    + ' · <span style="color:var(--muted)">กดปุ่มซ้ำเพื่อย้อนกลับ</span>';
+  toast('⚡ ดึงเรทถูกสุด '+hit+' แถว'+(saved>0?' · ถูกลงรวม $'+Math.round(saved).toLocaleString():'')+(miss.length?' · ไม่พบ '+miss.length:''));
+};
+
 // ตู้เย็น (REEFER) ใช้ 20'RF / 40'RF คนละราคากับตู้แห้ง
 // คอลัมน์ RF ซ่อนไว้ตอนไม่มีเรท RF — จะโผล่เองเมื่อ sync เจอ หรือติ๊กเอง
 function qHasRF(){
@@ -7244,7 +7382,7 @@ function qRenderRateRows(){
   const body = document.getElementById('q_rate_body');
   if(!body) return;
   if(!qRateRows.length){
-    body.innerHTML = '<tr><td colspan="18" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
+    body.innerHTML = '<tr><td colspan="19" style="padding:10px;text-align:center;color:var(--muted);font-size:11px">กด "+ Add POD / Rate" เพื่อเพิ่ม</td></tr>';
     return;
   }
   if(qIsLCL()){ return qRenderRateRowsLCL(body); }
@@ -7272,6 +7410,7 @@ function qRenderRateRows(){
         oninput="qUpdateRate(${row.id},'rf20',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:#4fc3f7;width:70px"></td>
       <td class="qrf" style="padding:3px 4px"><input type="text" inputmode="decimal" data-rid="${row.id}" data-f="rf40" class="inp" value="${row.rf40||''}" placeholder="0"
         oninput="qUpdateRate(${row.id},'rf40',this.value);qUpdateRateDisplay(${row.id})" style="font-size:11px;padding:3px 6px;text-align:right;color:#4fc3f7;width:70px"></td>
+      <td style="padding:3px 4px;text-align:right" id="mkt_${row.id}">${qMarketCell(row)}</td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.dem||''}" placeholder="e.g. 10"
         oninput="qUpdateRate(${row.id},'dem',this.value)" style="font-size:11px;padding:3px 6px;text-align:center;width:45px"></td>
       <td style="padding:3px 4px"><input spellcheck="false" class="inp" value="${row.det||''}" placeholder="e.g. 5"
