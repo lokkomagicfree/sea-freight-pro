@@ -646,6 +646,8 @@ body{font-size:14px;font-weight:450}
         <span id="autosave_badge" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
         <button onclick="storageExport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📦 Backup</button>
         <button onclick="storageImport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📂 Import</button>
+        <button onclick="forcePullJobs()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:rgba(192,57,43,.4)"
+          title="ทิ้งข้อมูลงานในเครื่องนี้ แล้วดึงของจาก cloud มาใช้แทน — ใช้ตอนสองเครื่องยอดไม่ตรงกันและรู้ว่าอีกเครื่องถูก">⬇ ดึงจาก cloud</button>
       </div>
     </div>
 
@@ -1998,6 +2000,33 @@ function storageExport(){
   a.click();
   toast('📦 Backup exported');
 }
+
+// ── บังคับเอาของ cloud มาทับเครื่องนี้ ────────────────────────────
+// ตอนเปิดแอป ระบบเทียบ "เวลาเซฟล่าสุดของเครื่อง" กับ "เวลาอัปเดตของ cloud"
+// เครื่องไหนใหม่กว่าเป็นฝ่ายชนะทั้งยวง → เครื่องที่เผลอเซฟทีหลังจะไม่มีวันรับของ cloud เลย
+// ปุ่มนี้คือทางออกเวลารู้แน่ว่าอีกเครื่องถูก (เคส 26 ส.ค. 2026: ยอด ส.ค. 59,836 vs 57,994)
+window.forcePullJobs = async function(){
+  try{
+    const snap = await window.fbGet('data/jobs');
+    const cj = (snap && snap.jobs) || [];
+    if(!cj.length) return toast('❌ cloud ยังไม่มีข้อมูลงาน — ยกเลิก');
+    const sumP = a => Math.round(a.reduce((s,j)=>s+(+j.profit||0),0));
+    if(!confirm('ดึงข้อมูลงานจาก cloud มาทับเครื่องนี้?\n\n'
+      + 'เครื่องนี้ตอนนี้ : '+(window.savedJobs||[]).length+' งาน · กำไรรวม $'+sumP(window.savedJobs||[]).toLocaleString()+'\n'
+      + 'บน cloud       : '+cj.length+' งาน · กำไรรวม $'+sumP(cj).toLocaleString()+'\n\n'
+      + 'ข้อมูลงานในเครื่องนี้จะถูกแทนที่ทั้งหมด (สำรองไว้ให้อัตโนมัติ)')) return;
+    try{ localStorage.setItem('sfp_jobs_before_pull_'+Date.now(), JSON.stringify(window.savedJobs||[])); }catch(e){}
+    window.savedJobs = cj;
+    try{
+      localStorage.setItem('seafreight_jobs_v1', JSON.stringify(cj));
+      // ตั้งเวลาเซฟของเครื่องให้ "เก่ากว่า" cloud เพื่อไม่ให้รอบหน้าดันของเก่ากลับขึ้นไป
+      localStorage.setItem('sfp_jobs_savedAt', snap.updatedAt || new Date(Date.now()-60000).toISOString());
+    }catch(e){}
+    window._sfpSyncHash.jobs = _sfpHash(cj);
+    renderShipments?.(); updateAlertCount?.(); renderNewBizList?.(); renderWorkBench?.();
+    toast('⬇ ดึงจาก cloud แล้ว '+cj.length+' งาน · กำไรรวม $'+sumP(cj).toLocaleString());
+  }catch(e){ toast('❌ ดึงไม่สำเร็จ: '+(e&&e.message||e)); }
+};
 
 function storageImport(){
   const input = document.createElement('input');
