@@ -4586,6 +4586,7 @@ function saveShipment(){
     jobData.updatedAt = new Date().toISOString();
     PRESERVE_FIELDS.forEach(f=>{ if(prev[f]!==undefined) jobData[f]=prev[f]; });
     if(jobData.status==='confirmed' && !wasConfirmed) queueConfirmedForWeeklyReport(jobData);
+    jobData.updatedAt = new Date().toISOString();       // ต้องมีทุกใบ ใช้ตัดสินตอน sync ข้ามเครื่อง
     savedJobs[window._editIdx]=jobData;window._editIdx=null;
     const btn=g('save_btn');if(btn){btn.textContent='💾 Save Shipment';btn.className='btn btn-cyan';btn.style.background='';}
     toast('✅ Shipment updated!');
@@ -4594,6 +4595,7 @@ function saveShipment(){
     jobData.createdAt = new Date().toISOString();      // 🕒 วัน-เวลาที่เพิ่ม shipment นี้เข้าระบบ
     jobData.statusHistory=[{status:jobData.status,date:jobData.createdAt,note:'Created'}];
     if(jobData.csAssigned) jobData.assignedAt = jobData.createdAt;
+    jobData.updatedAt = new Date().toISOString();
     savedJobs.push(jobData);
     const btn2=g('save_btn');if(btn2){btn2.textContent='💾 Save Shipment';btn2.className='btn btn-cyan';btn2.style.background='';}
     toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
@@ -11950,6 +11952,16 @@ onAuthStateChanged(auth, async user=>{
         }
         const fields = ['etd','eta','vessel','voyage','motherVessel','motherVoy','status','remarks','csTasks','lastRemarked','preAlert','assignedAt',
           'bpdfData','siCutoff','vgmCutoff','docCutoff','gateClosing','pickupDate','turninDate','pickupPlace','pickupPic','turninAt','turninPic','paperlessCode','carrier'];
+        // ── ช่องเงิน: เดิมไม่อยู่ในลิสต์เลย แก้ราคาที่เครื่องนึงอีกเครื่องไม่เคยรู้
+        //    ยอดรวมสองเครื่องเลยต่างกันถาวร (เคส 26 ส.ค. 2026: กำไร ส.ค. 59,836 vs 57,994)
+        //    ให้ข้ามเครื่องได้ แต่เฉพาะตอนที่ฝั่ง cloud "ใหม่กว่าจริง" เท่านั้น
+        //    ใบไหนไม่มี updatedAt ทั้งสองฝั่ง = ตัดสินไม่ได้ ไม่แตะ (กันทับข้อมูลที่เพิ่งกรอก)
+        const MONEY = ['sell','cost','profit','comm','commThb','margin','rate','q20','q40','q40hc',
+                       'charges','sells','costs','totalSell','totalCost','cbm','type','customer','shipper','pol','pod','del'];
+        const _rt=String(rj.updatedAt||''), _lt=String(lj.updatedAt||'');
+        if(_rt && _lt && _rt > _lt) MONEY.forEach(f=>{
+          if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){ lj[f]=rj[f]; changed=true; }
+        });
         fields.forEach(f=>{
           if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){
             lj[f] = rj[f];
