@@ -6168,6 +6168,33 @@ function applyOwnBookingPdf(lines){
       seen.push({idx, k:x.k, v});
     });
   });
+  // ── ต่อบรรทัด "Address :" เข้ากับสถานที่ ──────────────────────────
+  // ใบของ WHL แยก address ของ depot เป็นบรรทัด "Address :" ต่างหาก
+  // ซึ่งไม่อยู่ในลิสต์ป้าย → เดิมที่อยู่ depot หายไปเลยตอน import
+  // (ใบที่ SFP ออกเองพิมพ์ address รวมอยู่ในช่อง Place อยู่แล้ว จึงต้องต่อกลับให้เหมือนกัน)
+  (function mergeAddress(){
+    const pairs = [['pick up place', /pick\s*up\s*place/i], ['turn-in at', /turn-?in\s*at/i]];
+    pairs.forEach(([key, labelRe])=>{
+      if(!map[key]) return;
+      const i = L.findIndex(t => labelRe.test(t));
+      if(i < 0) return;
+      for(let j=i+1; j<Math.min(i+5, L.length); j++){
+        const t = String(L[j]||'').trim();
+        if(!t) continue;
+        const m = t.match(/^address\s*[:：]\s*(.*)$/i);
+        if(!m) { if(/^(pick\s*up|turn-?in|commodity|hs\.?\s*code|paperless)/i.test(t)) break; continue; }
+        let addr = m[1].trim();
+        if(!addr && j+1 < L.length){                    // ค่าอยู่บรรทัดถัดไป
+          const nx = String(L[j+1]||'').trim();
+          if(nx && !/^(pick\s*up|turn-?in|commodity|hs\.?\s*code|paperless|address)/i.test(nx)) addr = nx;
+        }
+        if(addr && !map[key].toLowerCase().includes(addr.slice(0,15).toLowerCase()))
+          map[key] = map[key] + ' (' + addr + ')';
+        break;
+      }
+    });
+  })();
+
   // "Booking No." ในใบของเราไม่มีเครื่องหมาย : และค่าอยู่คนละบรรทัด
   // เลข booking เป็น "ตัวเลขล้วน" เสมอ (เช่น 6462437150)
   // ส่วน REF ลูกค้าเป็นตัวอักษรนำหน้า (เช่น STHABKK00538887) — ห้ามหยิบสลับกัน
@@ -6317,6 +6344,12 @@ function applyOwnBookingPdf(lines){
   };
   const miss=[]; if(!bkg) miss.push('Booking No.'); if(!fmt(g('ETD'))) miss.push('ETD'); if(!ctn.length) miss.push('Volume');
   toast('📄 อ่าน Booking Confirmation ของเราแล้ว — เติม '+n+' ช่อง'+(miss.length?(' · ยังไม่พบ: '+miss.join(', ')):''));
+  // กันอ่านวันที่สลับช่อง — ETA ต้องไม่มาก่อน ETD (เคยเจอ job ที่ ETA 27 ส.ค. แต่ ETD 30 ส.ค.)
+  {
+    const _d1=fmt(g('ETD')), _d2=fmt(g('ETA'));
+    if(_d1 && _d2 && _d2 < _d1)
+      toast('⚠ ETA ('+_d2+') มาก่อน ETD ('+_d1+') — อ่านจาก PDF อาจสลับช่อง ตรวจก่อนบันทึก');
+  }
   if(ctn.length) toast('📦 '+ctn.map(c=>c.qty+'x'+c.type).join(' + ')+(g('Commodity')?(' · '+g('Commodity')):''));
   return true;
 }
