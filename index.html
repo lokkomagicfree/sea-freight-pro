@@ -12947,8 +12947,9 @@ async function generateBookingPDF(){
   puRows.forEach(([lbl,val,bv])=>{
     const lines = wrapLines(val, TW-40, 8);
     const rh2 = Math.max(RH, lines.length*4.5);
-    const vy = y+rh2/2-1;
-    t(lbl, C1, vy, 8, true);
+    // หัวข้อต้องอยู่บรรทัดเดียวกับค่าบรรทัดแรก (y+4 เท่ากับทุกบล็อกในเอกสาร)
+    // ของเดิมจัดหัวข้อไว้กึ่งกลางแถว (y+rh2/2-1) เลยลอยสูงกว่าค่า 2.25 มม. ทุกแถว
+    t(lbl, C1, y+4, 8, true);
     lines.forEach((ln,i)=>{ doc.setFont(fontFor(ln),bv?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(...BLK); doc.text(ln,C2,y+4+i*4.5); });
     y+=rh2;
   });
