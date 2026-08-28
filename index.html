@@ -15144,7 +15144,7 @@ window.__WWL_APP='SFP';
       var remote=normalize(snap);
       if(remote.seen >= (S.seen||0)-60000){ S=remote; try{ _cloudHash=JSON.stringify(S); }catch(e){}
         try{ localStorage.setItem(lsKey(), JSON.stringify(S)); }catch(e){}
-        paint(); face(); clampPos(); place(); renderPanel();
+        paint(); face(); clampPos(); place(); applyHidden(); renderPanel();
       } else save();
     }catch(e){ console.warn('cat cloudLoad',e); }
   }
@@ -15915,7 +15915,11 @@ window.__WWL_APP='SFP';
   var last=0;
   function loop(now){
     requestAnimationFrame(loop);
-    if(S.hidden) return;
+    if(S.hidden){
+      // กันเคสน้องยังโชว์อยู่บนจอแต่สถานะเป็นซ่อน -> แมวค้าง ลากไม่ได้ เล่นไม่ได้
+      if(wrap.style.display!=='none'){ S.hidden=false; applyHidden(); save(); }
+      else return;
+    }
     var dt=Math.min(48, now-last); last=now;
     floorY = Math.min(H()-CW()*0.78, Math.max(4, floorY));
     if(dragging){
@@ -16000,10 +16004,17 @@ window.__WWL_APP='SFP';
   scheduleCheer();
   setInterval(autoSeasonWear, 3600000);
 
+  // ── สถานะซ่อน/โชว์ ต้องมีที่มาที่เดียว: S.hidden -> DOM  (แก้ 28 ส.ค. 2026)
+  //    เดิม cloudLoad เขียน S.hidden ทับแต่ไม่แตะ DOM  น้องเลยยังโชว์อยู่แต่ loop return ทุกเฟรม
+  //    ผลคือแมวค้าง ลากไม่ได้ ไม้ตกแมวไม่ทำงาน
+  function applyHidden(){
+    try{
+      if(S.hidden){ wrap.style.display='none'; callBtn.style.opacity='1'; callBtn.title='เรียกน้องแมวกลับมา'; }
+      else { wrap.style.display='block'; cat.style.display='block'; callBtn.style.opacity='.55'; callBtn.title='เรียกน้องแมว'; }
+    }catch(e){}
+  }
   function showCat(fromBtn){
-    S.hidden=false; save();
-    wrap.style.display='block'; cat.style.display='block';
-    callBtn.style.opacity='.55'; callBtn.title='เรียกน้องแมว';
+    S.hidden=false; save(); applyHidden();
     if(fromBtn){
       pos.x=Math.max(8, W()-CW()-150); pos.y=Math.max(8, H()-CW()*0.8-40);
       floorY=pos.y; vx=vy=0; ang=angV=0;
@@ -16013,15 +16024,14 @@ window.__WWL_APP='SFP';
     }
     applyPose();
   }
-  function hideCat(){ S.hidden=true; save(); hidePanel();
-    wrap.style.display='none'; callBtn.style.opacity='1'; callBtn.title='เรียกน้องแมวกลับมา'; }
+  function hideCat(){ S.hidden=true; save(); hidePanel(); applyHidden(); }
   callBtn.addEventListener('click',function(){ showCat(true); if(!S.hidden) showPanel(); });
 
   window.addEventListener('resize',function(){ clampPos(); floorY=pos.y; place(); });
   window.addEventListener('beforeunload',function(){ S.x=pos.x; S.y=pos.y; save(); });
 
   paint(); face(); clampPos(); place(); applyPose();
-  if(S.hidden){ wrap.style.display='none'; callBtn.style.opacity='1'; } else callBtn.style.opacity='.55';
+  applyHidden();
   requestAnimationFrame(loop);
   setTimeout(function(){
     if(S.hidden) return;
@@ -16029,6 +16039,32 @@ window.__WWL_APP='SFP';
     say((h<12?'อรุณสวัสดิ์ ':h<18?'สวัสดีตอนบ่าย ':'สวัสดีตอนเย็น ')+'เมี๊ยว~ 🐾', 3000);
   }, 1400);
   setTimeout(cloudLoad, 3000);
+
+  // ── ผูกน้องแมวกับอีเมลที่ล็อกอิน (แก้ 28 ส.ค. 2026) ────────────────────────
+  //    ตอนเปิดหน้าใหม่ auth ยังไม่มา emailNow() ว่าง -> โหลดจากคีย์ 'guest'
+  //    ถ้าไม่สลับคีย์ตอน login เสร็จ เครื่องใหม่จะเห็นเป็นแมวตัวใหม่ทุกครั้ง
+  var _keyEmail = emailNow();
+  function switchToEmail(){
+    var e = emailNow();
+    if(e === _keyEmail) return;
+    _keyEmail = e;
+    if(!e) return;
+    var raw=null; try{ raw=localStorage.getItem('wwl_cat_v3_'+e); }catch(x){}
+    if(raw){                                   // เคยเลี้ยงในเครื่องนี้แล้ว -> ใช้ตัวนั้น
+      try{ S=normalize(JSON.parse(raw)); }catch(x){}
+    } else {                                   // เครื่องใหม่ -> ยกตัว guest มาเป็นของอีเมลนี้ไปก่อน
+      try{ localStorage.setItem('wwl_cat_v3_'+e, JSON.stringify(S)); }catch(x){}
+    }
+    _cloudHash='';
+    paint(); face(); clampPos(); place(); applyHidden(); renderPanel();
+    cloudLoad();                               // ให้ตัวบน cloud เป็นคนตัดสินตัวจริง
+  }
+  var _keyTries=0;
+  var _keyTimer=setInterval(function(){
+    switchToEmail();
+    if(emailNow() && ++_keyTries>3){ clearInterval(_keyTimer); setInterval(switchToEmail, 15000); }
+  }, 1000);
+
   setInterval(function(){ if(emailNow()) cloudLoad(); }, 300000);
 
   window.__wwlCat = { show:function(){ showCat(true); }, hide:hideCat,
