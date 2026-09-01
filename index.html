@@ -12971,21 +12971,25 @@ async function generateBookingPDF(){
   y+=RH+2;
 
   // Pickup
+  // แถวที่ค่ายาวแล้วต้องขึ้นบรรทัดใหม่เอง โดยไม่ทับแถวถัดไป (28 ส.ค. 2026)
+  function wrapRow(lbl, val, bv){
+    const lines = wrapLines(val, RM - C2 - 2, 8);
+    const n = Math.max(1, lines.length);
+    const rh2 = Math.max(RH, n*4.5 + 1.2);
+    if(lbl) t(lbl, C1, y+4, 8, true);
+    lines.forEach((ln,i)=>{
+      doc.setFont(fontFor(ln), bv?'bold':'normal'); doc.setFontSize(8);
+      doc.setTextColor(...BLK); doc.text(ln, C2, y+4+i*4.5);
+    });
+    y += rh2;
+  }
   const puRows=[
     ['Pick up Ref :', gv('bpdf_pu_ref'), true],
     ['Pick up Date :', gv('bpdf_pu_date'), false],
     ['Pick up Place :', gv('bpdf_pu_place'), false],
     ['Pick up PIC.:', gv('bpdf_pu_pic'), false],
   ];
-  puRows.forEach(([lbl,val,bv])=>{
-    const lines = wrapLines(val, TW-40, 8);
-    const rh2 = Math.max(RH, lines.length*4.5);
-    // หัวข้อต้องอยู่บรรทัดเดียวกับค่าบรรทัดแรก (y+4 เท่ากับทุกบล็อกในเอกสาร)
-    // ของเดิมจัดหัวข้อไว้กึ่งกลางแถว (y+rh2/2-1) เลยลอยสูงกว่าค่า 2.25 มม. ทุกแถว
-    t(lbl, C1, y+4, 8, true);
-    lines.forEach((ln,i)=>{ doc.setFont(fontFor(ln),bv?'bold':'normal'); doc.setFontSize(8); doc.setTextColor(...BLK); doc.text(ln,C2,y+4+i*4.5); });
-    y+=rh2;
-  });
+  puRows.forEach(([lbl,val,bv])=> wrapRow(lbl,val,bv));
   y+=1;
 
   // Turn-in
@@ -12998,8 +13002,8 @@ async function generateBookingPDF(){
     ['', '', false],
   ];
   tiRows.forEach(([lbl,val,bv])=>{
-    if(lbl){ t(lbl,C1,y+RH-1.5,8,true); t(val,C2,y+RH-1.5,8,bv); }
-    y+=RH;
+    if(lbl) wrapRow(lbl,val,bv);
+    else y+=RH;
   });
   y+=1;
 
@@ -13013,6 +13017,7 @@ async function generateBookingPDF(){
   rect(LM, convTop, TW, y-convTop, null, true, 0.3);
   y+=2;
 
+  if(y + 20 > H - 10){ doc.addPage(); y = 12; }
   // Special Cargo Remark
   const srTop=y;
   hline(y);
@@ -13043,6 +13048,8 @@ async function generateBookingPDF(){
   let allLines=[];
   remarks.forEach(r=>{ allLines.push(...wrapLines(r,TW-6,7)); });
   const remH = allLines.length*3.8+12;
+  // ถ้าเนื้อหาด้านบนยาวจนใกล้ตกขอบล่าง ให้ขึ้นหน้าใหม่ ไม่ปล่อยให้ตกขอบหาย
+  if(y + remH > H - 8){ doc.addPage(); y = 12; }
   const remTop=y;
   doc.setDrawColor(...BLK); doc.setLineWidth(0.3);
   doc.rect(LM, y, TW, remH, 'S');
