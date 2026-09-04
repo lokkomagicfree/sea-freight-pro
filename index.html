@@ -4590,17 +4590,65 @@ function saveShipment(){
   // Override POL if LKB or BKK is ticked
   if(g('lkb_toggle')?.checked) jobData.pol = 'LAT KRABANG (LKB)';
   if(g('bkk_toggle')?.checked) jobData.pol = 'BANGKOK (BKK)';
-  // Decide: update the existing shipment, or add a NEW one.
-  // If we're "editing" but the Booking No. changed (e.g. copied from another job
-  // and given a new number), ADD a new shipment so the original is never
-  // overwritten/lost. A "COPY-" placeholder from Duplicate is finalised in place.
+  /* Decide: update the existing shipment, or add a NEW one.
+     แก้เลขบุคตอนกำลัง edit อยู่ = คลุมเครือ ทำได้ 2 อย่าง
+       - งานเดิมเปลี่ยนเลขบุค (สายเรือออกเลขใหม่)  -> แก้ทับ เลขเก่าต้องหายไป
+       - copy งานเก่ามาแล้วใส่เลขใหม่              -> เพิ่มงานใหม่ เก็บงานเก่าไว้
+     เดาเองไม่ได้ ต้องถาม (ของเดิมเลือกทางที่สองให้เสมอ เลยเกิดงานซ้ำ)
+     ยกเว้น "COPY-" ที่มาจากปุ่ม Duplicate — อันนั้นตั้งใจอยู่แล้ว แก้ทับได้เลย */
   const _editing = window._editIdx!=null;
   const _prev = _editing ? savedJobs[window._editIdx] : null;
   const _noChanged = _editing && _prev && jobData.no && _prev.no && String(jobData.no)!==String(_prev.no);
   const _isDupPlaceholder = _prev && String(_prev.no||'').startsWith('COPY-');
-  const _doUpdate = _editing && !(_noChanged && !_isDupPlaceholder);
-  if(_doUpdate){
-    const prev = savedJobs[window._editIdx];
+  if(_noChanged && !_isDupPlaceholder){
+    window._askRenameOrNew(jobData, window._editIdx, String(_prev.no), String(jobData.no));
+    return;
+  }
+  window._applySave(jobData, _editing ? 'update' : 'new', window._editIdx, null);
+}
+
+/* ถามว่าจะแก้เลขบุคของงานเดิม หรือสร้างงานใหม่ */
+window._askRenameOrNew = function(jobData, editIdx, oldNo, newNo){
+  const old = document.getElementById('_renameAsk'); if(old) old.remove();
+  const d=document.createElement('div');
+  d.id='_renameAsk';
+  d.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.45);'
+    +'display:flex;align-items:center;justify-content:center;padding:20px';
+  d.innerHTML =
+    '<div style="background:#fff;max-width:520px;width:100%;border-radius:16px;padding:24px 26px;'
+    +'box-shadow:0 18px 50px rgba(0,0,0,.3);font-family:inherit">'
+    +'<div style="font-size:18px;font-weight:800;margin-bottom:6px">เลขบุคไม่ตรงกับของเดิม</div>'
+    +'<div style="font-size:14px;line-height:1.7;color:#444;margin-bottom:18px">'
+    +'เดิม <b style="color:#b3502f">'+_esc(oldNo)+'</b> &nbsp;→&nbsp; ใหม่ <b style="color:#1a7f4b">'+_esc(newNo)+'</b>'
+    +'<br>ต้องการให้ระบบทำอะไรครับ?</div>'
+    +'<button id="_rnUpd" style="display:block;width:100%;text-align:left;margin-bottom:10px;padding:13px 15px;'
+    +'border:2px solid #1a7f4b;background:#f2fbf6;border-radius:11px;cursor:pointer;font-size:14px;font-family:inherit">'
+    +'<b>แก้เลขบุคของงานเดิม</b><br><span style="color:#555;font-size:13px">'
+    +'งานเดียวกัน สายเรือออกเลขใหม่ — เลข '+_esc(oldNo)+' จะหายไป ข้อมูลอื่นอยู่ครบ</span></button>'
+    +'<button id="_rnNew" style="display:block;width:100%;text-align:left;margin-bottom:10px;padding:13px 15px;'
+    +'border:2px solid #d9d9d9;background:#fafafa;border-radius:11px;cursor:pointer;font-size:14px;font-family:inherit">'
+    +'<b>สร้างงานใหม่ เก็บงานเดิมไว้</b><br><span style="color:#555;font-size:13px">'
+    +'คนละงาน — จะมีทั้ง '+_esc(oldNo)+' และ '+_esc(newNo)+' ในระบบ</span></button>'
+    +'<button id="_rnCancel" style="display:block;width:100%;padding:10px;border:0;background:none;'
+    +'color:#777;cursor:pointer;font-size:13px;font-family:inherit">ยกเลิก กลับไปแก้ต่อ</button>'
+    +'</div>';
+  function _esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  document.body.appendChild(d);
+  const close=()=>d.remove();
+  d.querySelector('#_rnUpd').onclick   = ()=>{ close(); window._applySave(jobData,'update',editIdx,oldNo); };
+  d.querySelector('#_rnNew').onclick   = ()=>{ close(); window._applySave(jobData,'new',   editIdx,null); };
+  d.querySelector('#_rnCancel').onclick= ()=>{ close(); };      // _editIdx ยังอยู่ กลับไปแก้ต่อได้
+  d.addEventListener('click', e=>{ if(e.target===d) close(); });
+};
+
+/* บันทึกจริง · mode = 'update' (แก้ทับแถวเดิม) หรือ 'new' (เพิ่มแถวใหม่)
+   renamedFrom = เลขบุคเก่า ถ้าเป็นการเปลี่ยนเลข (ต้องเก็บ tombstone กันเด้งกลับจาก cloud) */
+window._applySave = function(jobData, mode, editIdx, renamedFrom){
+  const _noChanged = !!renamedFrom;
+  const _prev = editIdx!=null ? savedJobs[editIdx] : null;
+  if(mode==='update' && editIdx!=null){
+    window._editIdx = editIdx;
+    const prev = savedJobs[editIdx];
     const wasConfirmed = prev.status==='confirmed';
     // Set assignedAt when csAssigned is first assigned
     if(jobData.csAssigned && !prev.csAssigned) jobData.assignedAt = new Date().toISOString();
@@ -4616,9 +4664,17 @@ function saveShipment(){
     PRESERVE_FIELDS.forEach(f=>{ if(prev[f]!==undefined) jobData[f]=prev[f]; });
     if(jobData.status==='confirmed' && !wasConfirmed) queueConfirmedForWeeklyReport(jobData);
     jobData.updatedAt = new Date().toISOString();       // ต้องมีทุกใบ ใช้ตัดสินตอน sync ข้ามเครื่อง
+    if(_noChanged){
+      // บันทึกไว้ใน statusHistory ว่าเลขบุคเปลี่ยนจากอะไรเป็นอะไร ตามรอยย้อนหลังได้
+      jobData.renamedFrom = renamedFrom;
+      (jobData.statusHistory=jobData.statusHistory||[]).push(
+        {status:jobData.status, date:new Date().toISOString(),
+         note:'เปลี่ยนเลขบุค '+renamedFrom+' → '+jobData.no});
+    }
     savedJobs[window._editIdx]=jobData;window._editIdx=null;
     const btn=g('save_btn');if(btn){btn.textContent='💾 Save Shipment';btn.className='btn btn-cyan';btn.style.background='';}
-    toast('✅ Shipment updated!');
+    toast(_noChanged ? '✅ เปลี่ยนเลขบุคเป็น '+jobData.no+' แล้ว (เลขเดิม '+renamedFrom+' ถูกลบ)'
+                     : '✅ Shipment updated!');
   } else {
     window._editIdx=null; // ensure this is treated as a brand-new shipment
     jobData.createdAt = new Date().toISOString();      // 🕒 วัน-เวลาที่เพิ่ม shipment นี้เข้าระบบ
@@ -4627,7 +4683,22 @@ function saveShipment(){
     jobData.updatedAt = new Date().toISOString();
     savedJobs.push(jobData);
     const btn2=g('save_btn');if(btn2){btn2.textContent='💾 Save Shipment';btn2.className='btn btn-cyan';btn2.style.background='';}
-    toast(_noChanged ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
+    toast(editIdx!=null ? '✅ สร้าง Shipment ใหม่ (งานเดิม '+(_prev?.no||'')+' ยังอยู่)' : '✅ Shipment saved!');
+  }
+  /* เปลี่ยนเลขบุค = แถวของเลขเก่าต้องหายไปทุกเครื่อง
+     คลาวด์เก็บงานโดยใช้เลขบุคเป็นคีย์ ถ้าไม่ปัก tombstone ให้เลขเก่า
+     รอบ sync ถัดไปจะดึงงานเลขเก่ากลับมาเป็นแถวใหม่อีก (อาการที่เจอ) */
+  if(_noChanged){
+    try{
+      const del = window._loadDeletedJobs();
+      if(!del.some(d=>String(d.no)===String(renamedFrom)))
+        del.push({no:String(renamedFrom), at:new Date().toISOString(), reason:'renamed→'+jobData.no});
+      window._saveDeletedJobs(del);
+      if(window._revivedNos) window._revivedNos.delete(String(renamedFrom));
+    }catch(e){ console.warn('rename tombstone', e); }
+    // เผื่อในเครื่องนี้ยังมีแถวเลขเก่าค้างอยู่จากรอบ sync ก่อนหน้า
+    for(let i=savedJobs.length-1;i>=0;i--)
+      if(savedJobs[i]!==jobData && String(savedJobs[i]?.no)===String(renamedFrom)) savedJobs.splice(i,1);
   }
   // Saving a shipment must clear any old delete-tombstone for its booking No,
   // otherwise the sync/merge keeps wiping it on every reload (root cause of "งานที่ save หาย").
@@ -4641,7 +4712,7 @@ function saveShipment(){
   }catch(e){}
   renderShipments();updateAlertCount();storageSave();
   try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){}
-}
+};
 
 function editShipment(idx){
   const j=savedJobs[idx];if(!j)return;
