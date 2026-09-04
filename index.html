@@ -6442,6 +6442,19 @@ function applyPdfBooking(lines){
    'BERTH CODE','VESSEL NAME/VOY','VESSEL/VOYAGE','VESSEL NAME','OCEAN VESSEL','FEEDER VESSEL',
    'SI CUT-OFF TIME','VGM CUT-OFF TIME','SI CUT-OFF','VGM CUT-OFF','CY CUT-OFF','DOC CUT-OFF',
    'DOCUMENT CUT-OFF','GATE CLOSING','CLOSING TIME','SAILING DATE','DUE DATE','SHIPPER','CONSIGNEE',
+   /* ป้ายที่ใช้ในใบ Booking Confirmation ที่ SFP ออกเอง — ไม่มีในลิสต์เดิม เลยอ่านไม่ออกทั้งใบ */
+   'MOTHER VSL NAME','VSL NAME / VOY','VSL NAME/VOY','GATE CLOSING DATE','DEAD LINE CFM BL',
+   'PICK UP DATE','PICK UP REF','PICK UP PLACE','PICK UP PIC.','PICK UP PIC',
+   'TURN-IN DATE','TURN-IN REF','TURN-IN AT','TURN-IN PIC.','TURN-IN PIC',
+   'PAPERLESS CODE','SHIPPER NAME','SHIPPING LINE','PORT OF TRANSIT',
+   /* ป้ายของใบ ONE (Booking Receipt Notice) — คนละชุดกับ COSCO/WHL */
+   'PROFORMA 1ST VESSEL ETD','LATEST ETA/ETD','EMPTY PICK UP DATE','EMPTY PICK UP CY',
+   'FULL RETURN DATE','FULL RETURN CY','PORT CARGO CUT-OFF','CUSTOMS CUT-OFF',
+   'BOOKING REF. NO.','BOOKING REF NO.','BOOKING DATE','BOOKING STAFF','EXPORT REF.NO',
+   'TRUNK VESSEL','PRE CARRIER','POST CARRIER','OCEAN ROUTE TYPE','RCV/DEL TERM',
+   'POD / DEL ETA','T/S PORT','TERMINAL','ETA/ETD','PORT OF DISCHARGING',
+   "EQUIPMENT TYPE/Q\u2019TY","EQUIPMENT TYPE/Q'TY",'EQUIPMENT TYPE/QTY','ESTIMATED WEIGHT',
+   'SERVICE CONTRACT NO','B/L NO.','SALES REP',
    'FORWARDER','COMMODITY','VOYAGE NO','VOYAGE','VOLUME','WEIGHT','VESSEL','VOY','ETD','ETA','LTD','POL','POD']
    .sort((a,b)=>b.length-a.length)
    .map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/-/g,'-?').replace(/\//g,'\\s*/\\s*'));
@@ -6495,42 +6508,80 @@ function applyPdfBooking(lines){
   else if(/\bSITC\b/.test(U)) carrier='SITC';
   // ── booking no
   let bkg = grab('BOOKING NUMBER','BOOKING NO.','BOOKING NO','BOOKING REF NO','S/O NO','SO NO');
+  /* ใบของ SFP วางป้าย "Booking No." ไว้คนละบรรทัดกับเลข อ่านแบบป้าย:ค่า ไม่ติด
+     แต่เลขเดียวกันโผล่ที่ Pick up Ref / Turn-In Ref ด้วย ใช้ตรงนั้นแทนได้ */
+  if(!bkg) bkg = grab('BOOKING REF. NO.','BOOKING REF NO.','PICK UP REF','TURN-IN REF');
+  bkg = String(bkg||'').split(/\s{2,}|\s(?=[A-Za-z].*:)/)[0].trim();   // กันค่าป้ายถัดไปติดมา
   if(!bkg){ const m = ALL.match(/\b((?:COSU|WHLC|ONEY|OOLU|MAEU|MSCU|HLCU|YMLU|ZIMU|EGLV|CMDU|SITC)\s?\d{6,})\b/i); if(m) bkg=m[1]; }
+  if(!bkg){ const m = ALL.match(/\b(\d{3}[A-Z]{2}\d{4,7})\b/); if(m) bkg=m[1]; }   // 035GX51093
   bkg = bkg.replace(/^(COSU|WHLC|ONEY|OOLU|MAEU|MSCU|HLCU|YMLU|ZIMU|EGLV|CMDU|SITC)\s*/i,'').trim();
   // ── เรือ / เที่ยว
-  const vsl = grab('INTENDED VESSEL/VOYAGE','VESSEL/VOYAGE','VESSEL NAME/VOY','VESSEL & VOYAGE','OCEAN VESSEL','FEEDER VESSEL','VESSEL');
-  let vessel=vsl, voyage='';
-  { let m = vsl.match(/^(.*?)\s+V\.?\s*([A-Z0-9]{2,10})$/i) || vsl.match(/^(.*?)\s+(\d{2,4}[A-Z]{0,2})$/);
-    if(m){ vessel=m[1].trim(); voyage=m[2].trim(); }
-    if(!voyage){ const v2=grab('VOYAGE NO','VOYAGE','VOY NO','VOY'); if(v2) voyage=v2; } }
+  const splitVsl = (raw)=>{                       // "WAN HAI 291 V.N068" -> {name, voy}
+    const s0=String(raw||'').replace(/\s*\([^)]*\)\s*$/,'').trim();   // ตัด (EC3) ท้ายชื่อเรือ
+    let m = s0.match(/^(.*?)\s+V\.?\s*([A-Z0-9]{2,10})$/i) || s0.match(/^(.*?)\s+(\d{2,4}[A-Z]{0,2})$/);
+    return m ? {name:m[1].trim(), voy:m[2].trim()} : {name:s0, voy:''};
+  };
+  const vsl = grab('INTENDED VESSEL/VOYAGE','VESSEL/VOYAGE','VSL NAME / VOY','VSL NAME/VOY',
+                   'VESSEL NAME/VOY','VESSEL & VOYAGE','TRUNK VESSEL','OCEAN VESSEL','FEEDER VESSEL','VESSEL');
+  let {name:vessel, voy:voyage} = splitVsl(vsl);
+  if(!voyage){ const v2=grab('VOYAGE NO','VOYAGE','VOY NO','VOY'); if(v2) voyage=v2; }
+  const mv = splitVsl(grab('MOTHER VSL NAME','MOTHER VESSEL'));   // เรือแม่ ถ้าใบระบุไว้
   // ── ท่าเรือ
   const por  = grab('PLACE OF RECEIPT','PLACE OF RECEIVE','PORT OF RECEIPT');
   const pol  = grab('PORT OF LOADING','LOADING PORT','POL');
-  const pod  = grab('PORT OF DISCHARGE','DISCHARGE PORT','POD');
+  const pod  = grab('PORT OF DISCHARGING','PORT OF DISCHARGE','DISCHARGE PORT','POD');
   const dest = grab('FINAL DESTINATION','PLACE OF DELIVERY');
   // ตัดชื่อท่าเทียบเรือที่ต่อท้ายหลัง "/" เช่น "Los Angeles / Evergreen Container Terminal"
-  const clean = t => String(t||'').split(/\s\/\s/)[0].replace(/[,\s]+$/,'').trim();
+  const clean = t => String(t||'').split(/\s\/\s/)[0]
+                       .replace(/\s*\([^)]*\)\s*/g,' ')     // (Block: 2) / (2840)
+                       .replace(/[,\s]+$/,'').trim();
   // ── วันที่
   const MO={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
   const fmt = s=>{
     if(!s) return '';
     s=String(s).replace(/\(.*?\)/g,' ').trim();
     const pad=n=>String(n).padStart(2,'0');
-    let m=s.match(/(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4})/);
+    /* 25-Sep-2026 · 25/Sep/2026 · 25 Sep 2026 — เดิมรับแต่แบบเว้นวรรค
+       ใบ Booking ของ SFP เขียนแบบขีดกลาง ETD กับ cut-off เลยว่างทั้งใบ */
+    let m=s.match(/(\d{1,2})\s*[-\/\s]\s*([A-Za-z]{3,})\.?\s*[-\/\s]\s*(\d{4})/);
     if(m){ const mo=MO[m[2].slice(0,3).toLowerCase()]; if(mo!=null)
       return m[3]+'-'+pad(mo+1)+'-'+pad(+m[1]); }
+    // Sep-25-2026 / Sep 25, 2026
+    m=s.match(/([A-Za-z]{3,})\.?\s*[-\/\s]\s*(\d{1,2})\s*,?\s*[-\/\s]?\s*(\d{4})/);
+    if(m){ const mo=MO[m[1].slice(0,3).toLowerCase()]; if(mo!=null)
+      return m[3]+'-'+pad(mo+1)+'-'+pad(+m[2]); }
     m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+    // 31Jul26 / 12Aug26 — ใบ ONE เขียนติดกัน ปี 2 หลัก
+    m=s.match(/\b(\d{1,2})([A-Za-z]{3})(\d{2})\b/);
+    if(m){ const mo=MO[m[2].toLowerCase()]; if(mo!=null)
+      return '20'+m[3]+'-'+pad(mo+1)+'-'+pad(+m[1]); }
     m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if(m) return m[3]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');
     return '';
   };
-  const etd = fmt(grabWith('ETD','VESSEL') || grab('ETD','SAILING DATE','ESTIMATED TIME OF DEPARTURE'));
-  const eta = fmt(grabWith('ETA','PORT OF DISCHARGE') || grab('ETA','ESTIMATED TIME OF ARRIVAL'));
+  /* ใบ ONE ใส่สองวันไว้ช่องเดียว "Latest ETA/ETD : 12Aug26/14Aug26" = ETA ก่อน ETD หลัง
+     ต้องแยกก่อน ไม่งั้น grabWith('ETD','VESSEL') จะคว้าค่าคู่มาทั้งก้อนแล้วได้วันแรกซึ่งคือ ETA */
+  let etd='', eta='';
+  { const two = String(grab('LATEST ETA/ETD','ETA/ETD')||'').split('/').map(x=>fmt(x)).filter(Boolean);
+    if(two.length===2){ eta=two[0]; etd=two[1]; } }
+  const notPair = v => /\/\s*\d/.test(String(v||'')) ? '' : v;   // กันค่าคู่หลุดมาทางอื่น
+  if(!etd) etd = fmt(notPair(grabWith('ETD','VESSEL')) || grab('ETD','SAILING DATE','ESTIMATED TIME OF DEPARTURE'));
+  if(!eta) eta = fmt(notPair(grabWith('ETA','PORT OF DISCHARGE')) || grab('ETA','ESTIMATED TIME OF ARRIVAL'));
+  if(!etd) etd = fmt(grab('PROFORMA 1ST VESSEL ETD'));
+  { const podEta = fmt(String(grab('POD / DEL ETA')||'').split('/')[0]);
+    if(podEta) eta = podEta; }        // ETA ปลายทางจริง ทับ ETA ของเรือที่ต้นทาง
   // ── ตู้
   const volRaw = grab('TOTAL BOOKING CONTAINER QTY SIZE/TYPE','BOOKING QTY SIZE/TYPE','QTY SIZE/TYPE','CONTAINER QTY','VOLUME') || ALL;
   const vm = volRaw.match(/(\d+)\s*[xX×]\s*(\d{2})\s*'?\s*-?\s*(HI-?\s?CUBE|HIGH\s?CUBE|HC|HQ|GP|DC|DV|RF|RH|NOR|OT|FR|ST)/i);
   let ctnQty='', ctnType='';
-  if(vm){ ctnQty=vm[1]; const t=vm[3].toUpperCase().replace(/[\s-]/g,'');
+  const eqRaw = grab("EQUIPMENT TYPE/Q\u2019TY","EQUIPMENT TYPE/Q'TY",'EQUIPMENT TYPE/QTY');
+  const em = String(eqRaw||'').match(/(\d{2})\s*([A-Z]{1,2})?\.?\s*([A-Z\-]*?)\s*-\s*(\d+)/i);
+  if(em){
+    const kind=(em[3]||'').toUpperCase(), sz=em[1], hc=/^H/i.test(em[2]||'');
+    ctnQty=em[4];
+    ctnType = sz + (/REEFER|RF|RH/.test(kind) ? 'RF' : (hc ? 'HC' : 'GP'));
+  }
+  if(!ctnQty && vm){ ctnQty=vm[1]; const t=vm[3].toUpperCase().replace(/[\s-]/g,'');
     ctnType = vm[2] + (/(HICUBE|HIGHCUBE|HC|HQ)/.test(t) ? 'HC' : ((t==='DC'||t==='DV'||t==='ST')?'GP':t)); }
   // ── สินค้า / น้ำหนัก
   const commodity = grab('CARGO DESCRIPTION','COMMODITY DESCRIPTION','COMMODITY','DESCRIPTION OF GOODS');
@@ -6538,18 +6589,22 @@ function applyPdfBooking(lines){
   // ── cut-off
   const si  = fmt(grab('INTENDED SI CUT-OFF','SI CUT-OFF TIME','SI CUT-OFF','S/I CLOSING','DOCUMENT CUT-OFF','DOC CUT-OFF'));
   const vgm = fmt(grab('INTENDED VGM CUT-OFF','VGM CUT-OFF TIME','VGM CUT-OFF','VGM CLOSING'));
-  const cy  = fmt(grab('INTENDED FCL CY CUT-OFF','FCL CY CUT-OFF','CY CUT-OFF','GATE CLOSING','CY CLOSING'));
-  const puDt= fmt(grab('EMPTY PICK UP DATE/TIME','EMPTY PICKUP DATE','PICK UP DATE'));
+  const cy  = fmt(grab('INTENDED FCL CY CUT-OFF','FCL CY CUT-OFF','CY CUT-OFF','GATE CLOSING DATE','GATE CLOSING','CY CLOSING','PORT CARGO CUT-OFF'));
+  const puDt= fmt(grab('EMPTY PICK UP DATE/TIME','EMPTY PICK UP DATE','EMPTY PICKUP DATE','PICK UP DATE'));
+  const tiDt= fmt(grab('TURN-IN DATE','FULL RETURN DATE','RETURN DATE'));   // วันคืนตู้
   // ── เติมลงฟอร์ม (ไม่ทับค่าที่กรอกไว้แล้ว)
   const set=(id,v)=>{ const e=document.getElementById(id); if(!e||!v||e.value) return 0;
     e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); return 1; };
   let n=0;
   n+=set('s_bkgno',bkg); n+=set('s_carrier',carrier);
   n+=set('s_vessel',vessel); n+=set('s_voyage',voyage);
+  n+=set('s_mother_vessel',mv.name); n+=set('s_mother_voy',mv.voy);
+  n+=set('s_shipper', grab('SHIPPER NAME','SHIPPER'));
   n+=set('s_etd',etd); n+=set('s_eta',eta);
   n+=set('s_commodity',commodity);
   n+=set('s_si_cutoff',si); n+=set('s_doc_cutoff',si);
-  n+=set('s_vgm_cutoff',vgm); n+=set('s_gate_closing',cy); n+=set('s_cy_date',puDt);
+  n+=set('s_vgm_cutoff',vgm); n+=set('s_gate_closing',cy);
+  n+=set('s_cy_date',puDt); n+=set('s_rtn_date',tiDt);
   const polC=clean(pol)||clean(por), podC=clean(pod);
   if(polC){ window._selPol=polC; n+=set('r_pol_sel',polC); n+=set('rate_pol',polC); }
   if(podC){ window._selPod=podC; n+=set('r_pod_sel',podC); n+=set('rate_pod',podC); }
