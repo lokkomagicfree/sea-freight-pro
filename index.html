@@ -6345,15 +6345,35 @@ function applyOwnBookingPdf(lines){
           break;
         }
       }
+      /* ขอบขวาของ "คอลัมน์" ป้ายนี้ = ตำแหน่งป้ายตัวถัดไปในบรรทัดเดียวกัน
+         ค่าของป้ายต้องอยู่ในช่วง [labelX, ป้ายถัดไป) เท่านั้น
+         ไม่งั้นบรรทัด "ETD :   ETA : 15 Nov 2026" จะทำให้ ETD ไปหยิบวันของ ETA */
+      let nextLabelX = Infinity;
+      {
+        const anyLabel = new RegExp('^\\s*(?:'+RE.source+')', 'i');
+        for(let p=0;p<own.length;p++){
+          if(own[p].x==null || own[p].x <= labelX) continue;
+          if(anyLabel.test(own.slice(p, p+6).map(q=>q.t).join(' '))){ nextLabelX = own[p].x; break; }
+        }
+      }
+      const inBand = x => x >= labelX-2 && x < nextLabelX;
+      const anyLbl = new RegExp('^\\s*(?:'+RE.source+')', 'i');
       const cands=[];
       for(let j=Math.max(0,i-1); j<Math.min(i+2, L.length); j++){   // ดูแค่บรรทัดติดกัน
         // มองเป็นก้อนข้อความพร้อมพิกัด ถ้าไม่มีพิกัดก็ดูทั้งบรรทัด
         const parts = (IT0[j] && IT0[j].length) ? IT0[j] : [{x:X[j], t:String(L[j]||'')}];
-        parts.forEach((p,pi)=>{
-          const join = parts.slice(pi, pi+3).map(q=>q.t).join(' ');   // "15 Nov 2026" แยก 3 ก้อน
+        const band = parts.filter(p=>inBand(p.x!=null?p.x:0));       // เฉพาะคอลัมน์ของป้ายนี้
+        if(!band.length) continue;
+        /* บรรทัดอื่นที่มี "ป้ายของตัวเอง" อยู่ในคอลัมน์เดียวกัน = ค่าของบรรทัดนั้นเป็นของป้ายนั้น
+           ห้ามยืมมาใช้ (เช่น SI ที่ไม่มีค่า ต้องไม่ไปหยิบวันของ VGM ที่อยู่แถวถัดไปคอลัมน์เดียวกัน) */
+        if(j!==i && band.some(p=>anyLbl.test(p.t))) continue;
+        band.forEach((p,pi)=>{
+          const px = (p.x!=null?p.x:0);
+          if(!/\d/.test(p.t)) return;                                // ค่าต้องเริ่มที่ก้อนที่มีตัวเลข
+          const join = band.slice(pi, pi+3).map(q=>q.t).join(' ');   // "15 Nov 2026" แยก 3 ก้อน
           const dm = join.match(DATE_RE);
-          if(dm && !usedDates.has(j+'@'+Math.round(p.x!=null?p.x:0)))
-            cands.push({t:dm[0], x:(p.x!=null?p.x:0), dj:j-i, key:j+'@'+Math.round(p.x!=null?p.x:0)});
+          if(dm && !usedDates.has(j+'@'+Math.round(px)))
+            cands.push({t:dm[0], x:px, dj:j-i, key:j+'@'+Math.round(px)});
         });
       }
       if(!cands.length) continue;
