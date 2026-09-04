@@ -6159,12 +6159,19 @@ async function pdfToLines(buf){
   for(let p=1; p<=pdf.numPages; p++){
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
+    /* จัดบรรทัดตามพิกัด y — เดิมปัดเป็นช่องละ 3px (Math.round(y/3)*3)
+       ปัญหา: ป้ายกับค่าที่ baseline ต่างกันแค่ 0.2px อาจตกคนละช่องถ้าคร่อมเส้นแบ่งพอดี
+       (เคสจริง: "ETD : 25-Sep-2026" หลุดเป็น 2 บรรทัด -> ETD/SI/VGM ว่างหมด)
+       แก้เป็น "จับกลุ่มตามระยะห่างจริง" ไม่มีเส้นแบ่งตายตัว จึงไม่มีปัญหาคร่อมช่อง
+       แถวในใบพวกนี้ห่างกัน ~15px ใช้เกณฑ์ 5px จึงไม่มีทางรวมคนละแถวเข้าด้วยกัน */
+    const TOL = 5;
+    const all = tc.items.map(it=>({y: it.transform[5], x: it.transform[4], s: it.str}))
+                        .sort((a,b)=>b.y-a.y);
     const rows = new Map();
-    tc.items.forEach(it=>{
-      const y = Math.round(it.transform[5]);
-      const key = Math.round(y/3)*3;               // รวมบรรทัดที่เหลื่อมกันเล็กน้อย
-      if(!rows.has(key)) rows.set(key, []);
-      rows.get(key).push({x: it.transform[4], s: it.str});
+    let cur=null, key=null;
+    all.forEach(o=>{
+      if(cur===null || (cur - o.y) > TOL){ cur=o.y; key=o.y; rows.set(key, []); }
+      rows.get(key).push({x:o.x, s:o.s});
     });
     [...rows.entries()].sort((a,b)=>b[0]-a[0]).forEach(([,arr])=>{
       arr.sort((a,b)=>a.x-b.x);
@@ -6315,6 +6322,59 @@ function applyOwnBookingPdf(lines){
       }
     }
   }
+  /* ตาข่ายกันตกสำหรับ "ช่องวันที่": ถ้าค่าที่คู่กับป้ายอ่านเป็นวันที่ไม่ได้
+     (เช่น ป้ายกับค่าหลุดคนละบรรทัดจนได้เศษอย่าง "15" หรือ "Nov 2026")
+     ให้ไปหา token ที่หน้าตาเป็นวันที่ ใกล้ป้ายนั้นที่สุด — ดูจากพิกัด x ไม่ใช่ลำดับบรรทัด */
+  const DATE_RE = /\b\d{1,2}[-\/\s][A-Za-z]{3,}\.?[-\/\s]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/;
+  const IT0 = (lines && lines.__items) || [];
+  /* วันที่หนึ่งตัวเป็นของป้ายเดียว — ป้ายที่ถามก่อนได้ก่อน (เรียงตามลำดับในใบ)
+     กันเคสป้ายสองอันอยู่คนละแถวแต่ระยะห่างเท่ากัน แล้วแย่งวันที่ตัวเดียวกัน */
+  const usedDates = new Set();
+  function dateNear(labelRe){
+    for(let i=0;i<L.length;i++){
+      const m = String(L[i]).match(labelRe);
+      if(!m) continue;
+      /* ตำแหน่งป้ายต้องเป็น "พิกัด x จริง" ไม่ใช่ลำดับตัวอักษรในบรรทัด
+         ไม่งั้นป้ายฝั่งขวาของหน้า (Gate Closing / Dead Line CFM BL) จะไปหยิบวันที่ฝั่งซ้าย */
+      let labelX = (X[i]!=null ? X[i] : 0);
+      const own = IT0[i]||[];
+      const atStart = new RegExp('^\\s*(?:'+labelRe.source+')', labelRe.flags.replace('g',''));
+      for(let p=0;p<own.length;p++){
+        if(atStart.test(own.slice(p, p+5).map(q=>q.t).join(' '))){
+          if(own[p].x!=null) labelX = own[p].x;
+          break;
+        }
+      }
+      const cands=[];
+      for(let j=Math.max(0,i-1); j<Math.min(i+2, L.length); j++){   // ดูแค่บรรทัดติดกัน
+        // มองเป็นก้อนข้อความพร้อมพิกัด ถ้าไม่มีพิกัดก็ดูทั้งบรรทัด
+        const parts = (IT0[j] && IT0[j].length) ? IT0[j] : [{x:X[j], t:String(L[j]||'')}];
+        parts.forEach((p,pi)=>{
+          const join = parts.slice(pi, pi+3).map(q=>q.t).join(' ');   // "15 Nov 2026" แยก 3 ก้อน
+          const dm = join.match(DATE_RE);
+          if(dm && !usedDates.has(j+'@'+Math.round(p.x!=null?p.x:0)))
+            cands.push({t:dm[0], x:(p.x!=null?p.x:0), dj:j-i, key:j+'@'+Math.round(p.x!=null?p.x:0)});
+        });
+      }
+      if(!cands.length) continue;
+      /* ลำดับความน่าเชื่อ  1) อยู่ทางขวาของป้าย  2) บรรทัดเดียวกับป้าย
+         3) บรรทัดที่ติดกันมากกว่า  4) บรรทัดบนก่อนบรรทัดล่าง (ค่าที่ baseline สูงกว่าเล็กน้อย
+            จะถูกจัดขึ้นไปอยู่บรรทัดบน)  5) x ใกล้ป้ายที่สุด */
+      cands.sort((a,b)=>{
+        const ar=a.x>=labelX?0:1, br=b.x>=labelX?0:1;
+        if(ar!==br) return ar-br;
+        const a0=a.dj===0?0:1, b0=b.dj===0?0:1;
+        if(a0!==b0) return a0-b0;
+        const aa=Math.abs(a.dj), bb=Math.abs(b.dj);
+        if(aa!==bb) return aa-bb;
+        if(a.dj!==b.dj) return a.dj-b.dj;
+        return Math.abs(a.x-labelX)-Math.abs(b.x-labelX);
+      });
+      usedDates.add(cands[0].key);
+      return cands[0].t;
+    }
+    return '';
+  }
   const g = k => map[k.toLowerCase()] || '';
   // REF ของลูกค้า = บรรทัดรูปแบบ SBKKxxxx / ตัวอักษร+ตัวเลข ที่อยู่ใกล้ Shipper Name
   let ref='';
@@ -6382,14 +6442,26 @@ function applyOwnBookingPdf(lines){
   n+=set('s_carrier', g('Shipping Line'));
   n+=set('s_vessel', vessel);      n+=set('s_voyage', voyage);
   n+=set('s_mother_vessel', mVessel); n+=set('s_mother_voy', mVoy);
-  n+=set('s_etd', fmt(g('ETD')));  n+=set('s_eta', fmt(g('ETA')));
+  // อ่านจากช่องที่คู่กับป้ายก่อน ถ้าไม่ได้ค่อยไปหาวันที่ที่ใกล้ป้ายที่สุด
+  /* หาจากพิกัดก่อน เพราะรู้ว่าอยู่คอลัมน์ไหน — ค่าที่คู่กับป้ายใช้เป็นตัวสำรอง
+     (ตัวคู่ป้ายมีสิทธิ์หยิบทั้งบรรทัดถัดไปมาทั้งแถบ ซึ่งอาจเป็นวันที่ของช่องอื่น) */
+  const D = (key, labelRe) => fmt(dateNear(labelRe)) || fmt(g(key));
+  const _etd = D('ETD',              /\bETD\s*[:：]/i);
+  const _eta = D('ETA',              /\bETA\s*[:：]/i);
+  const _si  = D('SI Cut-Off time',  /\bSI\s*Cut-?Off/i);
+  const _bl  = D('Dead Line CFM BL', /Dead\s*Line\s*CFM/i);
+  const _vgm = D('VGM Cut-Off time', /\bVGM\s*Cut-?Off/i);
+  const _gate= D('Gate Closing Date',/Gate\s*Closing/i);
+  const _pu  = D('Pick up Date',     /Pick\s*up\s*Date/i);
+  const _ti  = D('Turn-In Date',     /Turn-?In\s*Date/i);
+  n+=set('s_etd', _etd);  n+=set('s_eta', _eta);
   n+=set('s_commodity', g('Commodity'));
-  n+=set('s_si_cutoff', fmt(g('SI Cut-Off time')));
-  n+=set('s_doc_cutoff', fmt(g('Dead Line CFM BL')));
-  n+=set('s_vgm_cutoff', fmt(g('VGM Cut-Off time')));
-  n+=set('s_gate_closing', fmt(g('Gate Closing Date')));
-  n+=set('s_cy_date', fmt(g('Pick up Date')));
-  n+=set('s_rtn_date', fmt(g('Turn-In Date')));
+  n+=set('s_si_cutoff', _si);
+  n+=set('s_doc_cutoff', _bl);
+  n+=set('s_vgm_cutoff', _vgm);
+  n+=set('s_gate_closing', _gate);
+  n+=set('s_cy_date', _pu);
+  n+=set('s_rtn_date', _ti);
   n+=set('s_hscode', /please advise/i.test(g('HS. Code'))?'':g('HS. Code'));
   const por=g('Port of Receive'), pol=g('Port of Loading'), pod=g('Port of Discharge'), dest=g('Final Destination');
   // สำคัญ: ทุกช่องต้อง "เซ็ตหรือล้าง" เสมอ ห้ามปล่อยให้ค่าของ booking ก่อนหน้าค้างอยู่
@@ -6405,7 +6477,7 @@ function applyOwnBookingPdf(lines){
   window._ownPdfBpdf = {
     shipper:g('Shipper Name'), shipper_ref:ref, bkgno:bkg, carrier:g('Shipping Line'),
     vsl:g('VSL Name / Voy'), mother_vsl:g('MOTHER VSL Name'),
-    etd:fmt(g('ETD')), eta:fmt(g('ETA')),
+    etd:_etd, eta:_eta,
     port_receive:por, port_loading:pol, port_discharge:pod, final_dest:dest, port_transit:g('Port of Transit'),
     volume:volRaw, si_cutoff:g('SI Cut-Off time'), cfm_bl:g('Dead Line CFM BL'),
     vgm_cutoff:g('VGM Cut-Off time'), gate_closing:g('Gate Closing Date'), paperless:g('Paperless Code'),
@@ -6413,11 +6485,11 @@ function applyOwnBookingPdf(lines){
     ti_ref:g('Turn-In Ref'), ti_date:g('Turn-In Date'), ti_at:g('Turn-In At'), ti_pic:g('Turn-In PIC.'),
     commodity:g('Commodity'), weight:g('Weight'), hs_code:g('HS. Code')
   };
-  const miss=[]; if(!bkg) miss.push('Booking No.'); if(!fmt(g('ETD'))) miss.push('ETD'); if(!ctn.length) miss.push('Volume');
+  const miss=[]; if(!bkg) miss.push('Booking No.'); if(!_etd) miss.push('ETD'); if(!ctn.length) miss.push('Volume');
   toast('📄 อ่าน Booking Confirmation ของเราแล้ว — เติม '+n+' ช่อง'+(miss.length?(' · ยังไม่พบ: '+miss.join(', ')):''));
   // กันอ่านวันที่สลับช่อง — ETA ต้องไม่มาก่อน ETD (เคยเจอ job ที่ ETA 27 ส.ค. แต่ ETD 30 ส.ค.)
   {
-    const _d1=fmt(g('ETD')), _d2=fmt(g('ETA'));
+    const _d1=_etd, _d2=_eta;
     if(_d1 && _d2 && _d2 < _d1)
       toast('⚠ ETA ('+_d2+') มาก่อน ETD ('+_d1+') — อ่านจาก PDF อาจสลับช่อง ตรวจก่อนบันทึก');
   }
