@@ -4762,11 +4762,17 @@ function editShipment(idx){
   set('s_gate_closing',bd.bpdf_gate_closing || j.gateClosing || '');
   set('s_connote',j.connote);
   // Restore route picker
-  if(j.pol){const rp=g('r_pol');if(rp)rp.value=j.pol;window._selPol=j.pol;}
-  if(j.pod){const rd=g('r_pod');if(rd)rd.value=j.pod;window._selPod=j.pod;}
-  if(j.del){const dd=g('s_del');if(dd)dd.value=j.del;window._selDel=j.del;}
-  if(j.selCarrier){const rc=g('r_carrier');if(rc)rc.value=j.selCarrier;window._selCarrier=j.selCarrier;}
-  if(j.selLabel){const box=g('sel_rate_box'),lbl=g('sel_label');if(box)box.style.display='';if(lbl)lbl.textContent=j.selLabel;}
+  /* ทุกช่องต้อง "ใส่ค่าหรือล้าง" เสมอ ห้ามใช้ if เฉยๆ
+     เดิมเขียน if(j.del){...} ไม่มี else → เปิดงานที่มี DEL (เช่น LA→Chicago)
+     แล้วเปิดงาน New York ต่อ ช่อง DEL ยังค้างเป็น Chicago แล้วติดไปตอนเซฟ
+     (เคสจริง: 035GX51095 / 51096 ขึ้น Chicago ทั้งที่เลือกแค่ New York) */
+  {const rp=g('r_pol');if(rp)rp.value=j.pol||'';window._selPol=j.pol||'';}
+  {const rd=g('r_pod');if(rd)rd.value=j.pod||'';window._selPod=j.pod||'';}
+  {const dd=g('s_del');if(dd)dd.value=j.del||'';window._selDel=j.del||'';}
+  {const rc=g('r_carrier');if(rc)rc.value=j.selCarrier||'';window._selCarrier=j.selCarrier||'';}
+  {const box=g('sel_rate_box'),lbl=g('sel_label');
+   if(lbl)lbl.textContent=j.selLabel||'';
+   if(box)box.style.display=j.selLabel?'':'none';}
   const lkbT=g('lkb_toggle'); if(lkbT) lkbT.checked=j.lkb||false;
   const bkkT=g('bkk_toggle'); if(bkkT) bkkT.checked=j.bkk||false;
   if(j.pol||j.pod)setTimeout(filterRoutes,150);
