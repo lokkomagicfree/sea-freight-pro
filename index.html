@@ -6353,7 +6353,14 @@ function applyOwnBookingPdf(lines){
   /* ตาข่ายกันตกสำหรับ "ช่องวันที่": ถ้าค่าที่คู่กับป้ายอ่านเป็นวันที่ไม่ได้
      (เช่น ป้ายกับค่าหลุดคนละบรรทัดจนได้เศษอย่าง "15" หรือ "Nov 2026")
      ให้ไปหา token ที่หน้าตาเป็นวันที่ ใกล้ป้ายนั้นที่สุด — ดูจากพิกัด x ไม่ใช่ลำดับบรรทัด */
-  const DATE_RE = /\b\d{1,2}[-\/\s][A-Za-z]{3,}\.?[-\/\s]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/;
+  /* รูปแบบวันที่ที่ใบ Booking ของเราใช้จริง (ดูใบ BKG.6465969421 เป็นต้นแบบ)
+       ETD / ETA            -> 2026-09-27      (YYYY-MM-DD)
+       Pick up / Turn-In    -> 21-Sep-2026     (D-Mon-YYYY)
+       SI / VGM / CFM / Gate-> 21/09/2026 15:00 PM.  (D/M/YYYY + เวลา)
+     เดิมไม่มีแบบที่สาม -> SI/VGM/Dead Line/Gate Closing เลยว่างทุกใบ
+     อีกอย่าง: ตัวอ่าน PDF ตัดข้อความเป็นชิ้นตามฟอนต์ ค่าเดียวอาจถูกหั่นกลางคัน
+     ("2026-09-" + "27") แล้วเรามาต่อกันด้วยช่องว่าง -> ต้องยอมให้มีช่องว่างคั่นได้ */
+  const DATE_RE = /\b\d{1,2}\s*[-\/\s]\s*[A-Za-z]{3,}\.?\s*[-\/\s]\s*\d{4}\b|\b\d{4}\s*-\s*\d{1,2}\s*-\s*\d{1,2}\b|\b\d{1,2}\s*[\/-]\s*\d{1,2}\s*[\/-]\s*\d{4}\b/;
   const IT0 = (lines && lines.__items) || [];
   /* วันที่หนึ่งตัวเป็นของป้ายเดียว — ป้ายที่ถามก่อนได้ก่อน (เรียงตามลำดับในใบ)
      กันเคสป้ายสองอันอยู่คนละแถวแต่ระยะห่างเท่ากัน แล้วแย่งวันที่ตัวเดียวกัน */
@@ -6458,9 +6465,20 @@ function applyOwnBookingPdf(lines){
   const pad=n=>String(n).padStart(2,'0');
   const fmt = s=>{
     s=String(s||'').trim(); if(!s) return '';
-    let m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
-    m=s.match(/(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})/);
+    // ปิดช่องว่างที่หลุดมาคั่นกลางค่า เช่น "2026-09- 27" / "21 -Sep-2026" / "21 /09/2026"
+    const z = s.replace(/\s*([\/-])\s*/g,'$1');
+    let m=z.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if(m) return m[1]+'-'+pad(+m[2])+'-'+pad(+m[3]);
+    m=z.match(/\b(\d{1,2})[-\/\s]([A-Za-z]{3,})\.?[-\/\s](\d{4})\b/);
     if(m){ const mo=MO[m[2].slice(0,3).toLowerCase()]; if(mo!=null) return m[3]+'-'+pad(mo+1)+'-'+pad(+m[1]); }
+    /* 21/09/2026 — ใบของเราออกแบบไทย วัน/เดือน/ปี เสมอ
+       ถ้าตัวหน้า <=12 แต่ตัวหลัง >12 แปลว่าสลับเป็น เดือน/วัน/ปี ให้กลับให้ถูก */
+    m=z.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
+    if(m){
+      let d=+m[1], mo=+m[2];
+      if(mo>12 && d<=12){ const t=d; d=mo; mo=t; }
+      if(d>=1 && d<=31 && mo>=1 && mo<=12) return m[3]+'-'+pad(mo)+'-'+pad(d);
+    }
     return '';
   };
   // เรือ / เที่ยว  "EVER MATCH / 1469E"
@@ -6475,11 +6493,15 @@ function applyOwnBookingPdf(lines){
   };
   const [vessel, voyage] = splitVsl(g('VSL Name / Voy'));
   const [mVessel, mVoy]  = splitVsl(g('MOTHER VSL Name'));
-  // ตู้  "1x40HC"  หรือ "1x20GP + 2x40HC"
+  /* ตู้  "1x40HC" / "1x20GP + 2x40HC" / "2x40'HC" / "2 X 40'-HC"
+     ใบจริงพิมพ์ 2x40'HC (มี ' คั่นระหว่างขนาดกับชนิด) — เดิม regex ไม่รับ ' เลยได้ 0 ตู้
+     รับเครื่องหมายฟุตทุกแบบ (' ’ " ” ′) และขีดคั่น ให้ครบ */
   const volRaw = g('Volume');
   const ctn = [];
-  volRaw.replace(/(\d+)\s*[xX×]\s*(\d{2})\s*(GP|HC|HQ|DC|RF|RH|NOR|OT|FR)/gi, (a,q,sz,tp)=>{
-    ctn.push({qty:+q, type: sz + (tp.toUpperCase()==='HQ'?'HC':(tp.toUpperCase()==='DC'?'GP':tp.toUpperCase()))}); return a; });
+  const CTN_ALIAS = {HQ:'HC', DC:'GP', ST:'GP', RH:'RF', NOR:'RQ'};
+  volRaw.replace(/(\d+)\s*[xX×]\s*(\d{2})\s*['’‘"”′″]?\s*[-–]?\s*(GP|HC|HQ|DC|ST|RF|RH|RQ|NOR|OT|FR)\b/gi,
+    (a,q,sz,tp)=>{ const T=tp.toUpperCase();
+      ctn.push({qty:+q, type: sz + (CTN_ALIAS[T]||T)}); return a; });
 
   const set=(id,v,force)=>{ const e=document.getElementById(id); if(!e||!v) return 0;
     if(e.value && !force) return 0; e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); return 1; };
