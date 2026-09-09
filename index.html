@@ -665,6 +665,11 @@ body{font-size:14px;font-weight:450}
       <input class="fi" id="ref_search" placeholder="🔍 REF No…" oninput="renderShipments()" spellcheck="false" style="width:150px;font-size:12px;padding:6px 10px">
       <input class="fi" id="cust_search" placeholder="🔍 Customer…" oninput="renderShipments()" spellcheck="false" style="width:160px;font-size:12px;padding:6px 10px">
       <input class="fi" id="carrier_search" placeholder="🔍 Carrier…" oninput="renderShipments()" spellcheck="false" style="width:130px;font-size:12px;padding:6px 10px">
+      <input class="fi" id="pod_search" list="pod_search_list" placeholder="🔍 POD…"
+        oninput="renderShipments();saveFilterPrefs()" spellcheck="false"
+        title="พิมพ์ชื่อท่าปลายทางบางส่วนก็ได้ — ค้นทั้ง POD และปลายทางในแผ่นดิน (DEL)"
+        style="width:150px;font-size:12px;padding:6px 10px">
+      <datalist id="pod_search_list"></datalist>
       <select class="fi" id="month_filter" onchange="window._monthFilterCleared=!this.value;renderShipments();saveFilterPrefs()" style="width:145px;font-size:12px;padding:6px 10px">
         <option value="">📅 All Months</option>
       </select>
@@ -5000,7 +5005,21 @@ function renderShipments(){
   const ref=(v('ref_search')||'').toLowerCase().trim();
   const cust=(v('cust_search')||'').toLowerCase().trim();
   const car=(v('carrier_search')||'').toLowerCase().trim();
+  const podQ=(v('pod_search')||'').toLowerCase().trim();
   const stFilt=v('status_filter')||'';
+  // รายชื่อ POD/DEL ที่มีอยู่จริงในงาน — ใส่เป็นตัวเลือกให้พิมพ์ไม่กี่ตัวก็เลือกได้
+  {
+    const dl=g('pod_search_list');
+    if(dl){
+      const names=[...new Set(savedJobs.flatMap(j=>[j.pod,j.del])
+        .map(x=>String(x||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+      const sig=names.join('|');
+      if(dl.dataset.sig!==sig){
+        dl.dataset.sig=sig;
+        dl.innerHTML=names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
+      }
+    }
+  }
   // Populate month dropdown — apply pending pref FIRST before reading value
   const mthSel=g('month_filter');
   if(mthSel){
@@ -5028,6 +5047,8 @@ function renderShipments(){
     if(ref&&!(j.refno||'').toLowerCase().includes(ref))return false;
     if(cust&&!(j.customer||j.shipper||'').toLowerCase().includes(cust))return false;
     if(car&&!(j.carrier||j.selCarrier||'').toLowerCase().includes(car))return false;
+    // POD — ค้นทั้งท่าปลายทางและปลายทางในแผ่นดิน (งาน IPI ที่ผู้ใช้จำแต่ชื่อเมืองปลายทาง)
+    if(podQ&&!((j.pod||'')+' '+(j.del||'')).toLowerCase().includes(podQ))return false;
     if(stFilt&&j.status!==stFilt)return false;
     if(mthFilt){const jm=j.jobType==='import'?(j.etaMonth||''):(j.etdMonth||'');if(jm!==mthFilt)return false;}
     if(etdFrom||etdTo){const d=j.etd||'';if(!d)return false;if(etdFrom&&d<etdFrom)return false;if(etdTo&&d>etdTo)return false;}
@@ -13827,6 +13848,7 @@ window.saveFilterPrefs = function(){
       etd_to:        document.getElementById('etd_to_filter')?.value   || '',
       add_from:      document.getElementById('add_from_filter')?.value || '',
       add_to:        document.getElementById('add_to_filter')?.value   || '',
+      pod_search:    document.getElementById('pod_search')?.value      || '',
     };
     localStorage.setItem('sfp_filter_prefs', JSON.stringify(prefs));
   }catch(e){}
@@ -13857,6 +13879,8 @@ window.applyFilterPrefs = function(){
   const at = document.getElementById('add_to_filter');
   if(af && prefs.add_from !== undefined) af.value = prefs.add_from;
   if(at && prefs.add_to   !== undefined) at.value = prefs.add_to;
+  const pf = document.getElementById('pod_search');
+  if(pf && prefs.pod_search !== undefined) pf.value = prefs.pod_search;
   if(prefs.month_filter) window._pendingMonthFilter = prefs.month_filter;
   window.renderShipments?.();
 };
