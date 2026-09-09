@@ -777,7 +777,7 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">Booking No.</label><input spellcheck="false" class="inp" id="s_bkgno" placeholder="e.g. BKG-001"></div>
           <div class="inp-group"><label class="inp-lbl">Job No.</label><input spellcheck="false" class="inp" id="s_jobno" placeholder="e.g. WLCLCH260626638"></div>
           <div class="inp-group"><label class="inp-lbl">Ref No.</label><input spellcheck="false" class="inp" id="s_refno" placeholder="Ref…"></div>
-          <div class="inp-group"><label class="inp-lbl">Customer</label><input spellcheck="false" class="inp" id="s_customer" placeholder="Customer name"></div>
+          <div class="inp-group"><label class="inp-lbl">Customer</label><input spellcheck="false" class="inp" id="s_customer" placeholder="Customer name" oninput="if(window.arRecalcDue)arRecalcDue()"></div>
           <div class="inp-group"><label class="inp-lbl">Shipper</label><input spellcheck="false" class="inp" id="s_shipper" placeholder="Shipper name"></div>
           <div class="inp-group"><label class="inp-lbl">ETD</label><input type="date" class="inp" id="s_etd" style="color-scheme:dark"></div>
           <div class="inp-group"><label class="inp-lbl">ETA</label><input type="date" class="inp" id="s_eta" style="color-scheme:dark"></div>
@@ -827,6 +827,29 @@ body{font-size:14px;font-weight:450}
           <div class="inp-group"><label class="inp-lbl">VGM Cut-Off</label><input spellcheck="false" class="inp" id="s_vgm_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
           <div class="inp-group"><label class="inp-lbl">Doc Cut-Off</label><input spellcheck="false" class="inp" id="s_doc_cutoff" placeholder="02/JUN/2026 17:00 HRS."></div>
           <div class="inp-group"><label class="inp-lbl">Gate Closing</label><input spellcheck="false" class="inp" id="s_gate_closing" placeholder="02/JUN/2026 20:00 HRS."></div>
+
+          <!-- ── ตามเงินลูกค้า (AR) ───────────────────────────── -->
+          <div class="inp-group full-col" style="margin-top:4px;padding-top:8px;border-top:1px dashed var(--border2)">
+            <label class="inp-lbl" style="color:var(--gold)">💰 ตามเงินลูกค้า</label>
+          </div>
+          <div class="inp-group"><label class="inp-lbl">วันวางบิล</label>
+            <input type="date" class="inp" id="s_inv_date" style="color-scheme:light"
+              onchange="arRecalcDue()" title="วันที่วางบิล/ออกอินวอยซ์ให้ลูกค้า"></div>
+          <div class="inp-group"><label class="inp-lbl">เครดิต (วัน)</label>
+            <input type="number" min="0" max="365" class="inp" id="s_credit_days" placeholder="15"
+              oninput="arRecalcDue()" title="ว่างไว้ = ใช้เครดิตของลูกค้ารายนี้ ถ้าไม่เคยตั้งจะเป็น 15 วัน"></div>
+          <div class="inp-group"><label class="inp-lbl">ครบกำหนด</label>
+            <input class="inp" id="s_due_date" readonly tabindex="-1"
+              style="background:var(--s2);cursor:default" placeholder="— คำนวณให้อัตโนมัติ —"></div>
+          <div class="inp-group"><label class="inp-lbl">สถานะเงิน</label>
+            <div style="display:flex;gap:8px;align-items:center;height:34px">
+              <label style="display:flex;gap:5px;align-items:center;font-size:12px;cursor:pointer;color:var(--text)">
+                <input type="checkbox" id="s_paid" onchange="arTogglePaid()" style="cursor:pointer;accent-color:var(--green)">
+                จ่ายแล้ว
+              </label>
+              <input type="date" class="inp" id="s_paid_date" style="color-scheme:light;flex:1;display:none"
+                title="วันที่รับเงินจริง">
+            </div></div>
           <div class="inp-group full-col">
             <label class="inp-lbl">Container Note</label>
             <input spellcheck="false" class="inp" id="s_connote" placeholder="FOOD GRADE CONTAINER ONLY">
@@ -1680,8 +1703,28 @@ function renderWorkBench(){
           : `<b>${_wbEsc(p.bkgno||'')}</b> <span style="color:var(--muted)">${_wbEsc(p.customer||'')}</span> — Cancel อีก <b>${du} วัน</b>${dstr?` · ${dstr}`:''}`
       });
     });
+    // ── ตามเงินลูกค้า — ใกล้ครบกำหนด 10 วัน และที่เลยกำหนดแล้ว ──
+    try{
+      arChaseList(window.savedJobs||[], todayISO).forEach(({job:j, daysLeft:dl})=>{
+        const amt = (j.sell||0) ? '$'+Math.round(j.sell).toLocaleString('en-US') : '';
+        const who = _wbEsc(j.customer||j.shipper||'');
+        const no  = _wbEsc(j.no||j.jobno||'—');
+        let dstr=''; try{ const d=new Date((j.dueDate||'')+'T00:00:00');
+          if(!isNaN(d)) dstr=d.toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }catch(e){}
+        const over = dl<0;
+        alerts.push({
+          _du: over ? -1000+dl : dl,          // ที่เลยกำหนดดันขึ้นบนสุดเสมอ
+          icon: over?'🔴':'💰',
+          color: over?'var(--red)':'var(--gold)',
+          text: over
+            ? `<b>${no}</b> <span style="color:var(--muted)">${who}</span> — <b>เลยกำหนดชำระ ${Math.abs(dl)} วัน</b>${amt?` · ${amt}`:''}${dstr?` · ครบ ${dstr}`:''}`
+            : `<b>${no}</b> <span style="color:var(--muted)">${who}</span> — ครบกำหนดชำระ${dl===0?'<b>วันนี้</b>':` อีก <b>${dl} วัน</b>`}${amt?` · ${amt}`:''}${dstr?` · ${dstr}`:''}`
+        });
+      });
+    }catch(e){ console.warn('AR alerts', e); }
+
     alerts.sort((a,b)=>a._du-b._du);
-    _wbSet('wb_alerts', alerts.length? alerts.slice(0,20).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:7px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มี Pre-Booking ใกล้วัน Cancel</div>`);
+    _wbSet('wb_alerts', alerts.length? alerts.slice(0,20).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:7px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มี Pre-Booking ใกล้วัน Cancel และไม่มีเงินค้างใกล้ครบกำหนด</div>`);
 
     // To-do list
     _wbSet('wb_todos', openTodos.length? openTodos.slice(0,8).map(t=>{ const pc=t.priority==='high'?'var(--red)':t.priority==='low'?'var(--muted)':'var(--gold)'; return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:5px 8px;background:var(--s1);border-radius:7px"><input type="checkbox" onchange="wbDoneTodo(${t.id})" style="cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0"></span><span style="flex:1;color:var(--text)">${_wbEsc(t.text)}</span>${t.deadline?`<span style="font-size:9px;color:var(--muted);font-family:var(--mono)">${_wbEsc(t.deadline)}</span>`:''}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีงานค้าง 🎉</div>`);
@@ -4597,6 +4640,13 @@ function saveShipment(){
     siCutoff:v('s_si_cutoff')||'', vgmCutoff:v('s_vgm_cutoff')||'', docCutoff:v('s_doc_cutoff')||'', gateClosing:v('s_gate_closing')||'',
     cyrtn:[v('s_cy_date')?'CY '+v('s_cy_date'):'',v('s_rtn_date')?'RTN '+v('s_rtn_date'):''].filter(Boolean).join(' / '),
     connote:v2('s_connote'),
+    // ── ตามเงินลูกค้า ── เก็บวันครบกำหนดไว้ด้วย จะได้ไม่ต้องคำนวณใหม่ทุกครั้งที่ render
+    invDate:    v('s_inv_date')||'',
+    creditDays: (v('s_credit_days')!=='' ? Number(v('s_credit_days')) : ''),
+    dueDate:    arDueDate(v('s_inv_date'),
+                  v('s_credit_days')!=='' ? v('s_credit_days') : arCreditFor(v('s_customer'))),
+    paid:       !!g('s_paid')?.checked,
+    paidDate:   (g('s_paid')?.checked ? (v('s_paid_date')||'') : ''),
     pol:window._selPol||'',pod:window._selPod||'',
     // ช่องที่ผู้ใช้เห็นเป็นตัวตัดสิน — ถ้าเว้นว่างแปลว่าตั้งใจเว้น ห้ามไปหยิบค่าเก่าจากตัวแปรเงามาใส่
     del:(function(){
@@ -4680,6 +4730,9 @@ window._askRenameOrNew = function(jobData, editIdx, oldNo, newNo){
 /* บันทึกจริง · mode = 'update' (แก้ทับแถวเดิม) หรือ 'new' (เพิ่มแถวใหม่)
    renamedFrom = เลขบุคเก่า ถ้าเป็นการเปลี่ยนเลข (ต้องเก็บ tombstone กันเด้งกลับจาก cloud) */
 window._applySave = function(jobData, mode, editIdx, renamedFrom){
+  // ใส่เครดิตเองเมื่อไหร่ จำไว้ให้ลูกค้ารายนั้น ครั้งหน้าเติมให้อัตโนมัติ
+  if(jobData && jobData.creditDays!=='' && jobData.creditDays!=null)
+    arRememberCredit(jobData.customer, jobData.creditDays);
   const _noChanged = !!renamedFrom;
   const _prev = editIdx!=null ? savedJobs[editIdx] : null;
   if(mode==='update' && editIdx!=null){
@@ -4766,6 +4819,13 @@ function editShipment(idx){
   set('s_bltype',j.bltype);set('s_sc',j.sc);set('s_ams',j.ams);
   set('s_commodity',j.commodity);set('s_hscode',j.hscode);
   set('s_cy_date',j.cyDate||'');set('s_rtn_date',j.rtnDate||'');
+  // ── ตามเงินลูกค้า ──
+  set('s_inv_date', j.invDate||'');
+  set('s_credit_days', (j.creditDays===0||j.creditDays) ? j.creditDays : '');
+  {const pc=g('s_paid'); if(pc) pc.checked=!!j.paid;}
+  set('s_paid_date', j.paidDate||'');
+  {const pd=g('s_paid_date'); if(pd) pd.style.display = j.paid ? '' : 'none';}
+  arRecalcDue();
   // Use bpdfData values if available (more up-to-date from Booking Confirmation PDF)
   const bd = j.bpdfData || {};
   set('s_si_cutoff',   bd.bpdf_si_cutoff   || j.siCutoff    || '');
@@ -4876,7 +4936,10 @@ function duplicateShipment(idx){
 }
 
 function clearForm(){
-  ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del','s_cbm'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  ['s_bkgno','s_jobno','s_refno','s_customer','s_shipper','s_etd','s_eta','s_vessel','s_mother_vessel','s_voyage','s_mother_voy','s_remarks','s_cy_date','s_rtn_date','s_si_cutoff','s_vgm_cutoff','s_doc_cutoff','s_gate_closing','s_cs_assigned','s_cs_tasks','s_del','s_cbm','s_inv_date','s_credit_days','s_paid_date'].forEach(id=>{const e=g(id);if(e)e.value='';});
+  {const pc=g('s_paid'); if(pc) pc.checked=false;}
+  {const pd=g('s_paid_date'); if(pd) pd.style.display='none';}
+  if(typeof arRecalcDue==='function') arRecalcDue();
   g('s_status').value='pending';g('sel_rate_box').style.display='none';
   { const st=g('s_type'); if(st) st.value='FCL'; const qc=g('s_qty_card'),cc=g('s_cbm_card'); if(qc)qc.style.display=''; if(cc)cc.style.display='none'; }
   // ตัวแปรเงาของ POL/POD/DEL/CARRIER ต้องล้างด้วย ไม่งั้นงานใหม่จะได้ค่าของงานก่อนหน้าแบบเงียบๆ
@@ -4951,6 +5014,93 @@ function backfillCreatedAt(){
   return n;
 }
 window.backfillCreatedAt = backfillCreatedAt;
+
+/* ══════════ ตามเงินลูกค้า (AR) ══════════════════════════════════
+   วันวางบิล + เครดิต (วัน) -> วันครบกำหนด
+   เครดิตจำเป็นรายลูกค้า ถ้ายังไม่เคยตั้งใช้ 15 วัน
+   เตือนล่วงหน้า 10 วัน และเตือนต่อเมื่อเลยกำหนดแล้ว จนกว่าจะติ๊กว่าจ่ายแล้ว */
+const AR_DEFAULT_CREDIT = 15;
+const AR_WARN_DAYS      = 10;      // เตือนล่วงหน้ากี่วัน
+const AR_CREDIT_KEY     = 'sfp_customer_credit_v1';
+
+function arCreditMap(){
+  try{ return JSON.parse(localStorage.getItem(AR_CREDIT_KEY)||'{}') || {}; }
+  catch(e){ return {}; }
+}
+function arCustKey(name){ return String(name||'').trim().toLowerCase(); }
+/** เครดิตของลูกค้ารายนี้ — ไม่เคยตั้ง = 15 วัน */
+function arCreditFor(customer){
+  const v = arCreditMap()[arCustKey(customer)];
+  return (typeof v==='number' && v>=0) ? v : AR_DEFAULT_CREDIT;
+}
+function arRememberCredit(customer, days){
+  const k=arCustKey(customer);
+  if(!k || days===''||days===null||days===undefined) return;
+  const n=Number(days);
+  if(!isFinite(n)||n<0) return;
+  try{
+    const m=arCreditMap();
+    if(m[k]===n) return;
+    m[k]=n; localStorage.setItem(AR_CREDIT_KEY, JSON.stringify(m));
+  }catch(e){}
+}
+/** วันครบกำหนด = วันวางบิล + เครดิต (คืน 'YYYY-MM-DD' หรือ '' ถ้าคำนวณไม่ได้) */
+function arDueDate(invDate, creditDays){
+  const s=String(invDate||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  const n=Number(creditDays);
+  if(!isFinite(n)||n<0) return '';
+  const d=new Date(s+'T00:00:00');
+  if(isNaN(d)) return '';
+  d.setDate(d.getDate()+Math.round(n));
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+/** เหลืออีกกี่วันถึงกำหนด (ติดลบ = เลยมาแล้ว) · null = ยังไม่ได้วางบิล */
+function arDaysLeft(job, todayISO){
+  const due = job && job.dueDate ? job.dueDate
+            : arDueDate(job&&job.invDate, (job&&job.creditDays!=='' && job&&job.creditDays!=null)
+                        ? job.creditDays : arCreditFor(job&&job.customer));
+  if(!due) return null;
+  const t = todayISO || new Date().toISOString().slice(0,10);
+  return Math.round((new Date(due+'T00:00:00') - new Date(t+'T00:00:00'))/86400000);
+}
+/** งานที่ต้องตามเงิน — ยังไม่จ่าย มีวันวางบิล และใกล้ครบ/เลยกำหนด */
+function arChaseList(jobs, todayISO){
+  const out=[];
+  (jobs||[]).forEach(j=>{
+    if(!j || j.status==='cancelled') return;
+    if(j.paid) return;                       // จ่ายแล้ว ไม่ต้องตาม
+    if(!j.invDate) return;                   // ยังไม่วางบิล ยังไม่เริ่มนับ
+    const dl=arDaysLeft(j, todayISO);
+    if(dl===null || dl>AR_WARN_DAYS) return; // ยังไกล
+    out.push({job:j, daysLeft:dl});
+  });
+  return out.sort((a,b)=>a.daysLeft-b.daysLeft);
+}
+
+window.arRecalcDue = function(){
+  const inv=document.getElementById('s_inv_date');
+  const cd =document.getElementById('s_credit_days');
+  const due=document.getElementById('s_due_date');
+  if(!due) return;
+  const cust=document.getElementById('s_customer')?.value||'';
+  const days = (cd && cd.value!=='') ? cd.value : arCreditFor(cust);
+  if(cd && cd.value==='') cd.placeholder = String(arCreditFor(cust));
+  const d = arDueDate(inv?inv.value:'', days);
+  if(!d){ due.value=''; due.style.color='var(--muted)'; return; }
+  const dl = Math.round((new Date(d+'T00:00:00') - new Date(new Date().toISOString().slice(0,10)+'T00:00:00'))/86400000);
+  const paid = document.getElementById('s_paid')?.checked;
+  due.value = d + (paid ? '' : (dl<0 ? `  · เลย ${Math.abs(dl)} วัน` : dl===0 ? '  · ครบวันนี้' : `  · อีก ${dl} วัน`));
+  due.style.color = paid ? 'var(--muted)' : (dl<0 ? 'var(--red)' : dl<=AR_WARN_DAYS ? 'var(--gold)' : 'var(--green)');
+};
+window.arTogglePaid = function(){
+  const c=document.getElementById('s_paid'), d=document.getElementById('s_paid_date');
+  if(!c||!d) return;
+  d.style.display = c.checked ? '' : 'none';
+  if(c.checked && !d.value) d.value = new Date().toISOString().slice(0,10);
+  if(!c.checked) d.value='';
+  window.arRecalcDue();
+};
 
 /* ── ย่อ/กางกลุ่มเดือนในตาราง Shipments ────────────────────────────
    กดที่หัวกลุ่ม (📤 Export · Jun 2026 · N jobs) เพื่อพับแถวงานของเดือนนั้น
