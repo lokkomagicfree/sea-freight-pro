@@ -354,6 +354,15 @@ body{font-size:14px;font-weight:450}
           <div style="font-size:10px;color:var(--muted);margin-bottom:10px">🟡 ใกล้ถึง · 🔴 ถึง/เกินแล้ว (เสี่ยงเสียค่า Cancel)</div>
           <div id="wb_alerts" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
+        <!-- ตามเงินลูกค้า -->
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold)">💰 ตามเงินลูกค้า</span>
+            <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">🔴 เลยกำหนด · 🟡 ครบใน 10 วัน · ⚪ ยังไม่ถึงกำหนด · เรียงตามวันครบ</div>
+          <div id="wb_ar" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
         <!-- Quick To-Do -->
         <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
           <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan);margin-bottom:10px">✅ To-Do</div>
@@ -1725,6 +1734,37 @@ function renderWorkBench(){
 
     alerts.sort((a,b)=>a._du-b._du);
     _wbSet('wb_alerts', alerts.length? alerts.slice(0,20).map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:7px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${a.color}"><span>${a.icon}</span><span style="color:var(--text);line-height:1.35">${a.text}</span></div>`).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มี Pre-Booking ใกล้วัน Cancel และไม่มีเงินค้างใกล้ครบกำหนด</div>`);
+
+    // ── การ์ดตามเงินลูกค้า — โชว์ลูกหนี้ทุกใบที่ยังไม่ได้เงิน ไม่ใช่เฉพาะที่ใกล้ครบ ──
+    try{
+      const ar = arOutstanding(window.savedJobs||[], todayISO);
+      const miss = arMissingInvoice(window.savedJobs||[]);
+      const sum = ar.reduce((s,x)=>s+(x.job.sell||0),0);
+      _wbSet('wb_ar_total', ar.length ? ('ค้าง $'+Math.round(sum).toLocaleString('en-US')+' · '+ar.length+' ใบ') : '');
+      const rows = ar.slice(0,12).map(({job:j,daysLeft:dl})=>{
+        const over=dl<0, soon=dl>=0&&dl<=AR_WARN_DAYS;
+        const col = over?'var(--red)':soon?'var(--gold)':'var(--muted)';
+        const ic  = over?'🔴':soon?'🟡':'⚪';
+        let dstr=''; try{ const d=new Date((j.dueDate||'')+'T00:00:00');
+          if(!isNaN(d)) dstr=d.toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }catch(e){}
+        const when = over?`เลย ${Math.abs(dl)} วัน` : dl===0?'ครบวันนี้' : `อีก ${dl} วัน`;
+        const amt = (j.sell||0)?'$'+Math.round(j.sell).toLocaleString('en-US'):'';
+        return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${col}">
+          <span>${ic}</span>
+          <span style="flex:1;line-height:1.35;color:var(--text)"><b>${_wbEsc(j.no||j.jobno||'—')}</b>
+            <span style="color:var(--muted)">${_wbEsc(j.customer||j.shipper||'')}</span></span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--green)">${amt}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:${col};white-space:nowrap">${when}${dstr?' · '+dstr:''}</span>
+        </div>`;
+      }).join('');
+      const more = ar.length>12 ? `<div style="font-size:10px;color:var(--muted);text-align:center">+ อีก ${ar.length-12} ใบ</div>` : '';
+      const missLine = miss.length
+        ? `<div style="font-size:11px;color:var(--muted);padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid var(--border2)">
+             📄 ยังไม่ได้ใส่วันวางบิลอีก <b style="color:var(--gold)">${miss.length}</b> งาน (ลากตู้แล้ว/จบแล้ว) — ใส่วันวางบิลในงานเพื่อให้ระบบเริ่มนับ</div>`
+        : '';
+      _wbSet('wb_ar', (rows||missLine) ? (rows+more+missLine)
+        : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีเงินค้างรับ</div>`);
+    }catch(e){ console.warn('AR card', e); }
 
     // To-do list
     _wbSet('wb_todos', openTodos.length? openTodos.slice(0,8).map(t=>{ const pc=t.priority==='high'?'var(--red)':t.priority==='low'?'var(--muted)':'var(--gold)'; return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:5px 8px;background:var(--s1);border-radius:7px"><input type="checkbox" onchange="wbDoneTodo(${t.id})" style="cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0"></span><span style="flex:1;color:var(--text)">${_wbEsc(t.text)}</span>${t.deadline?`<span style="font-size:9px;color:var(--muted);font-family:var(--mono)">${_wbEsc(t.deadline)}</span>`:''}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีงานค้าง 🎉</div>`);
@@ -5076,6 +5116,25 @@ function arChaseList(jobs, todayISO){
     out.push({job:j, daysLeft:dl});
   });
   return out.sort((a,b)=>a.daysLeft-b.daysLeft);
+}
+
+/** ลูกหนี้ทั้งหมดที่วางบิลแล้วแต่ยังไม่ได้เงิน — เรียงตามวันครบกำหนด (ใกล้สุดก่อน) */
+function arOutstanding(jobs, todayISO){
+  const out=[];
+  (jobs||[]).forEach(j=>{
+    if(!j || j.status==='cancelled') return;
+    if(j.paid) return;
+    if(!j.invDate) return;
+    const dl=arDaysLeft(j, todayISO);
+    if(dl===null) return;
+    out.push({job:j, daysLeft:dl});
+  });
+  return out.sort((a,b)=>a.daysLeft-b.daysLeft);
+}
+/** งานที่น่าจะต้องวางบิลแล้วแต่ยังไม่ได้ใส่วันวางบิล (ลากตู้แล้ว/จบงานแล้ว) */
+function arMissingInvoice(jobs){
+  return (jobs||[]).filter(j=> j && j.status!=='cancelled' && !j.paid && !j.invDate
+    && ['loaded','completed'].includes(j.status));
 }
 
 window.arRecalcDue = function(){
