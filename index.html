@@ -643,6 +643,13 @@ body{font-size:14px;font-weight:450}
     </div>
       <div class="card-title" style="margin-bottom:0">📦 Saved Shipments</div>
       <div style="display:flex;gap:6px;align-items:center">
+        <select onchange="setAllMonthGroups(this.value==='1');this.selectedIndex=0"
+          title="ย่อ/กางกลุ่มเดือนทั้งหมด — หรือกดที่หัวเดือนทีละอันก็ได้"
+          style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--muted);font-family:var(--mono);font-size:11px;outline:none;cursor:pointer">
+          <option value="">▼ เดือน…</option>
+          <option value="1">▶ ย่อทุกเดือน</option>
+          <option value="0">▼ กางทุกเดือน</option>
+        </select>
         <span id="autosave_badge" style="font-size:10px;color:var(--green);font-family:var(--mono);opacity:.7">● Auto-saved</span>
         <button onclick="storageExport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📦 Backup</button>
         <button onclick="storageImport()" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">📂 Import</button>
@@ -4940,6 +4947,52 @@ function backfillCreatedAt(){
 }
 window.backfillCreatedAt = backfillCreatedAt;
 
+/* ── ย่อ/กางกลุ่มเดือนในตาราง Shipments ────────────────────────────
+   กดที่หัวกลุ่ม (📤 Export · Jun 2026 · N jobs) เพื่อพับแถวงานของเดือนนั้น
+   แถวยอดรวมท้ายกลุ่มยังโชว์อยู่ จะได้เห็นกำไร/ค่าคอมของเดือนที่พับไว้
+   จำสถานะไว้ในเครื่อง เปิดหน้าใหม่ก็ยังพับอยู่เหมือนเดิม */
+const MGRP_KEY = 'sfp_month_collapsed_v1';
+let _mgrpSet = (function(){
+  try{ return new Set(JSON.parse(localStorage.getItem(MGRP_KEY)||'[]')); }
+  catch(e){ return new Set(); }
+})();
+function _mgrpIsCollapsed(k){ return _mgrpSet.has(String(k)); }
+function _mgrpSave(){
+  try{ localStorage.setItem(MGRP_KEY, JSON.stringify([..._mgrpSet])); }catch(e){}
+}
+window.toggleMonthGroup = function(key){
+  key = String(key);
+  const open = _mgrpSet.has(key);          // เดิมพับอยู่ -> กางออก
+  if(open) _mgrpSet.delete(key); else _mgrpSet.add(key);
+  _mgrpSave();
+  // ซ่อน/โชว์แถวงานของเดือนนี้ แล้วสลับหัวลูกศร โดยไม่ต้องวาดตารางใหม่ทั้งใบ
+  document.querySelectorAll('#saved_body tr[data-mgrp-row="'+key.replace(/"/g,'\\"')+'"]')
+    .forEach(tr=>{ tr.style.display = open ? '' : 'none'; });
+  const head = document.querySelector('#saved_body tr[data-mgrp="'+key.replace(/"/g,'\\"')+'"] td');
+  if(head){
+    const car = head.querySelector('span');
+    if(car) car.textContent = open ? '▼' : '▶';
+    const tag = head.querySelectorAll('span')[1];
+    if(open && tag){ if(tag.remove) tag.remove(); else tag.textContent=''; }
+    else if(!open && !tag){
+      const s=document.createElement('span');
+      s.style.color='var(--gold)'; s.textContent=' · ย่อไว้';
+      head.appendChild(s);
+    }
+  }
+  // ติ๊กเลือกของแถวที่ถูกซ่อน ให้เอาออก กันเผลอลบ/แก้งานที่มองไม่เห็น
+  if(!open){
+    document.querySelectorAll('#saved_body tr[data-mgrp-row="'+key.replace(/"/g,'\\"')+'"] .job-chk')
+      .forEach(c=>{ c.checked=false; });
+    if(typeof updateBulkBar==='function') try{ updateBulkBar(); }catch(e){}
+  }
+};
+window.setAllMonthGroups = function(collapse){
+  const keys=[...document.querySelectorAll('#saved_body tr[data-mgrp]')]
+    .map(tr=>tr.getAttribute('data-mgrp'));
+  keys.forEach(k=>{ if(_mgrpIsCollapsed(k)!==collapse) window.toggleMonthGroup(k); });
+};
+
 function renderShipments(){
   if(commMode==='tiered' && typeof applyTieredRate==='function') applyTieredRate();
   const bkg=(v('bkg_search')||'').toLowerCase().trim();
@@ -5005,10 +5058,16 @@ function renderShipments(){
       return s+(isActive?(j.comm||0):0);
     },0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
-    html+=`<tr><td colspan="23" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">${typeLabel} · ${label} · ${keyJobs.length} jobs</td></tr>`;
+    // หัวกลุ่มเดือน — กดเพื่อย่อ/กางแถวงานของเดือนนั้น (ยอดรวมท้ายกลุ่มยังโชว์อยู่)
+    const _cl = _mgrpIsCollapsed(key);
+    html+=`<tr data-mgrp="${key}" onclick="toggleMonthGroup('${key}')" title="กดเพื่อย่อ/กางเดือนนี้"
+        style="cursor:pointer;user-select:none">
+      <td colspan="23" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">
+        <span style="display:inline-block;width:14px;color:var(--cyan);font-size:11px">${_cl?'▶':'▼'}</span>${typeLabel} · ${label} · ${keyJobs.length} jobs${_cl?' <span style="color:var(--gold)">· ย่อไว้</span>':''}
+      </td></tr>`;
     keyJobs.forEach(j=>{
       const mmsi=j.voyage&&/^\d{7,9}$/.test(j.voyage.trim())?j.voyage.trim():'';
-      html+=`<tr style="border-bottom:1px solid rgba(30,48,80,.2)">
+      html+=`<tr data-mgrp-row="${key}" style="border-bottom:1px solid rgba(30,48,80,.2)${_cl?';display:none':''}">
         <td style="padding:4px 8px;text-align:center;position:sticky;left:0;z-index:2;background:var(--s1)"><input type="checkbox" class="job-chk" data-idx="${j._idx}" style="cursor:pointer;accent-color:var(--cyan)"></td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--cyan);position:sticky;left:38px;z-index:2;background:var(--s1);box-shadow:2px 0 5px rgba(0,0,0,.07)">${j.no||'—'}</td>
         <td style="padding:7px 8px;font-family:var(--mono);font-size:11px;color:var(--gold)">${j.jobno||'—'}</td>
