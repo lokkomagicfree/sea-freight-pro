@@ -358,7 +358,11 @@ body{font-size:14px;font-weight:450}
         <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
             <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold)">💰 ตามเงินลูกค้า</span>
-            <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
+            <span style="display:flex;gap:8px;align-items:baseline">
+              <button id="wb_ar_undo" onclick="wbArUndoPaid()" title="ย้อนรายการที่เพิ่งติ๊กว่ารับเงินแล้ว"
+                style="display:none;border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono)">↩ Undo</button>
+              <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
+            </span>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:10px">🔴 เลยกำหนด · 🟡 ครบใน 10 วัน · ⚪ ยังไม่ถึงกำหนด · เรียงตามวันครบ</div>
           <div id="wb_ar" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -1741,6 +1745,8 @@ function renderWorkBench(){
       const miss = arMissingInvoice(window.savedJobs||[]);
       const sum = ar.reduce((s,x)=>s+(x.job.sell||0),0);
       _wbSet('wb_ar_total', ar.length ? ('ค้าง $'+Math.round(sum).toLocaleString('en-US')+' · '+ar.length+' ใบ') : '');
+      { const ub=document.getElementById('wb_ar_undo');
+        if(ub) ub.style.display = window._arUndo ? '' : 'none'; }
       const rows = ar.slice(0,12).map(({job:j,daysLeft:dl})=>{
         const over=dl<0, soon=dl>=0&&dl<=AR_WARN_DAYS;
         const col = over?'var(--red)':soon?'var(--gold)':'var(--muted)';
@@ -1750,7 +1756,9 @@ function renderWorkBench(){
         const when = over?`เลย ${Math.abs(dl)} วัน` : dl===0?'ครบวันนี้' : `อีก ${dl} วัน`;
         const amt = (j.sell||0)?'$'+Math.round(j.sell).toLocaleString('en-US'):'';
         return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${col}">
-          <span>${ic}</span>
+          <input type="checkbox" title="ติ๊กว่ารับเงินแล้ว (วันนี้)" onchange="wbArMarkPaid(${JSON.stringify(String(j.no||j.jobno||'')).replace(/"/g,'&quot;')})"
+                 style="cursor:pointer;accent-color:var(--green);width:14px;height:14px;flex-shrink:0">
+          <span style="font-size:10px">${ic}</span>
           <span style="flex:1;line-height:1.35;color:var(--text)"><b>${_wbEsc(j.no||j.jobno||'—')}</b>
             <span style="color:var(--muted)">${_wbEsc(j.customer||j.shipper||'')}</span></span>
           <span style="font-family:var(--mono);font-size:11px;color:var(--green)">${amt}</span>
@@ -1762,7 +1770,8 @@ function renderWorkBench(){
         ? `<div style="font-size:11px;color:var(--muted);padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid var(--border2)">
              📄 ยังไม่ได้ใส่วันวางบิลอีก <b style="color:var(--gold)">${miss.length}</b> งาน (ลากตู้แล้ว/จบแล้ว) — ใส่วันวางบิลในงานเพื่อให้ระบบเริ่มนับ</div>`
         : '';
-      _wbSet('wb_ar', (rows||missLine) ? (rows+more+missLine)
+      const hint = rows ? `<div style="font-size:10px;color:var(--muted);padding:0 9px">ติ๊กช่องหน้าเลขบุค = รับเงินแล้ว (ลงวันที่วันนี้ให้เลย)</div>` : '';
+      _wbSet('wb_ar', (rows||missLine) ? (rows+more+hint+missLine)
         : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีเงินค้างรับ</div>`);
     }catch(e){ console.warn('AR card', e); }
 
@@ -5249,6 +5258,47 @@ window.arTogglePaid = function(){
   if(c.checked && !d.value) d.value = new Date().toISOString().slice(0,10);
   if(!c.checked) d.value='';
   window.arRecalcDue();
+};
+
+/* ── ติ๊กในการ์ด "ตามเงินลูกค้า" ที่ Work Bench = รับเงินแล้ว ────────────
+   ผู้ใช้ขอ 11 ก.ย. 2026: "ถ้าเราติ๊กแล้ว ก็ถือว่าจ่ายเลย" — ไม่ต้องเปิดงานเข้าไปกด
+   ลงวันรับเงิน = วันนี้ · เก็บค่าเดิมไว้ให้กด "ยกเลิก" คืนได้ กันติ๊กพลาด */
+function arFindJob(no){
+  const s=String(no||'');
+  return (window.savedJobs||[]).find(j=> String(j.no||'')===s || String(j.jobno||'')===s );
+}
+window.wbArMarkPaid = function(no){
+  const j = arFindJob(no);
+  if(!j){ toast('⚠ หาไม่เจอ: '+no); renderWorkBench(); return; }
+  const prev = { paid:j.paid, paidDate:j.paidDate };
+  const today = new Date().toISOString().slice(0,10);
+  j.paid = true;
+  j.paidDate = j.paidDate || today;
+  if(!Array.isArray(j.statusHistory)) j.statusHistory=[];
+  j.statusHistory.push({status:j.status||'', date:today, note:'รับเงินแล้ว (ติ๊กจาก Work Bench)'});
+  window._arUndo = { no:String(j.no||j.jobno||''), prev };
+  try{ storageSave(); }catch(e){}
+  try{ renderShipments(); }catch(e){}
+  try{ updateAlertCount(); }catch(e){}
+  try{ renderWorkBench(); }catch(e){}
+  try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){}
+  const amt = (j.sell||0) ? ' $'+Math.round(j.sell).toLocaleString('en-US') : '';
+  toast('✅ '+(j.no||j.jobno||'')+amt+' รับเงินแล้ว '+today
+        +' — กด Undo ที่การ์ดถ้าติ๊กพลาด');
+};
+window.wbArUndoPaid = function(){
+  const u = window._arUndo; if(!u) return toast('ไม่มีรายการให้ย้อน');
+  const j = arFindJob(u.no);
+  if(!j) return toast('⚠ หางานไม่เจอ');
+  j.paid = u.prev.paid; j.paidDate = u.prev.paidDate;
+  if(Array.isArray(j.statusHistory)) j.statusHistory = j.statusHistory
+      .filter(h=>!/ติ๊กจาก Work Bench/.test(h&&h.note||''));
+  window._arUndo = null;
+  try{ storageSave(); }catch(e){}
+  try{ renderShipments(); }catch(e){}
+  try{ renderWorkBench(); }catch(e){}
+  try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){}
+  toast('↩ ย้อนคืนแล้ว — '+u.no+' กลับเป็นยังไม่จ่าย');
 };
 
 /* ── ย่อ/กางกลุ่มเดือนในตาราง Shipments ────────────────────────────
