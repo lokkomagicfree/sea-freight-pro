@@ -4268,6 +4268,91 @@ function isThaiPOL(pol){
 }
 
 // Expand multi-POL rate into separate Thai-only rates, filter non-Thai, normalize abbreviations
+// ── จับคำแบบ "ขึ้นต้นคำ" แทน substring ดิบ (แก้ 11 ก.ย. 2026) ──────────────
+//   เดิมใช้ includes() ตรงๆ  → พิมพ์ "CA" ไปโดน Chi·ca·go, พิมพ์ "ny" ไปโดน Syd·ney
+//   ผู้ใช้แจ้งว่า "บางทีก็เอา POD อื่นมา" — ต้นเหตุคือตรงนี้
+//   ใหม่: ตรงทั้งคำ / ขึ้นต้นข้อความ / ขึ้นต้นคำใดคำหนึ่ง เท่านั้น
+//   ถ้าค้นแบบเข้มแล้วไม่เจอเลย ตัวเรียกจะผ่อนกลับไปเป็น substring ให้เอง
+function portMatch(text, q){
+  if(!q) return true;
+  const t = String(text||'').toLowerCase();
+  if(!t) return false;
+  if(t === q || t.startsWith(q)) return true;
+  if(t.split(/[\s,()\-\/.]+/).some(w=>w && w.startsWith(q))) return true;
+  if(q.includes(' ') && t.includes(q)) return true;   // เผื่อพิมพ์คร่อมคำ เช่น "chi minh"
+  return false;
+}
+window.portMatch = portMatch;
+
+// ── ชื่อท่าปลายทางมาตรฐาน (ล้าง 11 ก.ย. 2026) ──────────────────────────────
+//   ระบบเคยมี POD 564 ชื่อ แต่ 92 เมืองสะกดกันเองหลายแบบ
+//   (Buenaventura, Colombia / Buenaventura, Co / Buenaventura)
+//   ทำให้เลือกแบบหนึ่งแล้วเจอเรทแค่ส่วนเดียว — ตารางนี้บังคับให้เหลือชื่อเดียว
+//   ⚠ ห้ามใส่คู่ที่เป็นคนละท่าจริง เช่น Vitoria สเปน/บราซิล, Manzanillo ปานามา/เม็กซิโก
+const POD_CANON = {
+ 'Abu Dhabi, Abu Zabi, United Arab Emirates':'Abu Dhabi, United Arab Emirates',
+ 'Abu Dhabi':'Abu Dhabi, United Arab Emirates','Adelaide':'Adelaide, Australia',
+ 'Alexandria':'Alexandria, Egypt','Antwerp':'Antwerp, Belgium',
+ 'Auckland':'Auckland, New Zealand','Barcelona':'Barcelona, Spain',
+ 'Beira':'Beira, Mozambique','Belawan, Sumatera Utara, Indonesia':'Belawan, Indonesia',
+ 'Belawan':'Belawan, Indonesia','Bintulu, Sarawak, Malaysia':'Bintulu, Malaysia',
+ 'Brisbane, Ql':'Brisbane, Australia','Brisbane, Ql, Australia':'Brisbane, Australia',
+ 'Brisbane':'Brisbane, Australia','Buenaventura, Co':'Buenaventura, Colombia',
+ 'Buenaventura':'Buenaventura, Colombia','Buenos Aires':'Buenos Aires, Argentina',
+ 'Busan':'Busan, Korea','Calgary':'Calgary, AB','Callao, Pe':'Callao, Peru',
+ 'Callao':'Callao, Peru','Cape Town, South Afric':'Cape Town, South Africa',
+ 'Cape Town':'Cape Town, South Africa','Cebu':'Cebu, Philippines',
+ 'Chattogram':'Chattogram, Bangladesh',
+ 'Chittagong, Chittagong, Bangladesh':'Chattogram, Bangladesh',
+ 'Chittagong':'Chattogram, Bangladesh','Chennai':'Chennai, India',
+ 'Da Nang, Da Nang, Vietnam':'Da Nang, Vietnam','Dalian':'Dalian, China',
+ 'Durban, South Afric':'Durban, South Africa','Durban':'Durban, South Africa',
+ 'Ensenada, Mx':'Ensenada, Mexico','Felixstowe':'Felixstowe, United Kingdom',
+ 'Fos Sur Mer, France':'Fos-sur-Mer, France','Fos-sur-mer, France':'Fos-sur-Mer, France',
+ 'Fremantle':'Fremantle, Australia','Fukuyama':'Fukuyama, Japan','Genoa':'Genoa, Italy',
+ 'Guayaquil, Ec':'Guayaquil, Ecuador','Haiphong':'Haiphong, Vietnam','Hakata':'Hakata, Japan',
+ 'Hamburg':'Hamburg, Germany','Hazira':'Hazira, India','Ho Chi Minh':'Ho Chi Minh, Vietnam',
+ 'Hong Kong, China':'Hong Kong','Hong Kong, Hong Kong':'Hong Kong','Incheon':'Incheon, Korea',
+ 'Jakarta, Jakarta Raya, Indonesia':'Jakarta, Indonesia','Jakarta':'Jakarta, Indonesia',
+ 'Jebel Ali, Dubai, United Arab Emirates':'Jebel Ali, United Arab Emirates',
+ 'Jebel Ali':'Jebel Ali, United Arab Emirates','Kaohsiung':'Kaohsiung, Taiwan',
+ 'Keelung':'Keelung, Taiwan','Kobe':'Kobe, Japan',
+ 'Kota Kinabalu, Sabah, Malaysia':'Kota Kinabalu, Malaysia',
+ 'Kuantan, Pahang, Malaysia':'Kuantan, Malaysia','Kuching, Sarawak, Malaysia':'Kuching, Malaysia',
+ 'Lazaro Cardenas, Mx':'Lazaro Cardenas, Mexico','Le Havre':'Le Havre, France',
+ 'Manila':'Manila, Philippines','Manzanillo, Mx':'Manzanillo, Mexico',
+ 'Maputo':'Maputo, Mozambique','Melbourne, Vi':'Melbourne, Australia',
+ 'Melbourne, Vi, Australia':'Melbourne, Australia','Melbourne':'Melbourne, Australia',
+ 'Mersin, Turkiye':'Mersin, Turkey','Moji':'Moji, Japan','Montreal':'Montreal, QC',
+ 'Mundra':'Mundra, India','Nacala, South Africa':'Nacala, Mozambique','Nagoya':'Nagoya, Japan',
+ 'Nhava Sheva':'Nhava Sheva, India','Ningbo':'Ningbo, China','Osaka':'Osaka, Japan',
+ 'Pasir Gudang, Johor, Malaysia':'Pasir Gudang, Malaysia','Pasir Gudang':'Pasir Gudang, Malaysia',
+ 'Penang, Pulau Pinang, Malaysia':'Penang, Malaysia','Penang':'Penang, Malaysia',
+ 'Phnom Penh':'Phnom Penh, Cambodia','Port Klang':'Port Klang, Malaysia',
+ 'Port Louis, South Africa':'Port Louis, Mauritius','Port Louis':'Port Louis, Mauritius',
+ 'Prince Rupert, Bc':'Prince Rupert, BC','Prince Rupert':'Prince Rupert, BC',
+ 'Puerto Quetzal, Gt':'Puerto Quetzal, Guatemala','Qingdao':'Qingdao, China',
+ 'Riyadh, Ar Riyad, Saudi Arabia':'Riyadh, Saudi Arabia','Riyadh':'Riyadh, Saudi Arabia',
+ 'Rotterdam':'Rotterdam, Netherlands','San Antonio, Cl':'San Antonio, Chile',
+ 'Semarang, Jawa Tengah, Indonesia':'Semarang, Indonesia','Semarang':'Semarang, Indonesia',
+ 'Shanghai':'Shanghai, China','Shimizu':'Shimizu, Japan',
+ 'Sihanoukville, Sihanoukville, Cambodia':'Sihanoukville, Cambodia',
+ 'Sihanoukville':'Sihanoukville, Cambodia','Singapore, Singapore':'Singapore',
+ 'Sohar, Masqat, Oman':'Sohar, Oman','Sohar':'Sohar, Oman',
+ 'Southampton':'Southampton, United Kingdom',
+ 'Surabaya, Jawa Timur, Indonesia':'Surabaya, Indonesia','Surabaya':'Surabaya, Indonesia',
+ 'Sydney, Ns':'Sydney, Australia','Sydney, Ns, Australia':'Sydney, Australia',
+ 'Sydney':'Sydney, Australia','Tokyo':'Tokyo, Japan','Valencia':'Valencia, Spain',
+ 'Valparaiso, Cl':'Valparaiso, Chile','Valparaiso':'Valparaiso, Chile','Venice':'Venice, Italy',
+ 'Vizag':'Vizag, India','Xiamen':'Xiamen, China','Xingang':'Xingang, China',
+ 'Yangon, Yangon, Myanmar':'Yangon, Myanmar','Yokohama':'Yokohama, Japan',
+ // รหัสรัฐต้องเป็นตัวใหญ่ทั้งคู่ (พบสะกดตัวเล็กค้างอยู่ 11 ก.ย. 2026)
+ 'Tampa, Fl':'Tampa, FL','Honolulu, Hi':'Honolulu, HI','New Orleans, La':'New Orleans, LA',
+ 'Wilmington, Nc':'Wilmington, NC','Port Everglades, Fl':'Port Everglades, FL'
+};
+function canonPOD(name){ const s=String(name||'').trim(); return POD_CANON[s] || s; }
+window.canonPOD = canonPOD; window.POD_CANON = POD_CANON;
+
 function expandAndFilterThaiPOL(rates){
   const result = [];
   rates.forEach(r=>{
@@ -4275,7 +4360,7 @@ function expandAndFilterThaiPOL(rates){
     const podList = normalizePOD(r.pod||'');
     const pushRate = (polNorm) => {
       podList.forEach(pod => {
-        result.push({...r, pol: polNorm, pod});
+        result.push({...r, pol: polNorm, pod: canonPOD(pod)});
       });
     };
     if(!pol.includes('|')){
@@ -4294,16 +4379,21 @@ function filterRoutes(){
   const car=v('r_carrier'),pol=v('r_pol').toLowerCase(),pod=v('r_pod').toLowerCase(),del=v('r_del').toLowerCase(),vstatus=v('r_vstatus');
   const src=v('r_source'), sortBy=v('r_sort');
   if(!pol&&!pod&&!car&&!del){g('route_body').innerHTML='<tr><td colspan="11" style="padding:16px;text-align:center;color:var(--muted)">Type POL or POD to search</td></tr>';g('route_count').textContent='';return;}
-  let res=ALL_RATES.filter(r=>{
-    if(!isThaiPOL(r.pol)) return false;
-    if(car&&normalizeCarrier(r.carrier)!==car)return false;
-    if(pol&&!(r.pol||'').toLowerCase().includes(pol))return false;
-    if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod))return false;
-    if(del&&!(r.del||'').toLowerCase().includes(del))return false;
-    if(vstatus&&liveStat(r)!==vstatus)return false;
-    if(src&&srcLabel(r.source,r)!==src)return false;
-    return true;
-  });
+  const pick=(loose)=>{
+    const m = loose ? (t,q)=>!q || String(t||'').toLowerCase().includes(q) : portMatch;
+    return ALL_RATES.filter(r=>{
+      if(!isThaiPOL(r.pol)) return false;
+      if(car&&normalizeCarrier(r.carrier)!==car)return false;
+      if(pol&&!m(r.pol,pol))return false;
+      if(pod&&!m(r.pod,pod)&&!m(r.del,pod))return false;
+      if(del&&!m(r.del,del))return false;
+      if(vstatus&&liveStat(r)!==vstatus)return false;
+      if(src&&srcLabel(r.source,r)!==src)return false;
+      return true;
+    });
+  };
+  let res=pick(false);
+  if(!res.length) res=pick(true);   // ค้นแบบเข้มไม่เจอ → ผ่อนเป็น substring แบบเดิม
   // Sort ราคาถูก→แพง (ค่าว่าง/0 ดันไปท้าย)
   if(sortBy){ res.sort((a,b)=>((+a[sortBy]||Infinity)-(+b[sortBy]||Infinity))); }
   res=res.slice(0,100);
@@ -9893,6 +9983,19 @@ window.qClearRateFilter = function(){
   const c=document.getElementById('q_f_carrier'); if(c) c.value='';
   qFilterRates();
 };
+// กรองเรทตามเงื่อนไข — loose=true คือผ่อนเป็น substring แบบเดิม
+function qMatchRates(car, pol, pod, del, loose){
+  const m = loose ? (t,q)=>!q || String(t||'').toLowerCase().includes(q) : portMatch;
+  return ALL_RATES.filter(r=>{
+    if(car && !(r.carrier||'').toLowerCase().includes(car)) return false;
+    if(pol && !m(r.pol, pol)) return false;
+    if(pod && !m(r.pod, pod) && !m(r.del, pod)) return false;
+    if(del && !m(r.del, del)) return false;
+    return true;
+  });
+}
+const qCheapFirst = (a,b)=>(parseFloat(a.gp20||a.hc40||0))-(parseFloat(b.gp20||b.hc40||0));
+
 function qFilterRates(){
   const car = (document.getElementById('q_f_carrier')?.value||'').toLowerCase();
   // ⚠ ห้าม fallback ไปอ่าน q_pol / q_pod ของหัวใบเสนอราคา (บั๊ก 10 Aug 2026)
@@ -9905,34 +10008,52 @@ function qFilterRates(){
   const count_el = document.getElementById('q_route_count');
   const body_el  = document.getElementById('q_route_body');
   if(!pol&&!pod&&!car&&!del){ if(body_el) body_el.innerHTML='<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--muted)">พิมพ์ POL / POD / DEL หรือเลือก Carrier เพื่อค้นหา</td></tr>'; if(count_el) count_el.textContent=''; return; }
-  const results = ALL_RATES.filter(r=>{
-    if(car&&!(r.carrier||'').toLowerCase().includes(car)) return false;
-    if(pol&&!(r.pol||'').toLowerCase().includes(pol)) return false;
-    if(pod&&!(r.pod||'').toLowerCase().includes(pod)&&!(r.del||'').toLowerCase().includes(pod)) return false;
-    if(del&&!(r.del||'').toLowerCase().includes(del)) return false;
-    return true;
-  }).sort((a,b)=>{
-    const a20=parseFloat(a.gp20||a.hc40||0), b20=parseFloat(b.gp20||b.hc40||0);
-    return a20-b20;
-  }).slice(0,50);
-  // หา 0 เส้นทาง → บอกด้วยว่าเป็นเพราะช่องไหนกรองอยู่ จะได้ไม่ต้องเดา
+  let results = qMatchRates(car, pol, pod, del, false);
+  let loosened = false;
+  // ค้นแบบเข้มแล้วไม่เจอเลย → ลองผ่อนเป็น substring แบบเดิม กันคนพิมพ์กลางคำ
+  if(!results.length){
+    const l = qMatchRates(car, pol, pod, del, true);
+    if(l.length){ results = l; loosened = true; }
+  }
+  results = results.sort(qCheapFirst).slice(0,50);
+
+  // หา 0 เส้นทาง → เสนอเส้นทางใกล้เคียงที่ "กดใช้ได้จริง" ไม่ใช่บอกแค่จำนวน
+  let altHtml = '';
   if(count_el){
-    if(results.length){ count_el.innerHTML = results.length+' routes found'; }
-    else{
-      const relax = (skip)=> ALL_RATES.filter(r=>{
-        if(skip!=='car' && car && !(r.carrier||'').toLowerCase().includes(car)) return false;
-        if(skip!=='pol' && pol && !(r.pol||'').toLowerCase().includes(pol)) return false;
-        if(skip!=='pod' && pod && !(r.pod||'').toLowerCase().includes(pod) && !(r.del||'').toLowerCase().includes(pod)) return false;
-        if(skip!=='del' && del && !(r.del||'').toLowerCase().includes(del)) return false;
-        return true;
-      }).length;
-      const tips=[];
-      if(pol && relax('pol')) tips.push('ถ้าไม่กรอง POL จะเจอ '+relax('pol')+' เส้นทาง');
-      if(pod && relax('pod')) tips.push('ถ้าไม่กรอง POD จะเจอ '+relax('pod')+' เส้นทาง');
-      if(del && relax('del')) tips.push('ถ้าไม่กรอง DEL จะเจอ '+relax('del')+' เส้นทาง');
-      if(car && relax('car')) tips.push('ถ้าเลือก Carrier = All จะเจอ '+relax('car')+' เส้นทาง');
+    if(results.length){
+      count_el.innerHTML = results.length+' routes found'
+        + (loosened ? ' <span style="color:var(--gold)">· ค้นแบบหลวม (ไม่มีท่าไหนขึ้นต้นด้วยคำนี้)</span>' : '');
+    }else{
+      const relax = (skip)=> qMatchRates(skip==='car'?'':car, skip==='pol'?'':pol,
+                                         skip==='pod'?'':pod, skip==='del'?'':del, false);
+      const tips = [];
+      const alts = [];
+      const addAlt = (label, list)=>{
+        if(!list.length) return;
+        alts.push({label, rows:list.sort(qCheapFirst).slice(0,5)});
+      };
+      if(pol){ const x=relax('pol'); if(x.length){ tips.push('ไม่กรอง POL เจอ '+x.length);
+        addAlt('ปลายทางนี้มีเรท แต่ออกจากท่าอื่น', x); } }
+      if(pod){ const x=relax('pod'); if(x.length){ tips.push('ไม่กรอง POD เจอ '+x.length);
+        addAlt('ท่าต้นทางนี้ไปที่อื่นได้', x); } }
+      if(del){ const x=relax('del'); if(x.length) tips.push('ไม่กรอง DEL เจอ '+x.length); }
+      if(car){ const x=relax('car'); if(x.length){ tips.push('เลือก Carrier = All เจอ '+x.length);
+        addAlt('สายเรืออื่นวิ่งเส้นนี้', x); } }
       count_el.innerHTML = '0 routes found'
         + (tips.length ? ' <span style="color:var(--gold)">· '+tips.join(' · ')+'</span>' : '');
+      altHtml = alts.map(a=>`
+        <tr><td colspan="8" style="padding:8px 8px 4px;font-size:10px;color:var(--gold);font-family:var(--mono)">↳ ${a.label}</td></tr>`
+        + a.rows.map(r=>`
+        <tr style="opacity:.85">
+          <td style="font-size:11px;padding:5px 8px">${r.carrier}</td>
+          <td style="font-size:11px;font-family:var(--mono);padding:5px 8px">${r.pol} → ${r.pod}</td>
+          <td style="font-size:10px;font-family:var(--mono);padding:5px 8px;color:var(--muted)">${r.del||'—'}</td>
+          <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--green);padding:5px 8px">${r.gp20?'$'+r.gp20:'-'}</td>
+          <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:5px 8px">${r.gp40?'$'+r.gp40:'-'}</td>
+          <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:5px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
+          <td style="font-size:10px;font-family:var(--mono);padding:5px 8px;color:var(--muted)">${r.validity||''}</td>
+          <td style="padding:4px 6px"><button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="qApplyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
+        </tr>`).join('')).join('');
     }
   }
   if(body_el) body_el.innerHTML = results.length ? results.map(r=>`
@@ -9945,7 +10066,8 @@ function qFilterRates(){
       <td style="text-align:right;font-family:var(--mono);font-size:11px;color:var(--cyan);padding:6px 8px">${r.hc40?'$'+r.hc40:'-'}</td>
       <td style="font-size:10px;font-family:var(--mono);padding:6px 8px;color:var(--muted)">${r.date_from?r.date_from.slice(5).replace('-','/'):''}~${r.date_to?r.date_to.slice(5).replace('-','/'):''}${!r.date_from&&r.validity?r.validity:''}</td>
       <td style="padding:4px 6px"><button class="btn btn-cyan" style="font-size:10px;padding:3px 8px" onclick="qApplyRate(${ALL_RATES.indexOf(r)})">Apply</button></td>
-    </tr>`).join('') : '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">No rates found</td></tr>';
+    </tr>`).join('')
+    : '<tr><td colspan="8" style="padding:16px 8px 4px;text-align:center;color:var(--muted)">ไม่มีเรทตรงเงื่อนไขนี้</td></tr>' + altHtml;
   // Update carrier dropdown
   const cd = document.getElementById('q_f_carrier');
   if(cd && cd.options.length <= 1){
