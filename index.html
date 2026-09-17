@@ -4815,6 +4815,24 @@ function saveShipment(){
   // Override POL if LKB or BKK is ticked
   if(g('lkb_toggle')?.checked) jobData.pol = 'LAT KRABANG (LKB)';
   if(g('bkk_toggle')?.checked) jobData.pol = 'BANGKOK (BKK)';
+  // ── ข้อมูลที่อ่านมาจาก Booking PDF ที่ฟอร์ม Shipment ไม่มีช่องให้ ──────
+  // (Paperless Code / Pick up Place+PIC / Turn-In At+PIC / Weight / Port of Transit)
+  // ต้องติดไปกับงาน ไม่งั้นออกใบ Booking ซ้ำแล้วช่องพวกนี้ว่าง (แก้ 17 ก.ย. 2026)
+  {
+    const P = window._pendingBpdfFromPdf;
+    if(P && Object.keys(P).length){
+      const pick=(id)=>P[id]||'';
+      if(pick('bpdf_paperless'))    jobData.paperlessCode = pick('bpdf_paperless');
+      if(pick('bpdf_pu_place'))     jobData.pickupPlace   = pick('bpdf_pu_place');
+      if(pick('bpdf_pu_pic'))       jobData.pickupPic     = pick('bpdf_pu_pic');
+      if(pick('bpdf_ti_at'))        jobData.turninAt      = pick('bpdf_ti_at');
+      if(pick('bpdf_ti_pic'))       jobData.turninPic     = pick('bpdf_ti_pic');
+      if(pick('bpdf_weight'))       jobData.weight        = pick('bpdf_weight');
+      if(pick('bpdf_port_transit')) jobData.portTransit   = pick('bpdf_port_transit');
+      jobData.bpdfData = Object.assign({}, jobData.bpdfData||{}, P);
+      window._pendingBpdfFromPdf = null;
+    }
+  }
   /* Decide: update the existing shipment, or add a NEW one.
      แก้เลขบุคตอนกำลัง edit อยู่ = คลุมเครือ ทำได้ 2 อย่าง
        - งานเดิมเปลี่ยนเลขบุค (สายเรือออกเลขใหม่)  -> แก้ทับ เลขเก่าต้องหายไป
@@ -6723,7 +6741,19 @@ function applyOwnBookingPdf(lines){
         const t = String(L[j]||'').trim();
         if(!t) continue;
         const m = t.match(/^address\s*[:：]\s*(.*)$/i);
-        if(!m) { if(/^(pick\s*up|turn-?in|commodity|hs\.?\s*code|paperless)/i.test(t)) break; continue; }
+        if(!m) {
+          if(/^(pick\s*up|turn-?in|commodity|hs\.?\s*code|paperless|special|conveyance|remark)/i.test(t)) break;
+          // บางใบที่อยู่ depot ขึ้นบรรทัดใหม่เฉยๆ ไม่มีคำว่า "Address :" นำหน้า
+          // (เจอ 17 ก.ย. 2026 ใบ 035GX47053 — "65 MOO 8,BANGPLEE,…" หายไปทั้งบรรทัด)
+          // ยึดตำแหน่งคอลัมน์: ต้องเริ่มตรงกับคอลัมน์ค่า ไม่ใช่คอลัมน์ป้าย และต้องดูเหมือนที่อยู่
+          const sameCol = (X[j]!=null && X[i]!=null) ? (X[j] - X[i] > 40) : true;
+          if(j===i+1 && sameCol && /[0-9,]/.test(t) && t.length>8 && !/[:：]/.test(t)){
+            if(!map[key].toLowerCase().includes(t.slice(0,15).toLowerCase()))
+              map[key] = map[key] + ' (' + t + ')';
+            break;
+          }
+          continue;
+        }
         let addr = m[1].trim();
         if(!addr && j+1 < L.length){                    // ค่าอยู่บรรทัดถัดไป
           const nx = String(L[j+1]||'').trim();
@@ -6973,6 +7003,18 @@ function applyOwnBookingPdf(lines){
   // (เคยเกิดบั๊ก DEL ค้างเป็น Chicago ทุกงาน เพราะ PDF ที่ไม่มี Final Destination ไม่ได้ล้างค่าเดิม)
   if(pol||por){ window._selPol = pol||por; n+=set('r_pol_sel', pol||por); n+=set('rate_pol', pol||por); }
   else { window._selPol=''; }
+  // ── รับตู้ที่ ICD ลาดกระบัง / กรุงเทพ แต่ลงเรือที่แหลมฉบัง → ต้องติ๊ก LKB/BKK ──
+  // Port of Receive บอกว่าตู้ออกจากไหนจริง ซึ่งเป็นตัวกำหนดว่าใช้เรทชุดไหน
+  // (ชุด ex Lat Krabang บวก addon ไว้แล้ว ถ้าไม่ติ๊กจะไปดึงเรทแหลมฉบังที่ถูกกว่า — ยืนยันกับผู้ใช้ 17 ก.ย. 2026)
+  {
+    const src = (por||'').toUpperCase();
+    const tick = (id, on)=>{ const e=document.getElementById(id);
+      if(!e || e.checked===on) return;
+      e.checked = on; try{ e.dispatchEvent(new Event('change',{bubbles:true})); }catch(_e){} n++; };
+    if(/LAT\s*KRABANG|LADKRABANG|LKB|ICD/.test(src)){ tick('lkb_toggle', true); tick('bkk_toggle', false); }
+    else if(/BANGKOK|\bBKK\b/.test(src)){ tick('bkk_toggle', true); tick('lkb_toggle', false); }
+    else { tick('lkb_toggle', false); tick('bkk_toggle', false); }
+  }
   if(pod){ window._selPod = pod; n+=set('r_pod_sel', pod); n+=set('rate_pod', pod); }
   else { window._selPod=''; }
   if(dest && pod && dest.toUpperCase()!==pod.toUpperCase()){ window._selDel = dest; n+=set('s_del', dest); }
@@ -6988,8 +7030,42 @@ function applyOwnBookingPdf(lines){
     vgm_cutoff:g('VGM Cut-Off time'), gate_closing:g('Gate Closing Date'), paperless:g('Paperless Code'),
     pu_ref:g('Pick up Ref'), pu_date:g('Pick up Date'), pu_place:g('Pick up Place'), pu_pic:g('Pick up PIC.'),
     ti_ref:g('Turn-In Ref'), ti_date:g('Turn-In Date'), ti_at:g('Turn-In At'), ti_pic:g('Turn-In PIC.'),
-    commodity:g('Commodity'), weight:g('Weight'), hs_code:g('HS. Code')
+    commodity:g('Commodity'), weight:g('Weight'), hs_code:g('HS. Code'),
+    // บล็อก "Special Cargo Remark" อยู่ระหว่างหัวข้อกับบรรทัด "Remark:-"
+    // ในใบมีข้อความที่ต้องรู้จริง เช่น **FIRST RETURN 22 SEP 2026 WITHOUT EXTRA CHARGE**
+    special_remark: (function(){
+      const s = L.findIndex(t=>/^special\s*cargo\s*remark/i.test(String(t||'').trim()));
+      if(s < 0) return '';
+      const out=[];
+      for(let j=s+1; j<L.length; j++){
+        const t=String(L[j]||'').trim();
+        if(!t) continue;
+        if(/^remark\s*:?-?$/i.test(t) || /^[A-G]\)[.:]?\s/.test(t)) break;
+        out.push(t);
+        if(out.length>=4) break;
+      }
+      return out.join(' · ');
+    })()
   };
+  // ── ต่อเข้าฟอร์ม Booking PDF ด้วย ────────────────────────────────────
+  // เดิมเก็บใส่ _ownPdfBpdf แล้วไม่มีใครอ่าน → Paperless Code / Pick up Place /
+  // Turn-In At / Weight / Port of Transit หายทุกครั้งที่ import (แก้ 17 ก.ย. 2026)
+  // ผู้ใช้มีกฎว่า "Paperless code ต้องมีเสมอ" ก่อนออกใบ Booking จึงห้ามให้หาย
+  {
+    const B = window._ownPdfBpdf;
+    const PAIRS = [
+      ['bpdf_paperless',  B.paperless], ['bpdf_port_transit', B.port_transit],
+      ['bpdf_port_receive', B.port_receive], ['bpdf_port_loading', B.port_loading],
+      ['bpdf_pu_place',   B.pu_place],  ['bpdf_pu_pic',   B.pu_pic],
+      ['bpdf_ti_at',      B.ti_at],     ['bpdf_ti_pic',   B.ti_pic],
+      ['bpdf_weight',     B.weight],    ['bpdf_special_remark', B.special_remark||''],
+    ];
+    const carry = {};
+    PAIRS.forEach(([id,val])=>{ if(!val) return; carry[id]=val; n+=set(id, val); });
+    // ให้ saveShipment เก็บลงงานด้วย จะได้ออกใบ Booking ซ้ำได้เหมือนเดิม
+    window._pendingBpdfFromPdf = carry;
+    if(B.paperless){ window._pdfPaperless = B.paperless; }
+  }
   const miss=[]; if(!bkg) miss.push('Booking No.'); if(!_etd) miss.push('ETD'); if(!ctn.length) miss.push('Volume');
   toast('📄 อ่าน Booking Confirmation ของเราแล้ว — เติม '+n+' ช่อง'+(miss.length?(' · ยังไม่พบ: '+miss.join(', ')):''));
   // กันอ่านวันที่สลับช่อง — ETA ต้องไม่มาก่อน ETD (เคยเจอ job ที่ ETA 27 ส.ค. แต่ ETD 30 ส.ค.)
