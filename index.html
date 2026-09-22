@@ -364,7 +364,16 @@ body{font-size:14px;font-weight:450}
               <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
             </span>
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:10px">🔴 เลยกำหนด · 🟡 ครบใน 10 วัน · ⚪ ยังไม่ถึงกำหนด · เรียงตามวันครบ</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">🔴 เลยกำหนด · 🟡 ครบใน 10 วัน · ⚪ ยังไม่ถึงกำหนด · เรียงตามวันครบ</div>
+          <!-- ค้นหาเลขบุค/ลูกค้า — การ์ดโชว์แค่ 12 ใบแรก ใบที่เหลือต้องค้นถึงจะเจอ -->
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+            <input spellcheck="false" class="inp" id="wb_ar_search" autocomplete="off"
+              placeholder="🔍 เลขบุค / ชื่อลูกค้า…" oninput="renderWorkBench()"
+              onkeydown="if(event.key==='Escape'){this.value='';renderWorkBench();}"
+              style="flex:1;font-size:11px;padding:5px 9px">
+            <button onclick="wbArClearSearch()" title="ล้างคำค้น"
+              style="border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;font-size:10px;padding:4px 9px;cursor:pointer;font-family:var(--mono);white-space:nowrap">✕ ล้าง</button>
+          </div>
           <div id="wb_ar" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
         <!-- Quick To-Do -->
@@ -1741,13 +1750,22 @@ function renderWorkBench(){
 
     // ── การ์ดตามเงินลูกค้า — โชว์ลูกหนี้ทุกใบที่ยังไม่ได้เงิน ไม่ใช่เฉพาะที่ใกล้ครบ ──
     try{
-      const ar = arOutstanding(window.savedJobs||[], todayISO);
+      const arAll = arOutstanding(window.savedJobs||[], todayISO);
       const miss = arMissingInvoice(window.savedJobs||[]);
-      const sum = ar.reduce((s,x)=>s+(x.job.sell||0),0);
-      _wbSet('wb_ar_total', ar.length ? ('ค้าง $'+Math.round(sum).toLocaleString('en-US')+' · '+ar.length+' ใบ') : '');
+      const sum = arAll.reduce((s,x)=>s+(x.job.sell||0),0);
+      _wbSet('wb_ar_total', arAll.length ? ('ค้าง $'+Math.round(sum).toLocaleString('en-US')+' · '+arAll.length+' ใบ') : '');
       { const ub=document.getElementById('wb_ar_undo');
         if(ub) ub.style.display = window._arUndo ? '' : 'none'; }
-      const rows = ar.slice(0,12).map(({job:j,daysLeft:dl})=>{
+      // ── ค้นหาเลขบุค / ชื่อลูกค้า ─────────────────────────────────────────
+      //   การ์ดโชว์แค่ 12 ใบแรก ใบที่เหลือเดิมไม่มีทางเห็นเลย (ผู้ใช้ขอ 22 ก.ย. 2026)
+      //   ค้นแล้วโชว์ทุกใบที่ตรง ไม่ตัดที่ 12 — จะได้ติ๊กรับเงินได้ทุกใบ
+      const arQ = String(document.getElementById('wb_ar_search')?.value||'').trim().toLowerCase();
+      const ar = arQ
+        ? arAll.filter(({job:j})=> (String(j.no||'')+' '+String(j.jobno||'')+' '+
+            String(j.customer||'')+' '+String(j.shipper||'')).toLowerCase().includes(arQ))
+        : arAll;
+      const CAP = arQ ? ar.length : 12;
+      const rows = ar.slice(0,CAP).map(({job:j,daysLeft:dl})=>{
         const over=dl<0, soon=dl>=0&&dl<=AR_WARN_DAYS;
         const col = over?'var(--red)':soon?'var(--gold)':'var(--muted)';
         const ic  = over?'🔴':soon?'🟡':'⚪';
@@ -1765,13 +1783,19 @@ function renderWorkBench(){
           <span style="font-family:var(--mono);font-size:10px;color:${col};white-space:nowrap">${when}${dstr?' · '+dstr:''}</span>
         </div>`;
       }).join('');
-      const more = ar.length>12 ? `<div style="font-size:10px;color:var(--muted);text-align:center">+ อีก ${ar.length-12} ใบ</div>` : '';
+      const more = (!arQ && ar.length>CAP)
+        ? `<div style="font-size:10px;color:var(--muted);text-align:center">+ อีก ${ar.length-CAP} ใบ — พิมพ์เลขบุคในช่องค้นหาเพื่อดูใบที่เหลือ</div>` : '';
+      const found = arQ
+        ? (ar.length
+            ? `<div style="font-size:10px;color:var(--gold);padding:0 9px">🔍 เจอ ${ar.length} ใบ · รวม $${Math.round(ar.reduce((s,x)=>s+(x.job.sell||0),0)).toLocaleString('en-US')} (จากทั้งหมด ${arAll.length} ใบ)</div>`
+            : `<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">ไม่เจอ "${_wbEsc(arQ)}" ในรายการค้างรับ ${arAll.length} ใบ — อาจรับเงินไปแล้ว หรือยังไม่ได้ใส่วันวางบิล</div>`)
+        : '';
       const missLine = miss.length
         ? `<div style="font-size:11px;color:var(--muted);padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid var(--border2)">
              📄 ยังไม่ได้ใส่วันวางบิลอีก <b style="color:var(--gold)">${miss.length}</b> งาน (ลากตู้แล้ว/จบแล้ว) — ใส่วันวางบิลในงานเพื่อให้ระบบเริ่มนับ</div>`
         : '';
       const hint = rows ? `<div style="font-size:10px;color:var(--muted);padding:0 9px">ติ๊กช่องหน้าเลขบุค = รับเงินแล้ว (ลงวันที่วันนี้ให้เลย)</div>` : '';
-      _wbSet('wb_ar', (rows||missLine) ? (rows+more+hint+missLine)
+      _wbSet('wb_ar', (rows||missLine||found) ? (found+rows+more+hint+missLine)
         : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีเงินค้างรับ</div>`);
     }catch(e){ console.warn('AR card', e); }
 
@@ -5303,6 +5327,11 @@ window.wbArMarkPaid = function(no){
   const amt = (j.sell||0) ? ' $'+Math.round(j.sell).toLocaleString('en-US') : '';
   toast('✅ '+(j.no||j.jobno||'')+amt+' รับเงินแล้ว '+today
         +' — กด Undo ที่การ์ดถ้าติ๊กพลาด');
+};
+window.wbArClearSearch = function(){
+  const e=document.getElementById('wb_ar_search');
+  if(e){ e.value=''; e.focus(); }
+  renderWorkBench();
 };
 window.wbArUndoPaid = function(){
   const u = window._arUndo; if(!u) return toast('ไม่มีรายการให้ย้อน');
