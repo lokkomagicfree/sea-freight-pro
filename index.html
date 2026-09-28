@@ -2291,6 +2291,7 @@ function showPage(id){
   });
 }
 
+
 // ── Exchange rate ──────────────────────────────────────────
 function onExRateChange(){ exRate=parseFloat(v('exrate_inp'))||35.5; recalc(); }
 function onCommRateChange(){ commRate=(parseFloat(v('comm_rate_inp'))||25)/100; g('comm_rate_display').textContent=(commRate*100).toFixed(1)+'%'; recalc(); }
@@ -4871,8 +4872,81 @@ function saveShipment(){
     window._askRenameOrNew(jobData, window._editIdx, String(_prev.no), String(jobData.no));
     return;
   }
-  window._applySave(jobData, _editing ? 'update' : 'new', window._editIdx, null);
+  window._saveGuard(jobData, _editing ? 'update' : 'new', window._editIdx, null);
 }
+
+/* หาเลขบุคที่ซ้ำกับงานอื่นในระบบ — คืน index ของงานนั้น หรือ -1 ถ้าไม่ซ้ำ
+   selfIdx = แถวที่กำลังแก้อยู่ ต้องข้ามไป (ไม่งั้นงานตัวเองจะฟ้องซ้ำกับตัวเอง)
+   เทียบแบบ trim + ตัวพิมพ์ใหญ่เล็กไม่สำคัญ · เลข COPY- (จาก Duplicate) ไม่นับ */
+window._findDupJobIdx = function(no, selfIdx){
+  const n = String(no==null?'':no).trim().toUpperCase();
+  if(!n || /^COPY-/.test(n)) return -1;
+  const list = (typeof savedJobs!=='undefined' && savedJobs) ? savedJobs : [];
+  for(let i=0;i<list.length;i++){
+    if(selfIdx!=null && i===Number(selfIdx)) continue;
+    const j=list[i]; if(!j) continue;
+    if(String(j.no==null?'':j.no).trim().toUpperCase()===n) return i;
+  }
+  return -1;
+};
+
+/* ด่านก่อนบันทึกจริง — ถ้าเลขบุคไปชนงานอื่นที่มีอยู่แล้ว ต้องถามก่อน ห้ามเดา */
+window._saveGuard = function(jobData, mode, editIdx, renamedFrom){
+  const selfIdx = (mode==='update') ? editIdx : null;
+  const dupIdx = window._findDupJobIdx(jobData && jobData.no, selfIdx);
+  if(dupIdx>=0){ window._askDupBooking(jobData, mode, editIdx, renamedFrom, dupIdx); return; }
+  window._applySave(jobData, mode, editIdx, renamedFrom);
+};
+
+/* กล่องถามเมื่อเลขบุคซ้ำกับงานที่มีอยู่ในระบบ */
+window._askDupBooking = function(jobData, mode, editIdx, renamedFrom, dupIdx){
+  const old = document.getElementById('_dupAsk'); if(old) old.remove();
+  const esc = s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const ex = savedJobs[dupIdx]||{};
+  const line = [ex.customer||'', ex.etd?('ETD '+ex.etd):'', ex.status||'', ex.vessel||'']
+                 .filter(Boolean).join(' · ') || '(ไม่มีรายละเอียด)';
+  const d=document.createElement('div');
+  d.id='_dupAsk';
+  d.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.45);'
+    +'display:flex;align-items:center;justify-content:center;padding:20px';
+  d.innerHTML =
+    '<div style="background:#fff;max-width:540px;width:100%;border-radius:16px;padding:24px 26px;'
+    +'box-shadow:0 18px 50px rgba(0,0,0,.3);font-family:inherit">'
+    +'<div style="font-size:18px;font-weight:800;margin-bottom:6px">⚠ เลข Booking นี้มีอยู่แล้วในระบบ</div>'
+    +'<div style="font-size:14px;line-height:1.7;color:#444;margin-bottom:16px">'
+    +'เลข <b style="color:#b3502f">'+esc(jobData.no)+'</b> ตรงกับงานที่มีอยู่แล้ว<br>'
+    +'<span style="color:#666;font-size:13px">งานเดิม: '+esc(line)+'</span>'
+    +'<br>ต้องการให้ระบบทำอะไรครับ?</div>'
+    +'<button id="_dupUpd" style="display:block;width:100%;text-align:left;margin-bottom:10px;padding:13px 15px;'
+    +'border:2px solid #1a7f4b;background:#f2fbf6;border-radius:11px;cursor:pointer;font-size:14px;font-family:inherit">'
+    +'<b>แก้ทับงานเดิมที่ใช้เลขนี้</b><br><span style="color:#555;font-size:13px">'
+    +'งานเดียวกัน — ข้อมูลบนหน้าจอจะเขียนทับงานเดิม ไม่มีใบซ้ำ</span></button>'
+    +'<button id="_dupNew" style="display:block;width:100%;text-align:left;margin-bottom:10px;padding:13px 15px;'
+    +'border:2px solid #d9d9d9;background:#fafafa;border-radius:11px;cursor:pointer;font-size:14px;font-family:inherit">'
+    +'<b>บันทึกเป็นอีกใบ (เลขซ้ำได้)</b><br><span style="color:#555;font-size:13px">'
+    +'เช่น split booking — ระบบจะมีเลข '+esc(jobData.no)+' สองใบ</span></button>'
+    +'<button id="_dupCancel" style="display:block;width:100%;padding:10px;border:0;background:none;'
+    +'color:#777;cursor:pointer;font-size:13px;font-family:inherit">ยกเลิก กลับไปแก้เลข</button>'
+    +'</div>';
+  document.body.appendChild(d);
+  const close=()=>d.remove();
+  d.querySelector('#_dupUpd').onclick = ()=>{
+    close();
+    let target = dupIdx;
+    const cur = (editIdx!=null) ? savedJobs[editIdx] : null;
+    const oldNo = (cur && String(cur.no||'').trim().toUpperCase()!==String(jobData.no||'').trim().toUpperCase())
+                    ? String(cur.no) : (renamedFrom||null);
+    // กำลังแก้งานอีกใบอยู่ แล้วเลือกรวมเข้ากับงานเดิม — แถวที่แก้อยู่ต้องไม่ค้าง
+    if(editIdx!=null && editIdx!==dupIdx && !oldNo){
+      savedJobs.splice(editIdx,1);
+      if(dupIdx>editIdx) target = dupIdx-1;
+    }
+    window._applySave(jobData,'update',target,oldNo);
+  };
+  d.querySelector('#_dupNew').onclick   = ()=>{ close(); window._applySave(jobData, mode, editIdx, renamedFrom); };
+  d.querySelector('#_dupCancel').onclick= ()=>{ close(); };   // _editIdx ยังอยู่ กลับไปแก้ต่อได้
+  d.addEventListener('click', e=>{ if(e.target===d) close(); });
+};
 
 /* ถามว่าจะแก้เลขบุคของงานเดิม หรือสร้างงานใหม่ */
 window._askRenameOrNew = function(jobData, editIdx, oldNo, newNo){
@@ -4902,8 +4976,8 @@ window._askRenameOrNew = function(jobData, editIdx, oldNo, newNo){
   function _esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   document.body.appendChild(d);
   const close=()=>d.remove();
-  d.querySelector('#_rnUpd').onclick   = ()=>{ close(); window._applySave(jobData,'update',editIdx,oldNo); };
-  d.querySelector('#_rnNew').onclick   = ()=>{ close(); window._applySave(jobData,'new',   editIdx,null); };
+  d.querySelector('#_rnUpd').onclick   = ()=>{ close(); window._saveGuard(jobData,'update',editIdx,oldNo); };
+  d.querySelector('#_rnNew').onclick   = ()=>{ close(); window._saveGuard(jobData,'new',   editIdx,null); };
   d.querySelector('#_rnCancel').onclick= ()=>{ close(); };      // _editIdx ยังอยู่ กลับไปแก้ต่อได้
   d.addEventListener('click', e=>{ if(e.target===d) close(); });
 };
