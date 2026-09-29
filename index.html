@@ -6896,6 +6896,16 @@ function applyOwnBookingPdf(lines){
         if(isLabel(t)){
           // เจอป้ายถัดไปในคอลัมน์เดียวกัน = หมดเขตของ Booking No. (เช่น Shipping Line :)
           if(!merged && hasX && X[j]!=null && Math.abs(X[j]-labelX) < 40) break;
+          /* ป้ายอยู่คอลัมน์ซ้าย แต่บรรทัดเดียวกันอาจมีเลข booking วางอยู่คอลัมน์ขวา
+             (เจอจริง 29 ก.ย. 2026 ใบ 035GX13529 — "Shipper Name : D.B. GROUP" กับ
+              "035GX13529" baseline เดียวกัน เดิมข้ามทั้งบรรทัดจน bkgno ว่างเลย)
+             หยิบเฉพาะชิ้นที่อยู่ในคอลัมน์ของป้าย + มีตัวเลข + ยาวพอจะเป็นเลขบุคจริง */
+          if(hasX && IT[j] && IT[j].length>1){
+            IT[j].forEach(p=>{
+              if(p.x!=null && p.x >= labelX-40 && isVal(p.t) && /\d/.test(p.t) && p.t.length>=6)
+                cands.push({t:p.t, x:p.x});
+            });
+          }
           continue;                                  // ป้ายคอลัมน์อื่น → ข้ามไป
         }
         // บรรทัดเดียวอาจมี 2 ค่าคนละคอลัมน์ (เช่น "STHABKK00538887   6462437150")
@@ -7005,6 +7015,13 @@ function applyOwnBookingPdf(lines){
   // กันหยิบชื่อสายเรือมาเป็นเลข booking (เช่น COSCO) — เลข booking ต้องมีตัวเลขอยู่ด้วย
   const carrierTxt = (g('Shipping Line')||'').replace(/[^\w-]/g,'');
   if(bkg && (bkg.toUpperCase()===carrierTxt.toUpperCase() || !/\d{4,}/.test(bkg))) bkg = '';
+  /* ใบที่พิมพ์ชื่อ shipper กับเลขบุค baseline เดียวกัน (คนละคอลัมน์) ตัวอ่าน PDF
+     รวมเป็นบรรทัดเดียว → ชื่อ shipper จะมีเลขบุคห้อยท้ายมาด้วย ต้องตัดออก
+     (ใบ 035GX13529: "Shipper Name : D.B. GROUP 035GX13529" → เหลือ "D.B. GROUP") */
+  if(bkg && map['shipper name']){
+    const _b = bkg.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    map['shipper name'] = map['shipper name'].replace(new RegExp('\\s*'+_b+'\\s*$'),'').trim();
+  }
   // ตาข่ายกันตก: ยังหาไม่เจอ → หาโทเคนเดี่ยวๆ ที่อยู่ครึ่งขวาของหน้า มีตัวเลข และไม่ใช่ REF
   if(!bkg){
     const cand = [];
