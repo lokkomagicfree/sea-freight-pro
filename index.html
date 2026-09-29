@@ -6911,7 +6911,7 @@ function applyOwnBookingPdf(lines){
         // บรรทัดเดียวอาจมี 2 ค่าคนละคอลัมน์ (เช่น "STHABKK00538887   6462437150")
         // จึงต้องดูเป็น "ชิ้น" พร้อมพิกัดของตัวเอง
         const parts = (IT[j] && IT[j].length) ? IT[j] : [{x:X[j], t}];
-        parts.forEach(p=>{ if(isVal(p.t)) cands.push({ t:p.t, x:p.x }); });
+        parts.forEach(p=>{ if(isVal(p.t)) cands.push({ t:p.t, x:p.x, j:j }); });
       }
       let pick = null;
       if(hasX){
@@ -6922,8 +6922,28 @@ function applyOwnBookingPdf(lines){
         pick = cands.find(c=>/\d{4,}/.test(c.t)) || null;
       }
       if(pick){
-        map['booking no.'] = pick.t;
-        const left = cands.filter(c => c!==pick && /\d{4,}/.test(c.t));
+        /* เลขบุคอาจถูกหั่นเป็นหลายชิ้นเพราะตัวอักษรกับตัวเลขใช้ฟอนต์คนละตัว
+           (เจอจริง 29 ก.ย. 2026 ใบ 035GX13529 — "035GX" ฟอนต์ TT0 @x457
+            กับ "13529" ฟอนต์ CID @x491 เป็น 2 item คนละชิ้น)
+           เดิมหยิบได้แค่ "035GX" ซึ่งมีตัวเลขไม่ถึง 4 ตัว แล้วถูกโยนทิ้ง -> เลขบุคว่าง
+           แก้: ถ้าชิ้นที่หยิบมามีตัวเลขไม่ถึง 4 ตัว ให้ต่อชิ้นถัดไป "ในแถวเดียวกันที่ชิดกัน"
+           เกณฑ์ชิดกัน = ระยะห่างไม่เกินความกว้างประมาณของชิ้นซ้าย (ตัวละ ~7px)
+           ห่างกว่านั้นถือว่าเป็นค่าของคอลัมน์อื่น ไม่ต่อให้ */
+        let val = pick.t;
+        const glued = [];
+        if(!/\d{4,}/.test(val) && pick.j!=null && IT[pick.j] && IT[pick.j].length>1){
+          const row = IT[pick.j].filter(p=>p.x!=null).slice().sort((a,b)=>a.x-b.x);
+          let k = row.findIndex(p=>p.x===pick.x && p.t===pick.t);
+          while(k>=0 && k+1<row.length && !/\d{4,}/.test(val)){
+            const cur=row[k], nx=row[k+1];
+            if(!/^[A-Za-z0-9\-\/]+$/.test(nx.t)) break;
+            if(nx.x - cur.x > 7*cur.t.length + 8) break;
+            val += nx.t; glued.push(nx.t); k++;
+          }
+        }
+        map['booking no.'] = val;
+        // ชิ้นที่ต่อเข้าไปแล้วห้ามกลายเป็น REF ลูกค้า
+        const left = cands.filter(c => c!==pick && glued.indexOf(c.t)<0 && /\d{4,}/.test(c.t));
         if(left.length) refFromCol = left[0].t;
       }
     }
