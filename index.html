@@ -361,6 +361,8 @@ body{font-size:14px;font-weight:450}
             <span style="display:flex;gap:8px;align-items:baseline">
               <button id="wb_ar_undo" onclick="wbArUndoPaid()" title="ย้อนรายการที่เพิ่งติ๊กว่ารับเงินแล้ว"
                 style="display:none;border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono)">↩ Undo</button>
+              <button onclick="wbArExportXlsx()" title="โหลด Statement of Account ภาษาอังกฤษ (.xlsx) แยกชีตตามลูกค้า — ส่งให้ลูกค้าได้เลย"
+                style="border:1px solid rgba(39,174,96,.35);background:rgba(39,174,96,.12);color:var(--green);border-radius:6px;font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono);font-weight:700">⬇ Excel</button>
               <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
             </span>
           </div>
@@ -5351,6 +5353,156 @@ function arMissingInvoice(jobs){
   return (jobs||[]).filter(j=> j && j.status!=='cancelled' && !j.paid && !j.invDate
     && ['loaded','completed'].includes(j.status));
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Statement of Account (.xlsx) ภาษาอังกฤษ — ส่งให้ลูกค้าได้เลย
+   · ชีต Summary รวมทุกลูกค้า + ชีตแยกของแต่ละลูกค้า (ส่งเฉพาะชีตเขาได้)
+   · เอาทุกใบที่ยังค้างรับ ไม่สนว่ากำลังค้นหาอะไรอยู่
+   · ลงเฉพาะ "ยอดที่ลูกค้าต้องจ่าย" เท่านั้น
+     ห้ามมี cost / profit / margin / commission หลุดไปในไฟล์ที่ส่งออกนอกบริษัท
+   ══════════════════════════════════════════════════════════════════════ */
+window.AR_XLSX_COLS = ['No.','Booking No.','Job No.','Invoice Date','Due Date','Status',
+  'Days Overdue','Vessel / Voyage','ETD','POL','POD','Container','Amount (USD)'];
+/* ฟิลด์ที่ห้ามโผล่ในไฟล์เด็ดขาด — มีเทสต์คุมไว้ */
+window.AR_XLSX_FORBIDDEN = ['cost','profit','margin','comm','commThb','commRate','totalCost'];
+
+/** แปลงงานค้างรับเป็นแถวภาษาอังกฤษ — แยกออกมาเพื่อให้เทสต์ได้โดยไม่ต้องมี DOM */
+window.arStatementRows = function(list, todayISO){
+  const d2 = s => {                      // YYYY-MM-DD -> 01 Oct 2026
+    const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return '';
+    const MM=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return m[3]+' '+MM[+m[2]-1]+' '+m[1];
+  };
+  const ctn = j => {
+    if(Array.isArray(j.ctnRows) && j.ctnRows.length)
+      return j.ctnRows.map(r=>(r.qty||1)+'x'+(r.type||'')).join(' + ');
+    const p=[]; if(j.q20) p.push(j.q20+'x20GP'); if(j.q40) p.push(j.q40+'x40GP');
+    if(j.q40hc) p.push(j.q40hc+'x40HC'); return p.join(' + ');
+  };
+  return (list||[]).map((x,i)=>{
+    const j = x.job || x, dl = (x.daysLeft!=null) ? x.daysLeft : null;
+    const over = dl!=null && dl < 0;
+    return {
+      'No.': i+1,
+      'Booking No.': String(j.no||'').trim(),
+      'Job No.': String(j.jobno||'').trim(),
+      'Invoice Date': d2(j.invDate),
+      'Due Date': d2(j.dueDate),
+      'Status': dl==null ? '' : (over ? 'OVERDUE' : (dl===0 ? 'Due today' : 'Not yet due')),
+      'Days Overdue': over ? Math.abs(dl) : 0,
+      'Vessel / Voyage': [j.vessel||'', j.voyage?('V.'+j.voyage):''].filter(Boolean).join(' '),
+      'ETD': d2(j.etd),
+      'POL': String(j.pol||'').trim(),
+      'POD': String(j.pod||'').trim(),
+      'Container': ctn(j),
+      'Amount (USD)': Math.round((Number(j.sell)||0)*100)/100
+    };
+  });
+};
+
+/** ชื่อลูกค้าที่ใช้จัดกลุ่ม — ใบที่ไม่ได้กรอก Customer ให้ใช้ Shipper แทน */
+window.arPartyOf = function(j){
+  return String(j.customer||'').trim() || String(j.shipper||'').trim() || 'UNSPECIFIED';
+};
+/** คีย์ที่ใช้ "จับกลุ่ม" ลูกค้า — ตัดช่องว่างทั้งหมดและไม่สนตัวพิมพ์
+    ในระบบมี "D.B. GROUP" กับ "D.B.GROUP" ปนกัน (ต่างกันแค่เว้นวรรค) ถ้าไม่ยุบ
+    ลูกค้ารายเดียวจะได้ statement 2 ชีตแยกกัน ดูเหมือนคนละเจ้า
+    ยุบเฉพาะที่ต่างกันแค่ช่องว่าง/ตัวพิมพ์ — ชื่อที่ต่างกันจริงยังแยกกันอยู่ */
+window.arPartyKey = function(name){
+  return String(name||'').replace(/\s+/g,'').toUpperCase();
+};
+/** ชื่อชีตของ Excel: ห้ามเกิน 31 ตัว และห้ามมี : \ / ? * [ ] */
+window.arSheetName = function(name, used){
+  let s = String(name||'Customer').replace(/[:\\\/?*\[\]]/g,' ').replace(/\s+/g,' ').trim().slice(0,28) || 'Customer';
+  let out = s, n = 2;
+  while(used && used.has(out.toLowerCase())){ out = s.slice(0, 28 - String(n).length - 1) + ' ' + n; n++; }
+  if(used) used.add(out.toLowerCase());
+  return out;
+};
+
+window.wbArExportXlsx = function(){
+  if(typeof XLSX === 'undefined'){ toast('❌ ยังโหลดตัวสร้าง Excel ไม่เสร็จ ลองใหม่อีกครั้ง'); return; }
+  const today = new Date();
+  const todayISO = today.toISOString().slice(0,10);
+  const all = arOutstanding(window.savedJobs||[], todayISO);
+  if(!all.length){ toast('✅ ไม่มีเงินค้างรับ ไม่มีอะไรให้โหลด'); return; }
+
+  /* จัดกลุ่มตามลูกค้า — ยุบชื่อที่ต่างกันแค่ช่องว่าง/ตัวพิมพ์เข้าด้วยกัน
+     ชื่อที่โชว์ใช้แบบที่เจอบ่อยที่สุด (เท่ากันก็เอาอันแรก) */
+  const byKey = new Map();
+  all.forEach(x=>{
+    const nm = window.arPartyOf(x.job), k = window.arPartyKey(nm);
+    if(!byKey.has(k)) byKey.set(k, {list:[], names:new Map()});
+    const g = byKey.get(k); g.list.push(x);
+    g.names.set(nm, (g.names.get(nm)||0) + 1);
+  });
+  const parties = [...byKey.values()]
+    .map(g=>[ [...g.names.entries()].sort((a,b)=>b[1]-a[1])[0][0], g.list ])
+    .sort((a,b)=> b[1].reduce((s,x)=>s+(Number(x.job.sell)||0),0)
+                - a[1].reduce((s,x)=>s+(Number(x.job.sell)||0),0));
+
+  const MM=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dStr = String(today.getDate()).padStart(2,'0')+' '+MM[today.getMonth()]+' '+today.getFullYear();
+  const COLS = window.AR_XLSX_COLS;
+  const wb = XLSX.utils.book_new();
+  const money = n => Math.round((Number(n)||0)*100)/100;
+
+  /* ── ชีต Summary — ลูกค้าละ 1 บรรทัด ── */
+  const sumRows = parties.map(([name, list], i)=>{
+    const amt = list.reduce((s,x)=>s+(Number(x.job.sell)||0),0);
+    const od  = list.filter(x=>x.daysLeft<0);
+    return {
+      'No.': i+1, 'Customer': name, 'Invoices': list.length,
+      'Overdue Invoices': od.length,
+      'Overdue Amount (USD)': money(od.reduce((s,x)=>s+(Number(x.job.sell)||0),0)),
+      'Total Outstanding (USD)': money(amt)
+    };
+  });
+  const grand = money(all.reduce((s,x)=>s+(Number(x.job.sell)||0),0));
+  const head = [
+    ['Worldwide Logistics Services (Thailand) Co., Ltd.'],
+    ['STATEMENT OF ACCOUNT'],
+    ['As of '+dStr],
+    []
+  ];
+  const wsSum = XLSX.utils.aoa_to_sheet(head);
+  XLSX.utils.sheet_add_json(wsSum, sumRows, {origin:'A5'});
+  XLSX.utils.sheet_add_aoa(wsSum, [['','TOTAL', all.length,
+    all.filter(x=>x.daysLeft<0).length,
+    money(all.filter(x=>x.daysLeft<0).reduce((s,x)=>s+(Number(x.job.sell)||0),0)), grand]],
+    {origin:'A'+(5+sumRows.length+1)});
+  wsSum['!cols']=[{wch:5},{wch:34},{wch:10},{wch:17},{wch:21},{wch:23}];
+  XLSX.utils.book_append_sheet(wb, wsSum, 'Summary');
+
+  /* ── ชีตของแต่ละลูกค้า ── */
+  const used = new Set(['summary']);
+  parties.forEach(([name, list])=>{
+    const rows = window.arStatementRows(list, todayISO);
+    const amt  = money(list.reduce((s,x)=>s+(Number(x.job.sell)||0),0));
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Worldwide Logistics Services (Thailand) Co., Ltd.'],
+      ['STATEMENT OF ACCOUNT'],
+      ['Customer', name],
+      ['As of', dStr],
+      ['Currency', 'USD'],
+      []
+    ]);
+    XLSX.utils.sheet_add_json(ws, rows, {origin:'A7', header:COLS});
+    const last = 7 + rows.length + 1;
+    XLSX.utils.sheet_add_aoa(ws, [['','','','','','','','','','','','TOTAL', amt]], {origin:'A'+last});
+    XLSX.utils.sheet_add_aoa(ws, [[ 'Please remit payment by the due date shown above. '
+      + 'For any discrepancy, kindly contact us within 7 days of receiving this statement.' ]],
+      {origin:'A'+(last+2)});
+    ws['!cols']=[{wch:5},{wch:15},{wch:13},{wch:13},{wch:13},{wch:12},{wch:13},
+                 {wch:22},{wch:13},{wch:20},{wch:20},{wch:16},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws, window.arSheetName(name, used));
+  });
+
+  XLSX.writeFile(wb, 'Statement of Account '+todayISO+'.xlsx');
+  toast('⬇ โหลด Statement of Account แล้ว — '+all.length+' ใบ · '+parties.length+' ลูกค้า · รวม $'
+        + grand.toLocaleString('en-US'));
+};
 
 window.arRecalcDue = function(){
   const inv=document.getElementById('s_inv_date');
