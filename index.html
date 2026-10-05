@@ -387,12 +387,23 @@ body{font-size:14px;font-weight:450}
               <span id="wb_sr_sync" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></span>
             </span>
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POD · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · ทุก account เห็นเหมือนกัน</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POD + สายเรือ + ประเภท · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · ทุก account เห็นเหมือนกัน</div>
           <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap">
             <input id="wb_sr_pod" class="inp" list="wb_sr_podlist" placeholder="POD เช่น Los Angeles, CA"
-                   style="flex:1;min-width:150px;font-size:11px;padding:5px 9px"
+                   style="flex:1;min-width:140px;font-size:11px;padding:5px 9px"
                    onkeydown="if(event.key==='Enter')wbSrAdd()">
             <datalist id="wb_sr_podlist"></datalist>
+            <input id="wb_sr_car" class="inp" list="wb_sr_carlist" placeholder="สายเรือ"
+                   style="width:92px;font-size:11px;padding:5px 7px"
+                   onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <datalist id="wb_sr_carlist"></datalist>
+            <input id="wb_sr_note" class="inp" list="wb_sr_notelist" placeholder="FIX / Food stuff"
+                   style="width:118px;font-size:11px;padding:5px 7px"
+                   onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <datalist id="wb_sr_notelist">
+              <option value="FIX"><option value="FAK"><option value="Food stuff">
+              <option value="Dangerous goods"><option value="Reefer"><option value="Personal effects">
+            </datalist>
             <input id="wb_sr_20"  class="inp" type="number" min="0" placeholder="20'"   style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
             <input id="wb_sr_40"  class="inp" type="number" min="0" placeholder="40'"   style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
             <input id="wb_sr_hc"  class="inp" type="number" min="0" placeholder="40HC"  style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
@@ -1822,7 +1833,7 @@ function renderWorkBench(){
       _wbSet('wb_ar', (rows||missLine||found) ? (found+rows+more+hint+missLine)
         : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีเงินค้างรับ</div>`);
     }catch(e){ console.warn('AR card', e); }
-    // ── 💵 Selling Rate — เรทขายของเรา แยกตาม POD ────────────────────────
+    // ── 💵 Selling Rate — เรทขายของเรา แยกตาม POD + สายเรือ + ประเภท ──────
     try{
       const SR = Array.isArray(window._srRows) ? window._srRows : null;
       if(SR === null){
@@ -1831,12 +1842,12 @@ function renderWorkBench(){
           window.srLoad().then(()=>{ window._srLoading=false; renderWorkBench(); })
                          .catch(()=>{ window._srLoading=false; }); }
       } else {
-        /* รายการ POD ให้เลือก — ดึงจากเรทที่มีในระบบ จะได้สะกดตรงกัน */
-        const dl = document.getElementById('wb_sr_podlist');
-        if(dl && !dl.childElementCount){
-          const pods = [...new Set((window.ALL_RATES||[]).map(r=>r.pod).filter(Boolean))].sort();
-          dl.innerHTML = pods.map(p=>`<option value="${_wbEsc(p)}">`).join('');
-        }
+        /* ตัวเลือก POD / สายเรือ — ดึงจากเรทที่มีในระบบ จะได้สะกดตรงกัน */
+        const fillList = (id, vals) => { const dl=document.getElementById(id);
+          if(dl && !dl.childElementCount) dl.innerHTML = vals.map(v=>`<option value="${_wbEsc(v)}">`).join(''); };
+        fillList('wb_sr_podlist', [...new Set((window.ALL_RATES||[]).map(r=>r.pod).filter(Boolean))].sort());
+        fillList('wb_sr_carlist', [...new Set((window.ALL_RATES||[]).map(r=>r.carrier).filter(Boolean))].sort());
+
         const sorted = window.srSort(SR, todayISO);
         const live = sorted.filter(r=>{ const d=window.srDaysLeft(r.validTo, todayISO); return d===null || d>=0; });
         _wbSet('wb_sr_count', SR.length ? (live.length+' ใช้ได้ / '+SR.length+' รายการ') : '');
@@ -1854,22 +1865,27 @@ function renderWorkBench(){
                                   : (d===0 ? 'หมดวันนี้' : ('เหลือ '+d+' วัน'));
           const cell = (f,v) => `<span contenteditable="true" title="แก้ได้ กด Enter เพื่อบันทึก"
               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-              onblur="wbSrEdit(${q(r.pod)},${q(r.validTo)},'${f}',this.textContent.replace(/[^0-9.]/g,''))"
+              onblur="wbSrEdit(${q(r.id)},'${f}',this.textContent.replace(/[^0-9.]/g,''))"
               style="font-family:var(--mono);font-size:11px;min-width:40px;display:inline-block;text-align:right;
                      border-bottom:1px dashed var(--border2);cursor:text;outline:none">${money(v)}</span>`;
-          return `<div style="display:flex;gap:7px;align-items:center;font-size:12px;padding:6px 9px;
+          const chip = (txt,bg,fg) => `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
+              background:${bg};color:${fg};border-radius:4px;padding:1px 5px;white-space:nowrap">${esc(txt)}</span>`;
+          const carChip  = r.carrier ? chip(r.carrier,'rgba(41,128,185,.15)','var(--cyan,#2980b9)') : '';
+          const noteChip = r.note    ? chip(r.note,'rgba(230,126,34,.15)','var(--gold)') : '';
+          return `<div style="display:flex;gap:6px;align-items:center;font-size:12px;padding:6px 9px;
                        background:var(--s1);border-radius:7px;border-left:3px solid ${col};${over?'opacity:.6':''}">
             <span style="font-size:10px">${ic}</span>
-            <span style="flex:1;min-width:0;color:var(--text);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${esc(r.pod)}</b></span>
+            <span style="flex:1;min-width:0;color:var(--text);line-height:1.35;display:flex;gap:5px;align-items:center;overflow:hidden">
+              <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.pod)}</b>${carChip}${noteChip}</span>
             <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">20'</span>${cell('gp20',r.gp20)}
             <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">40'</span>${cell('gp40',r.gp40)}
             <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">HC</span>${cell('hc40',r.hc40)}
             <input type="date" value="${esc(r.validTo)}" title="ใช้ได้ถึง"
-              onchange="wbSrEdit(${q(r.pod)},${q(r.validTo)},'validTo',this.value)"
+              onchange="wbSrEdit(${q(r.id)},'validTo',this.value)"
               style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;
                      background:transparent;color:${col};font-family:var(--mono);width:112px">
             <span style="font-family:var(--mono);font-size:9px;color:${col};white-space:nowrap;min-width:84px;text-align:right">${when}</span>
-            <button onclick="wbSrDel(${q(r.pod)},${q(r.validTo)})" title="ลบรายการนี้"
+            <button onclick="wbSrDel(${q(r.id)})" title="ลบรายการนี้"
               style="border:0;background:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 2px">✕</button>
           </div>`;
         }).join('');
@@ -5455,7 +5471,6 @@ function arMissingInvoice(jobs){
 window.SR_PATH = 'sharedRates/selling_rates';
 window.SR_WARN_DAYS = 7;                 // เหลือ ≤ เท่านี้ = เตือนสีเหลือง
 window._srRows = window._srRows || null; // null = ยังไม่เคยโหลด
-window._srDirty = false;
 
 /** เหลืออีกกี่วันถึงวันหมดอายุ — ไม่ใส่วันก็คืน null (ไม่มีกำหนด) */
 window.srDaysLeft = function(validTo, todayISO){
@@ -5466,20 +5481,33 @@ window.srDaysLeft = function(validTo, todayISO){
   return Math.round((a-b)/86400000);
 };
 
-/** ทำความสะอาดแถวก่อนเก็บ — ตัวเลขติดลบ/ตัวหนังสือ ถือว่าไม่ได้ใส่ */
+/** ทำความสะอาดแถวก่อนเก็บ — ตัวเลขติดลบ/ศูนย์/ตัวหนังสือ ถือว่าไม่ได้ใส่
+    carrier เก็บเป็นตัวใหญ่ (WHL/COSCO) · note เก็บตามที่พิมพ์ (FIX, Food stuff) */
 window.srClean = function(r){
   const n = x => { const v = parseFloat(x); return (isFinite(v) && v > 0) ? Math.round(v) : ''; };
+  const t = (x,len) => String(x==null?'':x).replace(/\s+/g,' ').trim().slice(0,len||60);
   return {
-    pod:  String(r && r.pod || '').replace(/\s+/g,' ').trim(),
+    id:   String(r && r.id || '') || ('sr'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)),
+    pod:  t(r && r.pod, 60),
+    carrier: t(r && r.carrier, 20).toUpperCase(),
+    note: t(r && r.note, 40),
     gp20: n(r && r.gp20), gp40: n(r && r.gp40), hc40: n(r && r.hc40),
     validTo: /^\d{4}-\d{2}-\d{2}$/.test(String(r && r.validTo||'').trim())
                ? String(r.validTo).trim() : '',
-    by: String(r && r.by || '').slice(0,60),
+    by: t(r && r.by, 60),
     at: String(r && r.at || '')
   };
 };
 
-/** เรียง: ยังไม่หมดอายุขึ้นก่อน (ใกล้หมดอยู่บน) → หมดอายุแล้วไปท้าย → แล้วเรียงชื่อ POD */
+/** สองแถวถือว่า "อันเดียวกัน" เมื่อ POD + สายเรือ + ประเภท + วันหมดอายุ ตรงกันหมด
+    (POD เดียวกันแต่คนละสายเรือ หรือ FIX กับ Food stuff ราคาคนละตัว = คนละแถว) */
+window.srSameKey = function(a, b){
+  const k = r => [String(r.pod||'').toLowerCase(), String(r.carrier||'').toUpperCase(),
+                  String(r.note||'').toLowerCase(), String(r.validTo||'')].join('|');
+  return k(a) === k(b);
+};
+
+/** เรียง: ยังไม่หมดอายุขึ้นก่อน (ใกล้หมดอยู่บน) → หมดอายุแล้วไปท้าย → แล้วเรียง POD/สายเรือ */
 window.srSort = function(rows, todayISO){
   return (rows||[]).slice().sort((a,b)=>{
     const da = window.srDaysLeft(a.validTo, todayISO), db = window.srDaysLeft(b.validTo, todayISO);
@@ -5487,7 +5515,9 @@ window.srSort = function(rows, todayISO){
     if(ea!==eb) return ea-eb;                                  // หมดอายุลงล่าง
     const ka = da==null ? 1e9 : da, kb = db==null ? 1e9 : db;  // ไม่มีกำหนด = ท้ายกลุ่ม
     if(ka!==kb) return ka-kb;
-    return String(a.pod||'').localeCompare(String(b.pod||''));
+    return String(a.pod||'').localeCompare(String(b.pod||''))
+        || String(a.carrier||'').localeCompare(String(b.carrier||''))
+        || String(a.note||'').localeCompare(String(b.note||''));
   });
 };
 
@@ -5495,6 +5525,7 @@ window.srLoad = async function(force){
   if(window._srRows && !force) return window._srRows;
   let d = null;
   try{ d = await window.fbGetShared(window.SR_PATH); }catch(e){ console.warn('srLoad', e); }
+  // แถวเก่าที่บันทึกไว้ก่อนมี id/สายเรือ/ประเภท จะถูกเติมให้อัตโนมัติ ไม่หาย
   window._srRows = (d && Array.isArray(d.rows)) ? d.rows.map(window.srClean) : [];
   return window._srRows;
 };
@@ -5508,16 +5539,16 @@ window.srSave = async function(){
     updatedAt: new Date().toISOString()
   });
   const b = document.getElementById('wb_sr_sync');
-  if(b) b.textContent = ok ? '☁ บันทึกแล้ว' : '⚠ บันทึกไม่สำเร็จ';
-  if(b) setTimeout(()=>{ if(b.textContent==='☁ บันทึกแล้ว') b.textContent=''; }, 2500);
+  if(b){ b.textContent = ok ? '☁ บันทึกแล้ว' : '⚠ บันทึกไม่สำเร็จ';
+    setTimeout(()=>{ if(b.textContent==='☁ บันทึกแล้ว') b.textContent=''; }, 2500); }
   return ok;
 };
 
 window.wbSrAdd = async function(){
   const g = id => document.getElementById(id);
   const row = window.srClean({
-    pod: g('wb_sr_pod')?.value, gp20: g('wb_sr_20')?.value,
-    gp40: g('wb_sr_40')?.value, hc40: g('wb_sr_hc')?.value,
+    pod: g('wb_sr_pod')?.value, carrier: g('wb_sr_car')?.value, note: g('wb_sr_note')?.value,
+    gp20: g('wb_sr_20')?.value, gp40: g('wb_sr_40')?.value, hc40: g('wb_sr_hc')?.value,
     validTo: g('wb_sr_to')?.value,
     by: (window._currentUser && window._currentUser.email) || '',
     at: new Date().toISOString()
@@ -5525,28 +5556,27 @@ window.wbSrAdd = async function(){
   if(!row.pod){ toast('⚠ ใส่ POD ก่อนครับ'); g('wb_sr_pod')?.focus(); return; }
   if(row.gp20==='' && row.gp40==='' && row.hc40===''){ toast('⚠ ใส่ราคาอย่างน้อย 1 ช่อง'); return; }
   await window.srLoad();
-  /* POD เดิม + วันหมดอายุเดียวกัน = แก้ทับ ไม่สร้างแถวซ้ำ */
-  const same = window._srRows.findIndex(r =>
-    String(r.pod||'').toLowerCase() === row.pod.toLowerCase() &&
-    String(r.validTo||'') === row.validTo);
-  if(same >= 0){ window._srRows[same] = row; toast('✏️ อัปเดต '+row.pod+' แล้ว'); }
-  else { window._srRows.push(row); toast('✅ เพิ่ม '+row.pod+' แล้ว'); }
-  ['wb_sr_pod','wb_sr_20','wb_sr_40','wb_sr_hc'].forEach(id=>{ const e=g(id); if(e) e.value=''; });
+  const same = window._srRows.findIndex(r => window.srSameKey(r, row));
+  if(same >= 0){ row.id = window._srRows[same].id; window._srRows[same] = row;
+                 toast('✏️ อัปเดต '+row.pod+(row.carrier?' · '+row.carrier:'')+' แล้ว'); }
+  else { window._srRows.push(row); toast('✅ เพิ่ม '+row.pod+(row.carrier?' · '+row.carrier:'')+' แล้ว'); }
+  ['wb_sr_pod','wb_sr_car','wb_sr_note','wb_sr_20','wb_sr_40','wb_sr_hc'].forEach(id=>{
+    const e=g(id); if(e) e.value=''; });
   g('wb_sr_pod')?.focus();
   await window.srSave();
   renderWorkBench();
 };
 
-window.wbSrDel = async function(pod, validTo){
+window.wbSrDel = async function(id){
   await window.srLoad();
-  const i = window._srRows.findIndex(r => String(r.pod||'')===String(pod) && String(r.validTo||'')===String(validTo));
+  const i = window._srRows.findIndex(r => String(r.id)===String(id));
   if(i < 0) return;
-  if(!confirm('ลบเรทขายของ '+pod+' ?\n(ลบจากทุก account ที่ใช้ระบบนี้)')) return;
-  const gone = window._srRows.splice(i,1)[0];
-  window._srUndo = gone;
+  const r = window._srRows[i];
+  if(!confirm('ลบเรทขายของ '+r.pod+(r.carrier?' ('+r.carrier+')':'')+' ?\n(ลบจากทุก account ที่ใช้ระบบนี้)')) return;
+  window._srUndo = window._srRows.splice(i,1)[0];
   await window.srSave();
   renderWorkBench();
-  toast('🗑 ลบ '+pod+' แล้ว — กด Undo ที่การ์ดถ้าลบพลาด');
+  toast('🗑 ลบ '+r.pod+' แล้ว — กด Undo ที่การ์ดถ้าลบพลาด');
 };
 
 window.wbSrUndo = async function(){
@@ -5559,10 +5589,10 @@ window.wbSrUndo = async function(){
   toast('↩ คืน '+back+' กลับมาแล้ว');
 };
 
-/** แก้ราคา/วันหมดอายุในแถว (กดที่ตัวเลขแล้วพิมพ์ทับ) */
-window.wbSrEdit = async function(pod, validTo, field, value){
+/** แก้ค่าในแถว (กดที่ตัวเลข/ช่องวันแล้วพิมพ์ทับ) — อ้างด้วย id จึงไม่สับสนแม้ POD ซ้ำ */
+window.wbSrEdit = async function(id, field, value){
   await window.srLoad();
-  const i = window._srRows.findIndex(r => String(r.pod||'')===String(pod) && String(r.validTo||'')===String(validTo));
+  const i = window._srRows.findIndex(r => String(r.id)===String(id));
   if(i < 0) return;
   const next = Object.assign({}, window._srRows[i]);
   next[field] = value;
@@ -5572,7 +5602,6 @@ window.wbSrEdit = async function(pod, validTo, field, value){
   await window.srSave();
   renderWorkBench();
 };
-
 window.AR_XLSX_COLS = ['No.','Booking No.','Job No.','Invoice Date','Due Date','Status',
   'Days Overdue','Vessel / Voyage','ETD','POL','POD','Container'];
 /* ฟิลด์ที่ห้ามโผล่ในไฟล์เด็ดขาด — มีเทสต์คุมไว้
