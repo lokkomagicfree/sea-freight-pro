@@ -361,7 +361,7 @@ body{font-size:14px;font-weight:450}
             <span style="display:flex;gap:8px;align-items:baseline">
               <button id="wb_ar_undo" onclick="wbArUndoPaid()" title="ย้อนรายการที่เพิ่งติ๊กว่ารับเงินแล้ว"
                 style="display:none;border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono)">↩ Undo</button>
-              <button onclick="wbArExportXlsx()" title="โหลด Statement of Account ภาษาอังกฤษ (.xlsx) แยกชีตตามลูกค้า — ส่งให้ลูกค้าได้เลย"
+              <button onclick="wbArExportXlsx()" title="โหลดรายการ booking ที่ยังค้าง ภาษาอังกฤษ (.xlsx) แยกชีตตามลูกค้า — ไม่มีตัวเงิน ส่งให้ลูกค้าได้เลย"
                 style="border:1px solid rgba(39,174,96,.35);background:rgba(39,174,96,.12);color:var(--green);border-radius:6px;font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono);font-weight:700">⬇ Excel</button>
               <span id="wb_ar_total" style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--gold)"></span>
             </span>
@@ -1754,8 +1754,9 @@ function renderWorkBench(){
     try{
       const arAll = arOutstanding(window.savedJobs||[], todayISO);
       const miss = arMissingInvoice(window.savedJobs||[]);
-      const sum = arAll.reduce((s,x)=>s+(x.job.sell||0),0);
-      _wbSet('wb_ar_total', arAll.length ? ('ค้าง $'+Math.round(sum).toLocaleString('en-US')+' · '+arAll.length+' ใบ') : '');
+      /* ไม่โชว์ยอดเงินในการ์ดนี้แล้ว — ยอดในระบบยังไม่ตรงกับบัญชีจริง
+         ผู้ใช้ใช้การ์ดนี้ตามลูกค้าด้วย "ข้อมูล booking" อย่างเดียว (สั่ง 5 ต.ค. 2026) */
+      _wbSet('wb_ar_total', arAll.length ? ('ค้างรับ '+arAll.length+' ใบ') : '');
       { const ub=document.getElementById('wb_ar_undo');
         if(ub) ub.style.display = window._arUndo ? '' : 'none'; }
       // ── ค้นหาเลขบุค / ชื่อลูกค้า ─────────────────────────────────────────
@@ -1774,14 +1775,12 @@ function renderWorkBench(){
         let dstr=''; try{ const d=new Date((j.dueDate||'')+'T00:00:00');
           if(!isNaN(d)) dstr=d.toLocaleDateString('th-TH',{day:'numeric',month:'short'}); }catch(e){}
         const when = over?`เลย ${Math.abs(dl)} วัน` : dl===0?'ครบวันนี้' : `อีก ${dl} วัน`;
-        const amt = (j.sell||0)?'$'+Math.round(j.sell).toLocaleString('en-US'):'';
         return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:6px 9px;background:var(--s1);border-radius:7px;border-left:3px solid ${col}">
           <input type="checkbox" title="ติ๊กว่ารับเงินแล้ว (วันนี้)" onchange="wbArMarkPaid(${JSON.stringify(String(j.no||j.jobno||'')).replace(/"/g,'&quot;')})"
                  style="cursor:pointer;accent-color:var(--green);width:14px;height:14px;flex-shrink:0">
           <span style="font-size:10px">${ic}</span>
           <span style="flex:1;line-height:1.35;color:var(--text)"><b>${_wbEsc(j.no||j.jobno||'—')}</b>
             <span style="color:var(--muted)">${_wbEsc(j.customer||j.shipper||'')}</span></span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--green)">${amt}</span>
           <span style="font-family:var(--mono);font-size:10px;color:${col};white-space:nowrap">${when}${dstr?' · '+dstr:''}</span>
         </div>`;
       }).join('');
@@ -1789,7 +1788,7 @@ function renderWorkBench(){
         ? `<div style="font-size:10px;color:var(--muted);text-align:center">+ อีก ${ar.length-CAP} ใบ — พิมพ์เลขบุคในช่องค้นหาเพื่อดูใบที่เหลือ</div>` : '';
       const found = arQ
         ? (ar.length
-            ? `<div style="font-size:10px;color:var(--gold);padding:0 9px">🔍 เจอ ${ar.length} ใบ · รวม $${Math.round(ar.reduce((s,x)=>s+(x.job.sell||0),0)).toLocaleString('en-US')} (จากทั้งหมด ${arAll.length} ใบ)</div>`
+            ? `<div style="font-size:10px;color:var(--gold);padding:0 9px">🔍 เจอ ${ar.length} ใบ (จากทั้งหมด ${arAll.length} ใบ)</div>`
             : `<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">ไม่เจอ "${_wbEsc(arQ)}" ในรายการค้างรับ ${arAll.length} ใบ — อาจรับเงินไปแล้ว หรือยังไม่ได้ใส่วันวางบิล</div>`)
         : '';
       const missLine = miss.length
@@ -5363,9 +5362,12 @@ function arMissingInvoice(jobs){
      ห้ามมี cost / profit / margin / commission หลุดไปในไฟล์ที่ส่งออกนอกบริษัท
    ══════════════════════════════════════════════════════════════════════ */
 window.AR_XLSX_COLS = ['No.','Booking No.','Job No.','Invoice Date','Due Date','Status',
-  'Days Overdue','Vessel / Voyage','ETD','POL','POD','Container','Amount (USD)'];
-/* ฟิลด์ที่ห้ามโผล่ในไฟล์เด็ดขาด — มีเทสต์คุมไว้ */
-window.AR_XLSX_FORBIDDEN = ['cost','profit','margin','comm','commThb','commRate','totalCost'];
+  'Days Overdue','Vessel / Voyage','ETD','POL','POD','Container'];
+/* ฟิลด์ที่ห้ามโผล่ในไฟล์เด็ดขาด — มีเทสต์คุมไว้
+   ยอดเงินอยู่ในลิสต์นี้ด้วย: ยอดในระบบยังไม่ตรงกับบัญชีจริง ไฟล์นี้จึงเป็น
+   "ข้อมูล booking" ล้วน ไม่มีตัวเงินเลย (ผู้ใช้สั่ง 5 ต.ค. 2026) */
+window.AR_XLSX_FORBIDDEN = ['cost','profit','margin','comm','commThb','commRate','totalCost',
+  'sell','totalSell','amount'];
 
 /** แปลงงานค้างรับเป็นแถวภาษาอังกฤษ — แยกออกมาเพื่อให้เทสต์ได้โดยไม่ต้องมี DOM */
 window.arStatementRows = function(list, todayISO){
@@ -5395,8 +5397,7 @@ window.arStatementRows = function(list, todayISO){
       'ETD': d2(j.etd),
       'POL': String(j.pol||'').trim(),
       'POD': String(j.pod||'').trim(),
-      'Container': ctn(j),
-      'Amount (USD)': Math.round((Number(j.sell)||0)*100)/100
+      'Container': ctn(j)
     };
   });
 };
@@ -5439,69 +5440,60 @@ window.wbArExportXlsx = function(){
   });
   const parties = [...byKey.values()]
     .map(g=>[ [...g.names.entries()].sort((a,b)=>b[1]-a[1])[0][0], g.list ])
-    .sort((a,b)=> b[1].reduce((s,x)=>s+(Number(x.job.sell)||0),0)
-                - a[1].reduce((s,x)=>s+(Number(x.job.sell)||0),0));
+    /* เรียงตาม "จำนวนใบค้าง" ไม่ใช่ยอดเงิน เพราะยอดในระบบยังไม่ตรงกับบัญชีจริง
+       เท่ากันก็เรียงตามชื่อ จะได้ลำดับเดิมทุกครั้งที่โหลด */
+    .sort((a,b)=> (b[1].length - a[1].length) || a[0].localeCompare(b[0]));
 
   const MM=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dStr = String(today.getDate()).padStart(2,'0')+' '+MM[today.getMonth()]+' '+today.getFullYear();
   const COLS = window.AR_XLSX_COLS;
   const wb = XLSX.utils.book_new();
-  const money = n => Math.round((Number(n)||0)*100)/100;
 
-  /* ── ชีต Summary — ลูกค้าละ 1 บรรทัด ── */
-  const sumRows = parties.map(([name, list], i)=>{
-    const amt = list.reduce((s,x)=>s+(Number(x.job.sell)||0),0);
-    const od  = list.filter(x=>x.daysLeft<0);
-    return {
-      'No.': i+1, 'Customer': name, 'Invoices': list.length,
-      'Overdue Invoices': od.length,
-      'Overdue Amount (USD)': money(od.reduce((s,x)=>s+(Number(x.job.sell)||0),0)),
-      'Total Outstanding (USD)': money(amt)
-    };
-  });
-  const grand = money(all.reduce((s,x)=>s+(Number(x.job.sell)||0),0));
+  /* ── ชีต Summary — ลูกค้าละ 1 บรรทัด (นับใบอย่างเดียว ไม่มีตัวเงิน) ── */
+  const sumRows = parties.map(([name, list], i)=>({
+    'No.': i+1, 'Customer': name,
+    'Outstanding Invoices': list.length,
+    'Overdue Invoices': list.filter(x=>x.daysLeft<0).length
+  }));
   const head = [
     ['Worldwide Logistics Services (Thailand) Co., Ltd.'],
-    ['STATEMENT OF ACCOUNT'],
+    ['OUTSTANDING SHIPMENT LIST'],
     ['As of '+dStr],
     []
   ];
   const wsSum = XLSX.utils.aoa_to_sheet(head);
   XLSX.utils.sheet_add_json(wsSum, sumRows, {origin:'A5'});
   XLSX.utils.sheet_add_aoa(wsSum, [['','TOTAL', all.length,
-    all.filter(x=>x.daysLeft<0).length,
-    money(all.filter(x=>x.daysLeft<0).reduce((s,x)=>s+(Number(x.job.sell)||0),0)), grand]],
-    {origin:'A'+(5+sumRows.length+1)});
-  wsSum['!cols']=[{wch:5},{wch:34},{wch:10},{wch:17},{wch:21},{wch:23}];
+    all.filter(x=>x.daysLeft<0).length]], {origin:'A'+(5+sumRows.length+1)});
+  wsSum['!cols']=[{wch:5},{wch:34},{wch:21},{wch:18}];
   XLSX.utils.book_append_sheet(wb, wsSum, 'Summary');
 
   /* ── ชีตของแต่ละลูกค้า ── */
   const used = new Set(['summary']);
   parties.forEach(([name, list])=>{
     const rows = window.arStatementRows(list, todayISO);
-    const amt  = money(list.reduce((s,x)=>s+(Number(x.job.sell)||0),0));
     const ws = XLSX.utils.aoa_to_sheet([
       ['Worldwide Logistics Services (Thailand) Co., Ltd.'],
-      ['STATEMENT OF ACCOUNT'],
+      ['OUTSTANDING SHIPMENT LIST'],
       ['Customer', name],
       ['As of', dStr],
-      ['Currency', 'USD'],
+      ['Outstanding Invoices', rows.length],
       []
     ]);
     XLSX.utils.sheet_add_json(ws, rows, {origin:'A7', header:COLS});
     const last = 7 + rows.length + 1;
-    XLSX.utils.sheet_add_aoa(ws, [['','','','','','','','','','','','TOTAL', amt]], {origin:'A'+last});
-    XLSX.utils.sheet_add_aoa(ws, [[ 'Please remit payment by the due date shown above. '
-      + 'For any discrepancy, kindly contact us within 7 days of receiving this statement.' ]],
+    XLSX.utils.sheet_add_aoa(ws, [['','','','','','','','','','','TOTAL', rows.length+' invoice(s)']],
+      {origin:'A'+last});
+    XLSX.utils.sheet_add_aoa(ws, [[ 'The shipments listed above remain outstanding as of the date shown. '
+      + 'Please arrange settlement by the due date. Invoice amounts are stated on the respective invoices.' ]],
       {origin:'A'+(last+2)});
     ws['!cols']=[{wch:5},{wch:15},{wch:13},{wch:13},{wch:13},{wch:12},{wch:13},
-                 {wch:22},{wch:13},{wch:20},{wch:20},{wch:16},{wch:14}];
+                 {wch:22},{wch:13},{wch:20},{wch:20},{wch:16}];
     XLSX.utils.book_append_sheet(wb, ws, window.arSheetName(name, used));
   });
 
-  XLSX.writeFile(wb, 'Statement of Account '+todayISO+'.xlsx');
-  toast('⬇ โหลด Statement of Account แล้ว — '+all.length+' ใบ · '+parties.length+' ลูกค้า · รวม $'
-        + grand.toLocaleString('en-US'));
+  XLSX.writeFile(wb, 'Outstanding Shipment List '+todayISO+'.xlsx');
+  toast('⬇ โหลดรายการค้างแล้ว — '+all.length+' ใบ · '+parties.length+' ลูกค้า');
 };
 
 window.arRecalcDue = function(){
