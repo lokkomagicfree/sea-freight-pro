@@ -378,6 +378,29 @@ body{font-size:14px;font-weight:450}
           </div>
           <div id="wb_ar" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
+        <!-- Selling Rate — เรทขายของเราเอง แยกตาม POD -->
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green)">💵 Selling Rate</span>
+            <span style="display:flex;gap:7px;align-items:baseline">
+              <span id="wb_sr_count" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+              <span id="wb_sr_sync" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></span>
+            </span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POD · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · ทุก account เห็นเหมือนกัน</div>
+          <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap">
+            <input id="wb_sr_pod" class="inp" list="wb_sr_podlist" placeholder="POD เช่น Los Angeles, CA"
+                   style="flex:1;min-width:150px;font-size:11px;padding:5px 9px"
+                   onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <datalist id="wb_sr_podlist"></datalist>
+            <input id="wb_sr_20"  class="inp" type="number" min="0" placeholder="20'"   style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <input id="wb_sr_40"  class="inp" type="number" min="0" placeholder="40'"   style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <input id="wb_sr_hc"  class="inp" type="number" min="0" placeholder="40HC"  style="width:66px;font-size:11px;padding:5px 7px;text-align:right" onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <input id="wb_sr_to"  class="inp" type="date" title="ใช้ได้ถึงวันไหน" style="width:132px;font-size:11px;padding:4px 7px" onkeydown="if(event.key==='Enter')wbSrAdd()">
+            <button onclick="wbSrAdd()" class="btn btn-cyan" style="font-size:11px;padding:5px 12px;white-space:nowrap">+ เพิ่ม</button>
+          </div>
+          <div id="wb_sr" style="display:flex;flex-direction:column;gap:5px"></div>
+        </div>
         <!-- Quick To-Do -->
         <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
           <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cyan);margin-bottom:10px">✅ To-Do</div>
@@ -1799,6 +1822,66 @@ function renderWorkBench(){
       _wbSet('wb_ar', (rows||missLine||found) ? (found+rows+more+hint+missLine)
         : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">✅ ไม่มีเงินค้างรับ</div>`);
     }catch(e){ console.warn('AR card', e); }
+    // ── 💵 Selling Rate — เรทขายของเรา แยกตาม POD ────────────────────────
+    try{
+      const SR = Array.isArray(window._srRows) ? window._srRows : null;
+      if(SR === null){
+        _wbSet('wb_sr', '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">⏳ กำลังโหลด…</div>');
+        if(!window._srLoading){ window._srLoading = true;
+          window.srLoad().then(()=>{ window._srLoading=false; renderWorkBench(); })
+                         .catch(()=>{ window._srLoading=false; }); }
+      } else {
+        /* รายการ POD ให้เลือก — ดึงจากเรทที่มีในระบบ จะได้สะกดตรงกัน */
+        const dl = document.getElementById('wb_sr_podlist');
+        if(dl && !dl.childElementCount){
+          const pods = [...new Set((window.ALL_RATES||[]).map(r=>r.pod).filter(Boolean))].sort();
+          dl.innerHTML = pods.map(p=>`<option value="${_wbEsc(p)}">`).join('');
+        }
+        const sorted = window.srSort(SR, todayISO);
+        const live = sorted.filter(r=>{ const d=window.srDaysLeft(r.validTo, todayISO); return d===null || d>=0; });
+        _wbSet('wb_sr_count', SR.length ? (live.length+' ใช้ได้ / '+SR.length+' รายการ') : '');
+        const money = v => (v==='' || v==null) ? '<span style="color:var(--border2)">–</span>'
+                                               : Math.round(v).toLocaleString('en-US');
+        const esc = s => _wbEsc(String(s==null?'':s));
+        const q   = s => JSON.stringify(String(s==null?'':s)).replace(/"/g,'&quot;');
+        const rows = sorted.map(r=>{
+          const d = window.srDaysLeft(r.validTo, todayISO);
+          const over = d!=null && d<0, soon = d!=null && d>=0 && d<=window.SR_WARN_DAYS;
+          const col = over?'var(--red)':soon?'var(--gold)':'var(--green)';
+          const ic  = over?'🔴':soon?'🟡':'🟢';
+          let when = 'ไม่มีกำหนด';
+          if(d!=null) when = over ? ('หมดอายุแล้ว '+Math.abs(d)+' วัน')
+                                  : (d===0 ? 'หมดวันนี้' : ('เหลือ '+d+' วัน'));
+          const cell = (f,v) => `<span contenteditable="true" title="แก้ได้ กด Enter เพื่อบันทึก"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+              onblur="wbSrEdit(${q(r.pod)},${q(r.validTo)},'${f}',this.textContent.replace(/[^0-9.]/g,''))"
+              style="font-family:var(--mono);font-size:11px;min-width:40px;display:inline-block;text-align:right;
+                     border-bottom:1px dashed var(--border2);cursor:text;outline:none">${money(v)}</span>`;
+          return `<div style="display:flex;gap:7px;align-items:center;font-size:12px;padding:6px 9px;
+                       background:var(--s1);border-radius:7px;border-left:3px solid ${col};${over?'opacity:.6':''}">
+            <span style="font-size:10px">${ic}</span>
+            <span style="flex:1;min-width:0;color:var(--text);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${esc(r.pod)}</b></span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">20'</span>${cell('gp20',r.gp20)}
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">40'</span>${cell('gp40',r.gp40)}
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">HC</span>${cell('hc40',r.hc40)}
+            <input type="date" value="${esc(r.validTo)}" title="ใช้ได้ถึง"
+              onchange="wbSrEdit(${q(r.pod)},${q(r.validTo)},'validTo',this.value)"
+              style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;
+                     background:transparent;color:${col};font-family:var(--mono);width:112px">
+            <span style="font-family:var(--mono);font-size:9px;color:${col};white-space:nowrap;min-width:84px;text-align:right">${when}</span>
+            <button onclick="wbSrDel(${q(r.pod)},${q(r.validTo)})" title="ลบรายการนี้"
+              style="border:0;background:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 2px">✕</button>
+          </div>`;
+        }).join('');
+        const undo = window._srUndo
+          ? `<div style="text-align:center"><button onclick="wbSrUndo()"
+               style="border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;
+                      font-size:10px;padding:2px 10px;cursor:pointer;font-family:var(--mono)">↩ Undo ลบ ${_wbEsc(window._srUndo.pod)}</button></div>` : '';
+        _wbSet('wb_sr', rows
+          ? (rows+undo)
+          : '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">ยังไม่มีเรทขาย — ใส่ POD กับราคาด้านบนแล้วกด + เพิ่ม</div>');
+      }
+    }catch(e){ console.warn('Selling rate card', e); }
 
     // To-do list
     _wbSet('wb_todos', openTodos.length? openTodos.slice(0,8).map(t=>{ const pc=t.priority==='high'?'var(--red)':t.priority==='low'?'var(--muted)':'var(--gold)'; return `<div style="display:flex;gap:8px;align-items:center;font-size:12px;padding:5px 8px;background:var(--s1);border-radius:7px"><input type="checkbox" onchange="wbDoneTodo(${t.id})" style="cursor:pointer"><span style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0"></span><span style="flex:1;color:var(--text)">${_wbEsc(t.text)}</span>${t.deadline?`<span style="font-size:9px;color:var(--muted);font-family:var(--mono)">${_wbEsc(t.deadline)}</span>`:''}</div>`; }).join('') : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:6px">ไม่มีงานค้าง 🎉</div>`);
@@ -5361,6 +5444,135 @@ function arMissingInvoice(jobs){
    · ลงเฉพาะ "ยอดที่ลูกค้าต้องจ่าย" เท่านั้น
      ห้ามมี cost / profit / margin / commission หลุดไปในไฟล์ที่ส่งออกนอกบริษัท
    ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   💵 Selling Rate — เรทที่เราขายเอง แยกตาม POD (การ์ดใน Bench)
+   เก็บที่ Firestore `sharedRates/selling_rates` ทุก account เห็นชุดเดียวกัน
+   (ต้องอยู่ใน collection sharedRates เพราะ Firestore rules อนุญาตแค่ที่นี่)
+   โครงแถว: {pod, gp20, gp40, hc40, validTo:'YYYY-MM-DD', by, at}
+   ยังไม่ต่อกับ Quote หรือเทียบ margin — ผู้ใช้ขอให้กรอก/ดู/แก้ในการ์ดก่อน
+   ══════════════════════════════════════════════════════════════════════ */
+window.SR_PATH = 'sharedRates/selling_rates';
+window.SR_WARN_DAYS = 7;                 // เหลือ ≤ เท่านี้ = เตือนสีเหลือง
+window._srRows = window._srRows || null; // null = ยังไม่เคยโหลด
+window._srDirty = false;
+
+/** เหลืออีกกี่วันถึงวันหมดอายุ — ไม่ใส่วันก็คืน null (ไม่มีกำหนด) */
+window.srDaysLeft = function(validTo, todayISO){
+  const v = String(validTo||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const a = Date.parse(v+'T00:00:00Z'), b = Date.parse(String(todayISO)+'T00:00:00Z');
+  if(isNaN(a)||isNaN(b)) return null;
+  return Math.round((a-b)/86400000);
+};
+
+/** ทำความสะอาดแถวก่อนเก็บ — ตัวเลขติดลบ/ตัวหนังสือ ถือว่าไม่ได้ใส่ */
+window.srClean = function(r){
+  const n = x => { const v = parseFloat(x); return (isFinite(v) && v > 0) ? Math.round(v) : ''; };
+  return {
+    pod:  String(r && r.pod || '').replace(/\s+/g,' ').trim(),
+    gp20: n(r && r.gp20), gp40: n(r && r.gp40), hc40: n(r && r.hc40),
+    validTo: /^\d{4}-\d{2}-\d{2}$/.test(String(r && r.validTo||'').trim())
+               ? String(r.validTo).trim() : '',
+    by: String(r && r.by || '').slice(0,60),
+    at: String(r && r.at || '')
+  };
+};
+
+/** เรียง: ยังไม่หมดอายุขึ้นก่อน (ใกล้หมดอยู่บน) → หมดอายุแล้วไปท้าย → แล้วเรียงชื่อ POD */
+window.srSort = function(rows, todayISO){
+  return (rows||[]).slice().sort((a,b)=>{
+    const da = window.srDaysLeft(a.validTo, todayISO), db = window.srDaysLeft(b.validTo, todayISO);
+    const ea = (da!=null && da<0) ? 1 : 0, eb = (db!=null && db<0) ? 1 : 0;
+    if(ea!==eb) return ea-eb;                                  // หมดอายุลงล่าง
+    const ka = da==null ? 1e9 : da, kb = db==null ? 1e9 : db;  // ไม่มีกำหนด = ท้ายกลุ่ม
+    if(ka!==kb) return ka-kb;
+    return String(a.pod||'').localeCompare(String(b.pod||''));
+  });
+};
+
+window.srLoad = async function(force){
+  if(window._srRows && !force) return window._srRows;
+  let d = null;
+  try{ d = await window.fbGetShared(window.SR_PATH); }catch(e){ console.warn('srLoad', e); }
+  window._srRows = (d && Array.isArray(d.rows)) ? d.rows.map(window.srClean) : [];
+  return window._srRows;
+};
+
+window.srSave = async function(){
+  if(!Array.isArray(window._srRows)) return false;
+  const ok = await window.fbSetShared(window.SR_PATH, {
+    rows: window._srRows.map(window.srClean),
+    count: window._srRows.length,
+    by: (window._currentUser && window._currentUser.email) || window._currentEmail || '',
+    updatedAt: new Date().toISOString()
+  });
+  const b = document.getElementById('wb_sr_sync');
+  if(b) b.textContent = ok ? '☁ บันทึกแล้ว' : '⚠ บันทึกไม่สำเร็จ';
+  if(b) setTimeout(()=>{ if(b.textContent==='☁ บันทึกแล้ว') b.textContent=''; }, 2500);
+  return ok;
+};
+
+window.wbSrAdd = async function(){
+  const g = id => document.getElementById(id);
+  const row = window.srClean({
+    pod: g('wb_sr_pod')?.value, gp20: g('wb_sr_20')?.value,
+    gp40: g('wb_sr_40')?.value, hc40: g('wb_sr_hc')?.value,
+    validTo: g('wb_sr_to')?.value,
+    by: (window._currentUser && window._currentUser.email) || '',
+    at: new Date().toISOString()
+  });
+  if(!row.pod){ toast('⚠ ใส่ POD ก่อนครับ'); g('wb_sr_pod')?.focus(); return; }
+  if(row.gp20==='' && row.gp40==='' && row.hc40===''){ toast('⚠ ใส่ราคาอย่างน้อย 1 ช่อง'); return; }
+  await window.srLoad();
+  /* POD เดิม + วันหมดอายุเดียวกัน = แก้ทับ ไม่สร้างแถวซ้ำ */
+  const same = window._srRows.findIndex(r =>
+    String(r.pod||'').toLowerCase() === row.pod.toLowerCase() &&
+    String(r.validTo||'') === row.validTo);
+  if(same >= 0){ window._srRows[same] = row; toast('✏️ อัปเดต '+row.pod+' แล้ว'); }
+  else { window._srRows.push(row); toast('✅ เพิ่ม '+row.pod+' แล้ว'); }
+  ['wb_sr_pod','wb_sr_20','wb_sr_40','wb_sr_hc'].forEach(id=>{ const e=g(id); if(e) e.value=''; });
+  g('wb_sr_pod')?.focus();
+  await window.srSave();
+  renderWorkBench();
+};
+
+window.wbSrDel = async function(pod, validTo){
+  await window.srLoad();
+  const i = window._srRows.findIndex(r => String(r.pod||'')===String(pod) && String(r.validTo||'')===String(validTo));
+  if(i < 0) return;
+  if(!confirm('ลบเรทขายของ '+pod+' ?\n(ลบจากทุก account ที่ใช้ระบบนี้)')) return;
+  const gone = window._srRows.splice(i,1)[0];
+  window._srUndo = gone;
+  await window.srSave();
+  renderWorkBench();
+  toast('🗑 ลบ '+pod+' แล้ว — กด Undo ที่การ์ดถ้าลบพลาด');
+};
+
+window.wbSrUndo = async function(){
+  if(!window._srUndo) return;
+  await window.srLoad();
+  window._srRows.push(window._srUndo);
+  const back = window._srUndo.pod; window._srUndo = null;
+  await window.srSave();
+  renderWorkBench();
+  toast('↩ คืน '+back+' กลับมาแล้ว');
+};
+
+/** แก้ราคา/วันหมดอายุในแถว (กดที่ตัวเลขแล้วพิมพ์ทับ) */
+window.wbSrEdit = async function(pod, validTo, field, value){
+  await window.srLoad();
+  const i = window._srRows.findIndex(r => String(r.pod||'')===String(pod) && String(r.validTo||'')===String(validTo));
+  if(i < 0) return;
+  const next = Object.assign({}, window._srRows[i]);
+  next[field] = value;
+  next.by = (window._currentUser && window._currentUser.email) || next.by || '';
+  next.at = new Date().toISOString();
+  window._srRows[i] = window.srClean(next);
+  await window.srSave();
+  renderWorkBench();
+};
+
 window.AR_XLSX_COLS = ['No.','Booking No.','Job No.','Invoice Date','Due Date','Status',
   'Days Overdue','Vessel / Voyage','ETD','POL','POD','Container'];
 /* ฟิลด์ที่ห้ามโผล่ในไฟล์เด็ดขาด — มีเทสต์คุมไว้
