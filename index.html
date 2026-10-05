@@ -387,7 +387,7 @@ body{font-size:14px;font-weight:450}
               <span id="wb_sr_sync" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></span>
             </span>
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POD + สายเรือ + ประเภท · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · ทุก account เห็นเหมือนกัน</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POD + สายเรือ + ประเภท · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · เห็นเฉพาะ account นี้</div>
           <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap">
             <input id="wb_sr_pod" class="inp" list="wb_sr_podlist" placeholder="POD เช่น Los Angeles, CA"
                    style="flex:1;min-width:140px;font-size:11px;padding:5px 9px"
@@ -1835,7 +1835,7 @@ function renderWorkBench(){
     }catch(e){ console.warn('AR card', e); }
     // ── 💵 Selling Rate — เรทขายของเรา แยกตาม POD + สายเรือ + ประเภท ──────
     try{
-      const SR = Array.isArray(window._srRows) ? window._srRows : null;
+      const SR = (window._srLoaded && Array.isArray(window._srRows)) ? window._srRows : null;
       if(SR === null){
         _wbSet('wb_sr', '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">⏳ กำลังโหลด…</div>');
         if(!window._srLoading){ window._srLoading = true;
@@ -5462,15 +5462,21 @@ function arMissingInvoice(jobs){
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════════════════════════
-   💵 Selling Rate — เรทที่เราขายเอง แยกตาม POD (การ์ดใน Bench)
-   เก็บที่ Firestore `sharedRates/selling_rates` ทุก account เห็นชุดเดียวกัน
-   (ต้องอยู่ใน collection sharedRates เพราะ Firestore rules อนุญาตแค่ที่นี่)
-   โครงแถว: {pod, gp20, gp40, hc40, validTo:'YYYY-MM-DD', by, at}
-   ยังไม่ต่อกับ Quote หรือเทียบ margin — ผู้ใช้ขอให้กรอก/ดู/แก้ในการ์ดก่อน
+   💵 Selling Rate — เรทที่เราขายเอง (การ์ดใน Bench)
+   เก็บ "แยกตาม account" ไม่ใช่ของกลาง — ของใครของมัน (ผู้ใช้สั่ง 5 ต.ค. 2026)
+     · localStorage = ตัวจริงที่เห็นทันที refresh แล้วไม่มีทางหาย
+     · users/{uid}/data/sellingRates บน Firestore = สำรอง + ใช้ข้ามเครื่อง
+   บทเรียนจากของเดิม (5 ต.ค. 2026 เรทหายไป 4 แถว):
+     เดิมเก็บที่ sharedRates/selling_rates ของกลาง และตอนอ่านคลาวด์ไม่สำเร็จ
+     (เช่นยังล็อกอินไม่เสร็จ) ดัน cache เป็น [] ไว้ พอกดเพิ่มแถวใหม่ก็เซฟทับ
+     ของเดิมหายหมด → คราวนี้แยก "โหลดสำเร็จ" กับ "โหลดไม่สำเร็จ" ออกจากกัน
+     และ **ห้ามเซฟถ้ายังไม่เคยโหลดสำเร็จ** เด็ดขาด
    ══════════════════════════════════════════════════════════════════════ */
-window.SR_PATH = 'sharedRates/selling_rates';
-window.SR_WARN_DAYS = 7;                 // เหลือ ≤ เท่านี้ = เตือนสีเหลือง
-window._srRows = window._srRows || null; // null = ยังไม่เคยโหลด
+window.SR_KEY  = 'sfp_selling_rates_v1';     // localStorage ของเครื่องนี้
+window.SR_PATH = 'data/sellingRates';        // Firestore ใต้ users/{uid}/
+window.SR_WARN_DAYS = 7;                     // เหลือ ≤ เท่านี้ = เตือนสีเหลือง
+window._srRows   = window._srRows || null;   // null = ยังไม่เคยโหลด
+window._srLoaded = false;                    // true = โหลดสำเร็จแล้ว เซฟได้
 
 /** เหลืออีกกี่วันถึงวันหมดอายุ — ไม่ใส่วันก็คืน null (ไม่มีกำหนด) */
 window.srDaysLeft = function(validTo, todayISO){
@@ -5481,8 +5487,7 @@ window.srDaysLeft = function(validTo, todayISO){
   return Math.round((a-b)/86400000);
 };
 
-/** ทำความสะอาดแถวก่อนเก็บ — ตัวเลขติดลบ/ศูนย์/ตัวหนังสือ ถือว่าไม่ได้ใส่
-    carrier เก็บเป็นตัวใหญ่ (WHL/COSCO) · note เก็บตามที่พิมพ์ (FIX, Food stuff) */
+/** ทำความสะอาดแถวก่อนเก็บ — ตัวเลขติดลบ/ศูนย์/ตัวหนังสือ ถือว่าไม่ได้ใส่ */
 window.srClean = function(r){
   const n = x => { const v = parseFloat(x); return (isFinite(v) && v > 0) ? Math.round(v) : ''; };
   const t = (x,len) => String(x==null?'':x).replace(/\s+/g,' ').trim().slice(0,len||60);
@@ -5499,21 +5504,20 @@ window.srClean = function(r){
   };
 };
 
-/** สองแถวถือว่า "อันเดียวกัน" เมื่อ POD + สายเรือ + ประเภท + วันหมดอายุ ตรงกันหมด
-    (POD เดียวกันแต่คนละสายเรือ หรือ FIX กับ Food stuff ราคาคนละตัว = คนละแถว) */
+/** สองแถวถือว่า "อันเดียวกัน" เมื่อ POD + สายเรือ + ประเภท + วันหมดอายุ ตรงกันหมด */
 window.srSameKey = function(a, b){
   const k = r => [String(r.pod||'').toLowerCase(), String(r.carrier||'').toUpperCase(),
                   String(r.note||'').toLowerCase(), String(r.validTo||'')].join('|');
   return k(a) === k(b);
 };
 
-/** เรียง: ยังไม่หมดอายุขึ้นก่อน (ใกล้หมดอยู่บน) → หมดอายุแล้วไปท้าย → แล้วเรียง POD/สายเรือ */
+/** เรียง: ยังไม่หมดอายุขึ้นก่อน (ใกล้หมดอยู่บน) → หมดอายุแล้วไปท้าย */
 window.srSort = function(rows, todayISO){
   return (rows||[]).slice().sort((a,b)=>{
     const da = window.srDaysLeft(a.validTo, todayISO), db = window.srDaysLeft(b.validTo, todayISO);
     const ea = (da!=null && da<0) ? 1 : 0, eb = (db!=null && db<0) ? 1 : 0;
-    if(ea!==eb) return ea-eb;                                  // หมดอายุลงล่าง
-    const ka = da==null ? 1e9 : da, kb = db==null ? 1e9 : db;  // ไม่มีกำหนด = ท้ายกลุ่ม
+    if(ea!==eb) return ea-eb;
+    const ka = da==null ? 1e9 : da, kb = db==null ? 1e9 : db;
     if(ka!==kb) return ka-kb;
     return String(a.pod||'').localeCompare(String(b.pod||''))
         || String(a.carrier||'').localeCompare(String(b.carrier||''))
@@ -5521,26 +5525,57 @@ window.srSort = function(rows, todayISO){
   });
 };
 
+window.srReadLocal = function(){
+  try{
+    const o = JSON.parse(localStorage.getItem(window.SR_KEY)||'null');
+    if(o && Array.isArray(o.rows)) return o;
+  }catch(e){}
+  return null;
+};
+window.srWriteLocal = function(rows, stamp){
+  try{ localStorage.setItem(window.SR_KEY,
+    JSON.stringify({rows:rows, updatedAt: stamp || new Date().toISOString()})); return true; }
+  catch(e){ console.warn('srWriteLocal', e); return false; }
+};
+
+/** โหลด: เอาของในเครื่องขึ้นก่อน (เห็นทันที) แล้วค่อยเทียบกับคลาวด์ว่าอันไหนใหม่กว่า
+    คลาวด์อ่านไม่ได้ก็ไม่เป็นไร ยังใช้ของในเครื่องต่อได้ และยัง "โหลดสำเร็จ" */
 window.srLoad = async function(force){
-  if(window._srRows && !force) return window._srRows;
-  let d = null;
-  try{ d = await window.fbGetShared(window.SR_PATH); }catch(e){ console.warn('srLoad', e); }
-  // แถวเก่าที่บันทึกไว้ก่อนมี id/สายเรือ/ประเภท จะถูกเติมให้อัตโนมัติ ไม่หาย
-  window._srRows = (d && Array.isArray(d.rows)) ? d.rows.map(window.srClean) : [];
+  if(window._srLoaded && !force) return window._srRows;
+  const loc = window.srReadLocal();
+  window._srRows = loc ? loc.rows.map(window.srClean) : [];
+  let cloud = null;
+  try{ cloud = await window.fbGet(window.SR_PATH); }catch(e){ console.warn('srLoad cloud', e); }
+  if(cloud && Array.isArray(cloud.rows)){
+    const cT = String(cloud.updatedAt||''), lT = String(loc && loc.updatedAt || '');
+    if(!loc || cT > lT){                       // คลาวด์ใหม่กว่า → ใช้ของคลาวด์
+      window._srRows = cloud.rows.map(window.srClean);
+      window.srWriteLocal(window._srRows, cT);
+    }
+  }
+  window._srLoaded = true;
   return window._srRows;
 };
 
+/** เซฟ: ลง localStorage ก่อนเสมอ (กันหาย) แล้วค่อยส่งขึ้นคลาวด์
+    ห้ามเซฟถ้ายังไม่เคยโหลดสำเร็จ — กันเขียนทับของเดิมด้วยลิสต์ว่าง */
 window.srSave = async function(){
-  if(!Array.isArray(window._srRows)) return false;
-  const ok = await window.fbSetShared(window.SR_PATH, {
-    rows: window._srRows.map(window.srClean),
-    count: window._srRows.length,
-    by: (window._currentUser && window._currentUser.email) || window._currentEmail || '',
-    updatedAt: new Date().toISOString()
-  });
   const b = document.getElementById('wb_sr_sync');
-  if(b){ b.textContent = ok ? '☁ บันทึกแล้ว' : '⚠ บันทึกไม่สำเร็จ';
-    setTimeout(()=>{ if(b.textContent==='☁ บันทึกแล้ว') b.textContent=''; }, 2500); }
+  if(!window._srLoaded || !Array.isArray(window._srRows)){
+    if(b) b.textContent = '⚠ ยังโหลดไม่เสร็จ ยังไม่บันทึก';
+    return false;
+  }
+  const rows = window._srRows.map(window.srClean);
+  const stamp = new Date().toISOString();
+  window.srWriteLocal(rows, stamp);
+  let ok = false;
+  try{
+    await window.fbSet(window.SR_PATH, {rows, count:rows.length, updatedAt:stamp});
+    const back = await window.fbGet(window.SR_PATH);     // อ่านกลับมายืนยันว่าขึ้นจริง
+    ok = !!(back && Array.isArray(back.rows) && back.rows.length === rows.length);
+  }catch(e){ console.warn('srSave', e); }
+  if(b){ b.textContent = ok ? '☁ บันทึกแล้ว' : '💾 เก็บในเครื่องแล้ว (คลาวด์ยังไม่ขึ้น)';
+    setTimeout(()=>{ if(/บันทึกแล้ว/.test(b.textContent)) b.textContent=''; }, 2500); }
   return ok;
 };
 
@@ -5572,7 +5607,7 @@ window.wbSrDel = async function(id){
   const i = window._srRows.findIndex(r => String(r.id)===String(id));
   if(i < 0) return;
   const r = window._srRows[i];
-  if(!confirm('ลบเรทขายของ '+r.pod+(r.carrier?' ('+r.carrier+')':'')+' ?\n(ลบจากทุก account ที่ใช้ระบบนี้)')) return;
+  if(!confirm('ลบเรทขายของ '+r.pod+(r.carrier?' ('+r.carrier+')':'')+' ?')) return;
   window._srUndo = window._srRows.splice(i,1)[0];
   await window.srSave();
   renderWorkBench();
@@ -5589,7 +5624,7 @@ window.wbSrUndo = async function(){
   toast('↩ คืน '+back+' กลับมาแล้ว');
 };
 
-/** แก้ค่าในแถว (กดที่ตัวเลข/ช่องวันแล้วพิมพ์ทับ) — อ้างด้วย id จึงไม่สับสนแม้ POD ซ้ำ */
+/** แก้ค่าในแถว — อ้างด้วย id จึงไม่สับสนแม้ POD ซ้ำ */
 window.wbSrEdit = async function(id, field, value){
   await window.srLoad();
   const i = window._srRows.findIndex(r => String(r.id)===String(id));
