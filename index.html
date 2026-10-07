@@ -385,6 +385,9 @@ body{font-size:14px;font-weight:450}
             <span style="display:flex;gap:7px;align-items:baseline">
               <span id="wb_sr_count" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
               <span id="wb_sr_sync" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></span>
+              <button onclick="sellRatePull()" title="ดึงเรทขายจากคลาวด์ใหม่ (ใช้เมื่อเพิ่งกรอกจากอีกเครื่อง)"
+                style="border:1px solid var(--border2);background:var(--s1);color:var(--muted);border-radius:6px;
+                       font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono)">⟳</button>
             </span>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:9px">เรทที่เราขาย แยกตาม POL/POD + สายเรือ + ประเภท + ลูกค้า · 🔴 หมดอายุแล้ว · 🟡 เหลือ ≤7 วัน · เห็นเฉพาะ account นี้</div>
@@ -1845,7 +1848,15 @@ function renderWorkBench(){
     try{
       const SR = (window._sellRateLoaded && Array.isArray(window._sellRateRows)) ? window._sellRateRows : null;
       if(SR === null){
-        _wbSet('wb_sr', '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">⏳ กำลังโหลด…</div>');
+        const nRows = (window._sellRateRows||[]).length;
+        _wbSet('wb_sr', '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">'
+          + (window._sellRateLoading ? '⏳ กำลังโหลด…'
+             : '⏳ รอล็อกอินให้เสร็จก่อน แล้วจะดึงจากคลาวด์ให้เอง'
+               + (nRows ? ' · ตอนนี้โชว์ของในเครื่อง '+nRows+' รายการ' : '')
+               + ' <button onclick="sellRatePull()" style="border:1px solid var(--border2);background:var(--s1);'
+               + 'color:var(--muted);border-radius:6px;font-size:10px;padding:1px 8px;cursor:pointer;'
+               + 'font-family:var(--mono);margin-left:4px">⟳ ลองใหม่</button>')
+          + '</div>');
         if(!window._sellRateLoading){ window._sellRateLoading = true;
           window.sellRateLoad().then(()=>{ window._sellRateLoading=false; renderWorkBench(); })
                          .catch(()=>{ window._sellRateLoading=false; }); }
@@ -1864,6 +1875,10 @@ function renderWorkBench(){
         const sorted = window.sellRateSort(SR, todayISO);
         const live = sorted.filter(r=>{ const d=window.sellRateDaysLeft(r.validTo, todayISO); return d===null || d>=0; });
         _wbSet('wb_sr_count', SR.length ? (live.length+' ใช้ได้ / '+SR.length+' รายการ') : '');
+        { const sy=document.getElementById('wb_sr_sync');
+          if(sy && !sy.textContent && window._sellRateSyncAt){
+            try{ sy.textContent = '☁ '+new Date(window._sellRateSyncAt)
+                   .toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}); }catch(e){} } }
         const money = v => (v==='' || v==null) ? '<span style="color:var(--border2)">–</span>'
                                                : Math.round(v).toLocaleString('en-US');
         const esc = s => _wbEsc(String(s==null?'':s));
@@ -5492,7 +5507,8 @@ window.SELLRATE_KEY  = 'sfp_selling_rates_v1';     // localStorage ของเ�
 window.SELLRATE_PATH = 'data/sellingRates';        // Firestore ใต้ users/{uid}/
 window.SELLRATE_WARN_DAYS = 7;                     // เหลือ ≤ เท่านี้ = เตือนสีเหลือง
 window._sellRateRows   = window._sellRateRows || null;   // null = ยังไม่เคยโหลด
-window._sellRateLoaded = false;                    // true = โหลดสำเร็จแล้ว เซฟได้
+window._sellRateLoaded = false;   // true = "คุยกับคลาวด์สำเร็จแล้ว" เท่านั้น ถึงจะเซฟได้
+window._sellRateSyncAt = '';      // เวลาที่ดึงจากคลาวด์สำเร็จครั้งล่าสุด
 
 /** เหลืออีกกี่วันถึงวันหมดอายุ — ไม่ใส่วันก็คืน null (ไม่มีกำหนด) */
 window.sellRateDaysLeft = function(validTo, todayISO){
@@ -5567,8 +5583,17 @@ window.sellRateLoad = async function(force){
   if(window._sellRateLoaded && !force) return window._sellRateRows;
   const loc = window.sellRateReadLocal();
   window._sellRateRows = loc ? loc.rows.map(window.sellRateClean) : [];
-  let cloud = null;
-  try{ cloud = await window.fbGet(window.SELLRATE_PATH); }catch(e){ console.warn('sellRateLoad cloud', e); }
+  /* ยังล็อกอินไม่เสร็จ → fbGet คืน null ซึ่งแยกไม่ออกจาก "ไม่มีข้อมูล"
+     เดิมผมปักว่าโหลดสำเร็จไปเลย เครื่องที่ยังไม่มีของในเครื่องจึงค้างว่างตลอด
+     ไม่ลองใหม่อีก (เจอจริง 7 ต.ค. 2026 เครื่อง B ไม่เห็นของเครื่อง A)
+     คราวนี้ถ้ายังไม่มี uid ถือว่า "ยังโหลดไม่สำเร็จ" ไว้ก่อน แล้วรอ login มาเรียกซ้ำ */
+  if(typeof window._currentUid === 'string' ? !window._currentUid : !(window._currentUser)){
+    window._sellRateLoaded = false;
+    return window._sellRateRows;
+  }
+  let cloud = null, reached = false;
+  try{ cloud = await window.fbGet(window.SELLRATE_PATH); reached = true; }
+  catch(e){ console.warn('sellRateLoad cloud', e); }
   if(cloud && Array.isArray(cloud.rows)){
     const cT = String(cloud.updatedAt||''), lT = String(loc && loc.updatedAt || '');
     if(!loc || cT > lT){                       // คลาวด์ใหม่กว่า → ใช้ของคลาวด์
@@ -5576,7 +5601,20 @@ window.sellRateLoad = async function(force){
       window.sellRateWriteLocal(window._sellRateRows, cT);
     }
   }
+  if(reached) window._sellRateSyncAt = new Date().toISOString();
   window._sellRateLoaded = true;
+  return window._sellRateRows;
+};
+
+/** ดึงจากคลาวด์ใหม่ (ปุ่ม ⟳ และเรียกอัตโนมัติหลังล็อกอินเสร็จ) */
+window.sellRatePull = async function(quiet){
+  window._sellRateLoaded = false;
+  await window.sellRateLoad(true);
+  try{ renderWorkBench(); }catch(e){}
+  if(!quiet){
+    if(window._sellRateLoaded) toast('⟳ ดึงเรทขายจากคลาวด์แล้ว — '+(window._sellRateRows||[]).length+' รายการ');
+    else toast('⚠ ยังล็อกอินไม่เสร็จ ลองใหม่อีกครั้ง');
+  }
   return window._sellRateRows;
 };
 
@@ -5585,7 +5623,7 @@ window.sellRateLoad = async function(force){
 window.sellRateSave = async function(){
   const b = document.getElementById('wb_sr_sync');
   if(!window._sellRateLoaded || !Array.isArray(window._sellRateRows)){
-    if(b) b.textContent = '⚠ ยังโหลดไม่เสร็จ ยังไม่บันทึก';
+    if(b) b.textContent = '⚠ ยังล็อกอินไม่เสร็จ ยังไม่บันทึกขึ้นคลาวด์';
     return false;
   }
   const rows = window._sellRateRows.map(window.sellRateClean);
@@ -13347,6 +13385,9 @@ onAuthStateChanged(auth, async user=>{
     if(fsBtn) fsBtn.style.display='';
     toast('✅ '+(user.displayName||user.email));
     try{ leadsApplyVisibility(); leadsLoad(); leadsPull(); }catch(e){}
+    // เรทขายของการ์ด Selling Rate ต้องดึงใหม่หลังล็อกอิน
+    // (ก่อนล็อกอิน fbGet คืน null เครื่องที่ยังไม่มีของในเครื่องจะว่างเปล่า)
+    try{ window.sellRatePull && window.sellRatePull(true); }catch(e){}
     // เทมเพลต Quotation เป็นของใครของมัน — สลับบัญชีแล้วต้องโหลดของบัญชีใหม่
     try{ qLoadUserTemplates(); }catch(e){}
     // ส่งสรุปค่าคอมรายเดือนขึ้น shared ให้ CS Hub อ่าน (เฉพาะบัญชี PAE)
