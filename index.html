@@ -1857,9 +1857,14 @@ function renderWorkBench(){
                + 'color:var(--muted);border-radius:6px;font-size:10px;padding:1px 8px;cursor:pointer;'
                + 'font-family:var(--mono);margin-left:4px">⟳ ลองใหม่</button>')
           + '</div>');
-        if(!window._sellRateLoading){ window._sellRateLoading = true;
-          window.sellRateLoad().then(()=>{ window._sellRateLoading=false; renderWorkBench(); })
-                         .catch(()=>{ window._sellRateLoading=false; }); }
+        if(window.sellRateShouldAutoLoad()){
+          window._sellRateLoading = true;
+          window.sellRateLoad()
+            .then(()=>{ window._sellRateLoading=false; window._sellRateTried=true;
+                        /* render ใหม่เฉพาะตอนได้ข้อมูลจากคลาวด์จริง
+                           ถ้าโหลดไม่สำเร็จแล้ว render ต่อ จะวนกลับมาโหลดอีกไม่จบ */
+                        if(window._sellRateLoaded) renderWorkBench(); })
+            .catch(()=>{ window._sellRateLoading=false; window._sellRateTried=true; }); }
       } else {
         /* ตัวเลือก POD / สายเรือ — ดึงจากเรทที่มีในระบบ จะได้สะกดตรงกัน */
         const fillList = (id, vals) => { const dl=document.getElementById(id);
@@ -5509,6 +5514,15 @@ window.SELLRATE_WARN_DAYS = 7;                     // เหลือ ≤ เท
 window._sellRateRows   = window._sellRateRows || null;   // null = ยังไม่เคยโหลด
 window._sellRateLoaded = false;   // true = "คุยกับคลาวด์สำเร็จแล้ว" เท่านั้น ถึงจะเซฟได้
 window._sellRateSyncAt = '';      // เวลาที่ดึงจากคลาวด์สำเร็จครั้งล่าสุด
+window._sellRateTried   = false;  // เคยลองโหลดอัตโนมัติไปแล้วหรือยัง (รอบละครั้งพอ)
+window._sellRateLoading = false;
+/* การ์ดจะสั่งโหลดเองได้ก็ต่อเมื่อ "ยังไม่ได้ลอง" และ "ไม่ได้กำลังโหลดอยู่"
+   ห้ามโหลดซ้ำเพราะโหลดไม่สำเร็จ — ไม่งั้น render -> load -> render วนไม่จบ
+   แล้วหน้าค้างทั้งหน้า (เจอจริง 7 ต.ค. 2026)
+   โหลดใหม่ได้ 2 ทางเท่านั้น: ล็อกอินเสร็จ หรือผู้ใช้กดปุ่ม ⟳ */
+window.sellRateShouldAutoLoad = function(){
+  return !window._sellRateLoading && !window._sellRateTried;
+};
 
 /** เหลืออีกกี่วันถึงวันหมดอายุ — ไม่ใส่วันก็คืน null (ไม่มีกำหนด) */
 window.sellRateDaysLeft = function(validTo, todayISO){
@@ -5608,8 +5622,12 @@ window.sellRateLoad = async function(force){
 
 /** ดึงจากคลาวด์ใหม่ (ปุ่ม ⟳ และเรียกอัตโนมัติหลังล็อกอินเสร็จ) */
 window.sellRatePull = async function(quiet){
+  if(window._sellRateLoading) return window._sellRateRows;
   window._sellRateLoaded = false;
-  await window.sellRateLoad(true);
+  window._sellRateLoading = true;
+  try{ await window.sellRateLoad(true); }
+  catch(e){ console.warn('sellRatePull', e); }
+  finally{ window._sellRateLoading = false; window._sellRateTried = true; }
   try{ renderWorkBench(); }catch(e){}
   if(!quiet){
     if(window._sellRateLoaded) toast('⟳ ดึงเรทขายจากคลาวด์แล้ว — '+(window._sellRateRows||[]).length+' รายการ');
@@ -13387,7 +13405,7 @@ onAuthStateChanged(auth, async user=>{
     try{ leadsApplyVisibility(); leadsLoad(); leadsPull(); }catch(e){}
     // เรทขายของการ์ด Selling Rate ต้องดึงใหม่หลังล็อกอิน
     // (ก่อนล็อกอิน fbGet คืน null เครื่องที่ยังไม่มีของในเครื่องจะว่างเปล่า)
-    try{ window.sellRatePull && window.sellRatePull(true); }catch(e){}
+    try{ window._sellRateTried = false; window.sellRatePull && window.sellRatePull(true); }catch(e){}
     // เทมเพลต Quotation เป็นของใครของมัน — สลับบัญชีแล้วต้องโหลดของบัญชีใหม่
     try{ qLoadUserTemplates(); }catch(e){}
     // ส่งสรุปค่าคอมรายเดือนขึ้น shared ให้ CS Hub อ่าน (เฉพาะบัญชี PAE)
