@@ -4766,8 +4766,11 @@ function updateStatus(idx,newStatus){
   const j=savedJobs[idx];
   const wasConfirmed = j.status==='confirmed';
   j.status=newStatus;
+  /* ต้องประทับเวลาทุกครั้ง ไม่งั้นรอบ sync ถัดไปจะเห็นว่าฝั่งคลาวด์ "ใหม่กว่าหรือเท่ากัน"
+     แล้วเอาสถานะเก่าทับกลับมา (เคส 9 ต.ค. 2026: ตั้ง Completed แล้วเด้งกลับเป็น Loaded) */
+  j.updatedAt = new Date().toISOString();
   if(!j.statusHistory)j.statusHistory=[];
-  j.statusHistory.push({status:newStatus,date:new Date().toISOString(),note:'Changed'});
+  j.statusHistory.push({status:newStatus,date:j.updatedAt,note:'Changed'});
   recalcJobFinancials(j);
   if(newStatus==='confirmed' && !wasConfirmed) queueConfirmedForWeeklyReport(j);
   renderShipments();updateAlertCount();storageSave();
@@ -4862,8 +4865,9 @@ function autoAdvanceOverdueETD(){
     if(isNaN(etdDate)) return;
     if(etdDate < today){
       j.status='loaded';
+      j.updatedAt = new Date().toISOString();
       if(!j.statusHistory)j.statusHistory=[];
-      j.statusHistory.push({status:'loaded',date:new Date().toISOString(),note:'Auto-advanced (ETD passed)'});
+      j.statusHistory.push({status:'loaded',date:j.updatedAt,note:'Auto-advanced (ETD passed)'});
       recalcJobFinancials(j);
       changed = true;
     }
@@ -13484,7 +13488,15 @@ onAuthStateChanged(auth, async user=>{
         if(_rt && _lt && _rt > _lt) MONEY.forEach(f=>{
           if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){ lj[f]=rj[f]; changed=true; }
         });
-        fields.forEach(f=>{
+        /* ── ห้าม snapshot ที่ "เก่ากว่า" ทับของที่เพิ่งแก้ในเครื่อง ──────────
+           เดิมช่องกลุ่มนี้ (รวม status) ถูกทับทุกครั้งโดยไม่ดูเวลาเลย
+           พอเปลี่ยนสถานะเป็น Completed แล้ว snapshot รอบเก่าเด้งเข้ามา
+           สถานะก็ย้อนกลับเป็น Loaded เอง (ผู้ใช้แจ้ง 9 ต.ค. 2026)
+           กฎใหม่: ข้ามเฉพาะตอน "พิสูจน์ได้ว่าของเราใหม่กว่า" คือมีเวลาทั้งสองฝั่ง
+           และฝั่งคลาวด์เก่ากว่าจริง — กรณีอื่นยังทำงานเหมือนเดิมทุกอย่าง
+           (ถ้า CS Portal เขียนมาโดยไม่มี updatedAt ก็ยังรับเข้ามาได้ตามปกติ) */
+        const _cloudStale = !!(_rt && _lt && _rt < _lt);
+        if(!_cloudStale) fields.forEach(f=>{
           if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){
             lj[f] = rj[f];
             changed = true;
