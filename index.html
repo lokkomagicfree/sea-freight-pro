@@ -13629,8 +13629,28 @@ async function initFirestoreSync(){
     // one device would otherwise keep hiding a re-added shipment and re-poison the cloud list.
     // Purging live booking Nos here makes a re-add win over any stale delete on EVERY device.
     const _liveNos = new Set((jobsSnap?.jobs||[]).filter(j=>j&&j.no!=null).map(j=>String(j.no)));
+    /* ── ยกเว้น tombstone ที่เกิดจาก "เปลี่ยนเลขบุค" ───────────────────────
+       เปลี่ยนเลข A -> B แล้วปัก tombstone ให้ A ไว้ แต่รอบ sync ถัดไปคลาวด์
+       ยังมี A อยู่ (เพราะยังไม่ทันอัปเดต / อีกเครื่องยังถืออยู่) กฎข้างบนเลย
+       ลบ tombstone ทิ้ง -> A ฟื้นกลับมาเป็นงานซ้ำกับ B ทั้งที่เป็นงานเดียวกัน
+       (เจอจริง 9 ต.ค. 2026: 035GX30943 กับ 035GX71977 กำไรถูกนับซ้ำ 193,280 บาท)
+       ถ้า tombstone บอกว่าเปลี่ยนเลขไปเป็น B และ B มีอยู่จริงแล้ว = เปลี่ยนสำเร็จ
+       ห้ามลบ tombstone ของ A เด็ดขาด · ถ้า B ไม่มีที่ไหนเลยค่อยปล่อยตามกฎเดิม */
+    const _localNos = (()=>{ try{
+        return new Set((window.savedJobs||[]).filter(j=>j&&j.no!=null).map(j=>String(j.no)));
+      }catch(e){ return new Set(); } })();
+    const _renameDone = (d)=>{
+      const m = String(d && d.reason || '').match(/^renamed→(.+)$/);
+      if(!m) return false;
+      const to = m[1].trim();
+      return _liveNos.has(to) || _localNos.has(to);
+    };
     let _purged=false;
-    _liveNos.forEach(no=>{ if(map.delete(no)) _purged=true; });
+    _liveNos.forEach(no=>{
+      const d = map.get(no);
+      if(d && _renameDone(d)) return;            // tombstone จากการเปลี่ยนเลข — เก็บไว้
+      if(map.delete(no)) _purged=true;
+    });
     const merged = [...map.values()];
     window._saveDeletedJobs?.(merged);
     // If cloud still lists a live booking as deleted, force a push so the cloud list self-heals.
@@ -13647,9 +13667,17 @@ async function initFirestoreSync(){
   });
   if(jobsSnap?.jobs)         {
     const isDel = (n)=> window._isJobDeleted?.(n);
-    const cloud = jobsSnap.jobs.filter(j=>j && !isDel(j.no));   // don't resurrect deleted ones
+    /* ตาข่ายชั้นสอง: ถ้ามีใบไหนบอกว่า renamedFrom = เลข X แปลว่า X ถูกเปลี่ยนเลขไปแล้ว
+       ห้ามรับแถวเลข X เข้ามาอีก ต่อให้ tombstone หลุดหายไปด้วยเหตุใดก็ตาม */
+    const _renamedAway = new Set();
+    [...(jobsSnap.jobs||[]), ...(window.savedJobs||[])].forEach(j=>{
+      if(j && j.renamedFrom!=null && String(j.renamedFrom).trim())
+        _renamedAway.add(String(j.renamedFrom).trim());
+    });
+    const _dead = (n)=> isDel(n) || _renamedAway.has(String(n==null?'':n).trim());
+    const cloud = jobsSnap.jobs.filter(j=>j && !_dead(j.no));   // don't resurrect deleted/renamed ones
     let local=[]; try{ local=JSON.parse(localStorage.getItem('seafreight_jobs_v1')||'[]')||[]; }catch(e){}
-    local = local.filter(j=>j && !isDel(j.no));
+    local = local.filter(j=>j && !_dead(j.no));
     const byNo=new Map();
     let addedLocal=0;
     const _localTs = localStorage.getItem('sfp_jobs_savedAt')||'';
