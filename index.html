@@ -13685,7 +13685,7 @@ function clearImgExtract(){
 
     <!-- Filter bar -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-      <input id="sop_search" class="fi" placeholder="🔍 Booking / Job No. / Customer…" oninput="renderSOP()" style="width:200px;font-size:12px">
+      <input id="sop_search" class="fi" placeholder="🔍 Booking / Job No. / Customer / Remark…" oninput="renderSOP()" style="width:240px;font-size:12px">
       <select id="sop_month_fil" class="fi" onchange="renderSOP()" style="font-size:12px">
         <option value="">All Months</option>
       </select>
@@ -13711,11 +13711,12 @@ function clearImgExtract(){
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">ETD</th>
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">VESSEL / VOY</th>
             <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">STATUS</th>
+            <th style="padding:9px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)" title="พิมพ์แก้ได้เลย คลิกออกแล้วเซฟอัตโนมัติ — ขึ้น SOP PDF / SOP Email และ CS Hub เห็นด้วย">REMARK ✎</th>
             <th style="padding:9px 12px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border2)">SOP PDF</th>
           </tr>
         </thead>
         <tbody id="sop_tbody">
-          <tr><td colspan="8" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">⏳ กำลังโหลด…</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">⏳ กำลังโหลด…</td></tr>
         </tbody>
       </table>
     </div>
@@ -15112,7 +15113,8 @@ window.renderSOP = function(){
   }
 
   let filtered = jobs.filter(j=>{
-    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search)) return false;
+    /* ค้นใน remark ด้วย — พิมพ์คำที่เขียนไว้ เช่น "รอเอกสาร" ต้องเจองานทั้งหมดที่ติดเรื่องนั้น */
+    if(search && !(j.no||'').toLowerCase().includes(search) && !(j.jobno||'').toLowerCase().includes(search) && !(j.customer||j.shipper||'').toLowerCase().includes(search) && !(j.remarks||'').toLowerCase().includes(search)) return false;
     if(monthFil && (j.etdMonth||j.etaMonth||'')!==monthFil) return false;
     if(statusFil && j.status!==statusFil) return false;
     return true;
@@ -15125,7 +15127,7 @@ window.renderSOP = function(){
   if(!tbody) return;
 
   if(!filtered.length){
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">${jobs.length?'🔍 ไม่พบ Shipment':'📋 ยังไม่มี Shipment'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:60px;color:var(--muted);font-size:13px">${jobs.length?'🔍 ไม่พบ Shipment':'📋 ยังไม่มี Shipment'}</td></tr>`;
     return;
   }
 
@@ -15152,6 +15154,15 @@ window.renderSOP = function(){
       <td style="padding:10px 12px">
         <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${statusCol[j.status]||'var(--muted)'}">${statusMap[j.status]||j.status||'—'}</span>
       </td>
+      <td style="padding:6px 8px">
+        <textarea rows="2" spellcheck="false" data-sop-remark="${globalIdx}"
+          onchange="sopSaveRemark(${globalIdx}, this)"
+          onkeydown="if(event.key==='Escape'){this.value=this.defaultValue;this.blur();}"
+          placeholder="หมายเหตุ…"
+          title="ขึ้นใน SOP PDF / SOP Email และ CS Hub เห็นด้วย"
+          style="width:100%;min-width:150px;max-width:260px;resize:vertical;font-family:var(--sans);font-size:11px;line-height:1.35;padding:5px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--s1);color:var(--text)"
+        >${window.escHtml ? window.escHtml(j.remarks||'') : String(j.remarks||'')}</textarea>
+      </td>
       <td style="padding:10px 12px;text-align:center">
         <button onclick="generateSopPDF(${globalIdx})"
           style="background:var(--red);color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans);white-space:nowrap">
@@ -15160,6 +15171,33 @@ window.renderSOP = function(){
       </td>
     </tr>`;
   }).join('');
+};
+
+/* ── แก้ Remark ตรงตาราง SOP ───────────────────────────────────
+   ช่องเดียวกับ Remark ใน Edit Shipment (j.remarks) — ขึ้น SOP PDF / SOP Email
+   และ storageSave() จะยิง publishShipmentRemarks() ให้ CS Hub เห็นต่ออัตโนมัติ
+   ต้องประทับ updatedAt ด้วย ไม่งั้น snapshot เก่าจากคลาวด์จะทับข้อความที่เพิ่งพิมพ์
+   (บทเรียนเดียวกับเคส status เด้งกลับเป็น loaded เมื่อ 9 ต.ค. 2026) */
+window.sopSaveRemark = function(idx, el){
+  const jobs = window.savedJobs || [];
+  const j = jobs[Number(idx)];
+  if(!j || !el){ toast('❌ ไม่เจอ shipment ที่จะบันทึก'); return false; }
+  const next = String(el.value == null ? '' : el.value).trim();
+  const prev = String(j.remarks == null ? '' : j.remarks).trim();
+  el.value = next;
+  el.defaultValue = next;                       /* ให้ปุ่ม Esc ย้อนกลับมาที่ค่าล่าสุด */
+  if(next === prev) return false;               /* ไม่มีอะไรเปลี่ยน ไม่ต้องเขียน/ไม่ต้องกวน cloud */
+  j.remarks = next;
+  j.updatedAt = new Date().toISOString();
+  try{ window.storageSave && window.storageSave(); }catch(e){ console.warn('sopSaveRemark storageSave', e); }
+  try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){ console.warn('sopSaveRemark sync', e); }
+  /* แท็บอื่นที่โชว์ remark อยู่ ให้เห็นค่าใหม่ทันที */
+  try{ window.renderShipments && window.renderShipments(); }catch(e){}
+  try{ window.renderWorkBench && window.renderWorkBench(); }catch(e){}
+  el.style.borderColor = 'var(--green)';
+  setTimeout(()=>{ try{ el.style.borderColor = 'var(--border2)'; }catch(e){} }, 1200);
+  toast(next ? ('✓ บันทึก Remark ของ '+(j.no||'shipment')+' แล้ว') : ('✓ ล้าง Remark ของ '+(j.no||'shipment')+' แล้ว'));
+  return true;
 };
 
 
