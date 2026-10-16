@@ -6025,41 +6025,60 @@ window.rateTrendCompute = function(snaps){
     a.pol.localeCompare(b.pol) || a.pod.localeCompare(b.pod) ||
     a.del.localeCompare(b.del) || a.commodity.localeCompare(b.commodity));
 
-  /* ค่าเฉลี่ย 40HC ต่อเดือน แยกตามกลุ่ม — นับเฉพาะเส้นที่มีราคาจริง (>0) */
+  /* ค่าเฉลี่ย 40HC ต่อเดือน แยกตามกลุ่ม — นับเฉพาะเส้นที่มีราคาจริง (>0)
+     Δ ใช้ "ตะกร้าเดียวกัน" คือเฉพาะเส้นที่มีราคาทั้งเดือนล่าสุดและเดือนก่อนหน้า
+     ถ้าเอาค่าเฉลี่ยรวมมาลบกันตรงๆ จะเพี้ยน เพราะแต่ละเดือนมีเส้นไม่เท่ากัน */
   const avgBy = (field)=>{
     const g = new Map();
     routes.forEach(r=>{
       const name = r[field] || '(ไม่ระบุ)';
-      if(!g.has(name)) g.set(name, {});
-      const row = g.get(name);
+      if(!g.has(name)) g.set(name, {rows:[], acc:{}});
+      const e = g.get(name); e.rows.push(r);
       months.forEach(m=>{
-        const h = r.v[m] && r.v[m][2];
-        if(h>0){ if(!row[m]) row[m]={s:0,c:0}; row[m].s+=h; row[m].c++; }
+        const hh = r.v[m] && r.v[m][2];
+        if(hh>0){ if(!e.acc[m]) e.acc[m]={s:0,c:0}; e.acc[m].s+=hh; e.acc[m].c++; }
       });
     });
-    return [...g.entries()].map(([name,row])=>{
-      const o = {name:name, avg:{}, n:{}};
-      months.forEach(m=>{ o.avg[m] = row[m]&&row[m].c ? Math.round(row[m].s/row[m].c) : null;
-                          o.n[m]   = row[m]&&row[m].c ? row[m].c : 0; });
+    return [...g.entries()].map(([name,e])=>{
+      const o = {name:name, avg:{}, n:{}, lflDiff:null, lflPct:null, lflN:0, lflPair:null};
+      months.forEach(m=>{ o.avg[m] = e.acc[m]&&e.acc[m].c ? Math.round(e.acc[m].s/e.acc[m].c) : null;
+                          o.n[m]   = e.acc[m]&&e.acc[m].c ? e.acc[m].c : 0; });
+      for(let i=months.length-1;i>0;i--){
+        const b=months[i], a=months[i-1];
+        let dS=0, pS=0, c=0;
+        e.rows.forEach(r=>{
+          const x = r.v[a]&&r.v[a][2], y = r.v[b]&&r.v[b][2];
+          if(x>0 && y>0){ dS += y-x; pS += (y-x)/x*100; c++; }
+        });
+        if(c){ o.lflDiff=Math.round(dS/c); o.lflPct=Math.round(pS/c*100)/100;
+               o.lflN=c; o.lflPair=a+' → '+b; break; }
+      }
       return o;
-    }).sort((a,b)=>a.name.localeCompare(b.name));
+    })
+    /* กลุ่มที่ไม่มีราคา 40HC เลยสักเดือน (เช่น LCL คิดเป็น USD/CBM, REEFER ใช้ช่อง rf) — ตัดออก ไม่ใช่โชว์แถวว่าง */
+    .filter(o=> months.some(m=> o.n[m] > 0))
+    .sort((a,b)=>a.name.localeCompare(b.name));
   };
 
-  /* สรุปรวมต่อเดือน: ขึ้น/ลง/เท่าเดิม เทียบเดือนก่อนหน้า (เฉพาะเส้นที่มีทั้งสองเดือน) */
+  /* สรุปรวมต่อเดือน: ขึ้น/ลง/เท่าเดิม เทียบเดือนก่อนหน้า (เฉพาะเส้นที่มีทั้งสองเดือน)
+     avgPrev/avgNow = ค่าเฉลี่ยของ "ตะกร้าเดียวกัน" เอาไว้เทียบกันได้จริง
+     ส่วน avgAll เป็นค่าเฉลี่ยของทุกเส้นในเดือนนั้น ซึ่งเทียบข้ามเดือนไม่ได้ถ้าชุดเรทไม่เท่ากัน */
   const summary = months.map((m,i)=>{
     const prev = i>0 ? months[i-1] : null;
-    let up=0, down=0, same=0, sum=0, cnt=0, dSum=0, dCnt=0, pSum=0;
+    let up=0, down=0, same=0, sum=0, cnt=0, dSum=0, dCnt=0, pSum=0, aSum=0, bSum=0;
     routes.forEach(r=>{
-      const h = r.v[m] && r.v[m][2];
-      if(h>0){ sum+=h; cnt++; }
+      const hh = r.v[m] && r.v[m][2];
+      if(hh>0){ sum+=hh; cnt++; }
       if(!prev) return;
-      const a = r.v[prev] && r.v[prev][2], b = h;
+      const a = r.v[prev] && r.v[prev][2], b = hh;
       if(!(a>0) || !(b>0)) return;
       if(b>a) up++; else if(b<a) down++; else same++;
-      dSum += (b-a); dCnt++; pSum += (b-a)/a*100;
+      dSum += (b-a); dCnt++; pSum += (b-a)/a*100; aSum += a; bSum += b;
     });
-    return { month:m, routes:cnt, avg: cnt?Math.round(sum/cnt):null,
+    return { month:m, routes:cnt, avgAll: cnt?Math.round(sum/cnt):null,
              up:up, down:down, same:same, compared:dCnt,
+             avgPrev: dCnt?Math.round(aSum/dCnt):null,
+             avgNow:  dCnt?Math.round(bSum/dCnt):null,
              avgDiff: dCnt?Math.round(dSum/dCnt):null,
              avgPct: dCnt?Math.round(pSum/dCnt*100)/100:null };
   });
@@ -6191,14 +6210,21 @@ window.rateTrendExportXlsx = async function(){
     ['RATE TREND SUMMARY — เทียบรายเดือน (อ้างอิงราคา 40HC)'],
     ['As of', todayISO],
     [],
-    ['Month','Routes','Avg 40HC','Compared','Up','Down','Same','Avg Diff','Avg %']
+    ['Month','Routes','Avg 40HC (ทุกเส้น)','Compared','Up','Down','Same',
+     'Avg เดือนก่อน','Avg เดือนนี้','Avg Diff','Avg %']
   ];
-  T.summary.forEach(s=> sumAoa.push([ s.month, s.routes, s.avg, s.compared, s.up, s.down, s.same,
-                                      s.avgDiff, s.avgPct ]));
+  T.summary.forEach(s=> sumAoa.push([ s.month, s.routes, s.avgAll, s.compared, s.up, s.down, s.same,
+                                      s.avgPrev, s.avgNow, s.avgDiff, s.avgPct ]));
   sumAoa.push([]);
-  sumAoa.push(['หมายเหตุ: นับเฉพาะเส้นที่มีราคาทั้งสองเดือน — เส้นที่เพิ่งเข้าหรือหมดอายุไม่ถูกนับเป็นขึ้น/ลง']);
+  sumAoa.push(['อ่านยังไง:']);
+  sumAoa.push(['• Up / Down / Same และ Avg Diff / Avg % นับเฉพาะเส้นที่มีราคา "ทั้งสองเดือน" — เส้นที่เพิ่งเข้าหรือหมดอายุไม่ถูกนับเป็นขึ้น/ลง']);
+  sumAoa.push(['• "Avg เดือนก่อน" กับ "Avg เดือนนี้" คือค่าเฉลี่ยของตะกร้าเดียวกัน เอามาเทียบกันได้ตรงๆ']);
+  sumAoa.push(['• "Avg 40HC (ทุกเส้น)" รวมทุกเส้นของเดือนนั้น เทียบข้ามเดือนไม่ได้ ถ้าจำนวนชุดเรทไม่เท่ากัน']);
+  if(window.RATEHIST_SEED_MONTHS && window.RATEHIST_SEED_MONTHS.length)
+    sumAoa.push(['• เดือน '+window.RATEHIST_SEED_MONTHS.join(', ')+' '+(window.RATEHIST_SEED_NOTE||'')]);
   const wsSum = XLSX.utils.aoa_to_sheet(sumAoa);
-  wsSum['!cols'] = [{wch:12},{wch:9},{wch:11},{wch:11},{wch:7},{wch:7},{wch:7},{wch:11},{wch:9}];
+  wsSum['!cols'] = [{wch:12},{wch:9},{wch:18},{wch:11},{wch:7},{wch:7},{wch:7},
+                    {wch:14},{wch:13},{wch:11},{wch:9}];
   XLSX.utils.book_append_sheet(wb, wsSum, 'Summary');
 
   /* ── 2) By Carrier (+ กราฟ) ── */
@@ -6207,19 +6233,16 @@ window.rateTrendExportXlsx = async function(){
     ['RATE TREND — ค่าเฉลี่ย 40HC ต่อเดือน แยกตามสายเรือ'],
     ['As of', todayISO],
     ['ตัวเลขคือค่าเฉลี่ยของทุกเส้นที่สายเรือนั้นมีราคาในเดือนนั้น (USD/40HC)'],
-    [],
-    ['Carrier'].concat(MS).concat(['Δ ล่าสุด','Δ %'])
+    ['Δ คิดจากเส้นที่มีราคาทั้งสองเดือนเท่านั้น (ตะกร้าเดียวกัน) ไม่ใช่เอาค่าเฉลี่ยมาลบกัน'],
+    ['Carrier'].concat(MS).concat(['Δ ล่าสุด','Δ %','เทียบ','เส้นที่เทียบ'])
   ];
   T.byCarrier.forEach(c=>{
-    const vals = MS.map(m=>c.avg[m]);
-    let d=null, p=null;
-    for(let i=vals.length-1;i>0;i--){
-      if(vals[i]!=null && vals[i-1]!=null){ d=vals[i]-vals[i-1]; p=Math.round(d/vals[i-1]*10000)/100; break; }
-    }
-    carAoa.push([c.name].concat(vals).concat([d,p]));
+    carAoa.push([c.name].concat(MS.map(m=>c.avg[m]))
+                        .concat([c.lflDiff, c.lflPct, c.lflPair, c.lflN||null]));
   });
   const wsCar = XLSX.utils.aoa_to_sheet(carAoa);
-  wsCar['!cols'] = [{wch:14}].concat(MS.map(()=>({wch:11}))).concat([{wch:11},{wch:9}]);
+  wsCar['!cols'] = [{wch:14}].concat(MS.map(()=>({wch:11})))
+                             .concat([{wch:11},{wch:9},{wch:20},{wch:12}]);
   XLSX.utils.book_append_sheet(wb, wsCar, 'By Carrier');
 
   /* ── 3) By Source ── */
@@ -6227,22 +6250,19 @@ window.rateTrendExportXlsx = async function(){
     ['RATE TREND — ค่าเฉลี่ย 40HC ต่อเดือน แยกตามชุดเรท'],
     ['As of', todayISO],
     [],
-    ['Source'].concat(MS).concat(['Δ ล่าสุด','Δ %'])
+    ['Source'].concat(MS).concat(['Δ ล่าสุด','Δ %','เทียบ','เส้นที่เทียบ'])
   ];
   T.bySource.forEach(c=>{
-    const vals = MS.map(m=>c.avg[m]);
-    let d=null,p=null;
-    for(let i=vals.length-1;i>0;i--){
-      if(vals[i]!=null && vals[i-1]!=null){ d=vals[i]-vals[i-1]; p=Math.round(d/vals[i-1]*10000)/100; break; }
-    }
-    srcAoa.push([c.name].concat(vals).concat([d,p]));
+    srcAoa.push([c.name].concat(MS.map(m=>c.avg[m]))
+                        .concat([c.lflDiff, c.lflPct, c.lflPair, c.lflN||null]));
   });
   /* กี่เส้นต่อเดือน — บอกความครบของข้อมูล จะได้ไม่อ่านผิดว่าเรทหาย */
   srcAoa.push([]);
   srcAoa.push(['จำนวนเส้นที่มีข้อมูล'].concat(MS));
   T.bySource.forEach(c=> srcAoa.push([c.name].concat(MS.map(m=>c.n[m]||0))));
   const wsSrc = XLSX.utils.aoa_to_sheet(srcAoa);
-  wsSrc['!cols'] = [{wch:16}].concat(MS.map(()=>({wch:11}))).concat([{wch:11},{wch:9}]);
+  wsSrc['!cols'] = [{wch:16}].concat(MS.map(()=>({wch:11})))
+                             .concat([{wch:11},{wch:9},{wch:20},{wch:12}]);
   XLSX.utils.book_append_sheet(wb, wsSrc, 'By Source');
 
   /* ── 4) Routes — รายเส้น ── */
@@ -6286,18 +6306,27 @@ window.rateTrendExportXlsx = async function(){
   /* ── เขียนไฟล์ + ยัดกราฟลงชีต By Carrier (ชีตที่ 2) ── */
   let buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
   try{
-    const nCar = T.byCarrier.length;
     const firstCol = window.xlCol(1), lastCol = window.xlCol(MS.length);
-    const series = T.byCarrier.map((c,i)=>({
-      nameRef: "'By Carrier'!$A$"+(HDR_ROW+1+i),
-      ref:     "'By Carrier'!$"+firstCol+"$"+(HDR_ROW+1+i)+":$"+lastCol+"$"+(HDR_ROW+1+i)
-    }));
-    if(nCar){
+    /* เอาเฉพาะสายเรือหลัก — ถ้าลากครบ 40 เส้น legend บังกราฟจนอ่านไม่ออก
+       เลือกจาก "มีข้อมูลครบทุกเดือน" ก่อน แล้วเรียงตามจำนวนเส้นเดือนล่าสุด */
+    const CHART_MAX = 12, last = MS[MS.length-1];
+    const pick = T.byCarrier
+      .map((c,i)=>({c:c, row:HDR_ROW+1+i,
+                    full: MS.every(m=>c.avg[m]!=null),
+                    n: c.n[last]||0}))
+      .filter(x=>x.full)
+      .sort((a,b)=> b.n - a.n)
+      .slice(0, CHART_MAX);
+    if(pick.length){
       buf = window.xlsxInjectLineChart(buf, {
-        sheetIndex: 2, title: 'ค่าเฉลี่ยเรท 40HC ต่อเดือน แยกตามสายเรือ (USD)',
+        sheetIndex: 2,
+        title: 'ค่าเฉลี่ยเรท 40HC ต่อเดือน (USD) — '+pick.length+' สายเรือที่มีข้อมูลครบทุกเดือน',
         catRef: "'By Carrier'!$"+firstCol+"$"+HDR_ROW+":$"+lastCol+"$"+HDR_ROW,
-        series: series,
-        anchor: {col: MS.length+4, row: HDR_ROW-1}
+        series: pick.map(x=>({
+          nameRef: "'By Carrier'!$A$"+x.row,
+          ref:     "'By Carrier'!$"+firstCol+"$"+x.row+":$"+lastCol+"$"+x.row
+        })),
+        anchor: {col: MS.length+6, row: HDR_ROW-1}
       });
     }
   }catch(e){ console.warn('inject chart', e); toast('⚠ ใส่กราฟไม่สำเร็จ — ได้เฉพาะตัวเลข'); }
