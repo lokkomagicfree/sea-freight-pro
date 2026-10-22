@@ -800,6 +800,7 @@ body{font-size:14px;font-weight:450}
           <th style="text-align:right;color:var(--red)">Cost</th>
           <th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>
           <th style="text-align:right">Comm USD</th><th style="text-align:right">Comm THB</th>
+          <th style="text-align:right;color:var(--cyan);min-width:120px" title="กำไรจริงเป็นบาทของใบนี้ ตามระบบบัญชีบริษัท — ใส่เฉพาะใบที่ไม่ตรงกับ SFP ใบที่เว้นว่างจะใช้ยอดที่ SFP คำนวณ ผลรวมทั้งเดือนจะไปขึ้นช่อง Profit THB (ใส่เอง) ใน Monthly Summary">Profit THB <span style="font-size:9px;opacity:.7">(ใส่เอง)</span></th>
           <th style="min-width:112px" title="วัน-เวลาที่เพิ่ม shipment นี้เข้าระบบ">🕒 Added</th>
           <th>Status</th><th style="min-width:160px">Remarks</th><th style="text-align:center">Actions</th>
         </tr></thead>
@@ -1706,6 +1707,45 @@ function tieredCommRate(monthProfitThb){
 function monthlyCommRateFor(profitThb){
   return commMode==='tiered' ? tieredCommRate(profitThb||0) : (window.commRate||0.25);
 }
+
+/* ══ กำไรบาทรายชิปเมนต์ "ใส่เอง" ═══════════════════════════════
+   กำไรในระบบบัญชีบริษัทมักไม่ตรงกับที่ SFP คำนวณ (ค่าใช้จ่ายจริงต่างจากที่ตั้งไว้)
+   เลยให้กรอกยอดจริงรายใบได้ที่ j.profitThbManual
+   ใบไหนไม่ได้กรอก → ใช้ยอดที่ SFP คำนวณ (profit USD × เรทของใบนั้น) ตามเดิม
+   ยอดรวมของเดือนจะไปเป็นค่าตั้งต้นของช่อง "Profit THB (ใส่เอง)" ในตาราง Monthly */
+window.hasManualProfitThb = function(j){
+  if(!j) return false;
+  const m = j.profitThbManual;
+  return m !== undefined && m !== null && m !== '' && isFinite(Number(m));
+};
+window.jobProfitThb = function(j){
+  if(!j) return 0;
+  if(window.hasManualProfitThb(j)) return Number(j.profitThbManual);
+  return (Number(j.profit)||0) * (Number(j.rate) || Number(window.exRate) || 0);
+};
+/* ใบที่ cancelled ไม่นับ — กฎเดียวกับที่ใช้ทั้งหน้า Sale */
+window.monthActiveJobs = function(jobs){
+  return (jobs||[]).filter(j=>j && j.status!=='cancelled');
+};
+window.monthProfitThbSum = function(activeJobs, transitThb){
+  return (activeJobs||[]).reduce((s,j)=>s + window.jobProfitThb(j), 0) + (Number(transitThb)||0);
+};
+/* ยอดที่ใช้คิดค่าคอมของเดือนนั้น
+   พิมพ์ทับช่องรายเดือนไว้ → ใช้เลขนั้น (ปุ่ม ↺ ลบทิ้งเพื่อกลับมาใช้ผลรวม)
+   '' (ของเก่าที่เคยล้างไว้) ถือว่าไม่มีเลขทับ ใช้ผลรวมเหมือนกัน — ไม่ใช่ 0
+   ไม่งั้นเดือนที่เคยกดล้างจะกลายเป็นค่าคอม 0 ไปเงียบๆ */
+window.monthProfitBasis = function(key, activeJobs, transitThb){
+  let ov;
+  try{ ov = (typeof srLoad==='function' ? srLoad() : {})['manual_thb_profit_'+key]; }catch(e){}
+  if(ov !== undefined && ov !== null && ov !== '' && isFinite(Number(ov))) return Number(ov);
+  return window.monthProfitThbSum(activeJobs, transitThb);
+};
+window.monthHasOverride = function(key){
+  try{
+    const ov = (typeof srLoad==='function' ? srLoad() : {})['manual_thb_profit_'+key];
+    return ov !== undefined && ov !== null && ov !== '' && isFinite(Number(ov));
+  }catch(e){ return false; }
+};
 
 // GP (gross profit) warning based on profit as % of COST.
 //  < 3%  → critical  |  3–5% → credit warning  |  ≥ 5% → OK (no warning)
@@ -2657,14 +2697,16 @@ function commMonthlyTotals(){
     // ── ค่าคอมจริง ──
     // ช่อง "฿ profit" ที่กรอกเองในตาราง Monthly Summary คือยอดจริงที่ใช้จ่ายค่าคอม
     // (คอลัมน์ "COMM จาก THB") → ถ้ามีตัวเลขนี้ ให้ยึดตัวนี้ ไม่ใช้ยอดที่ระบบคำนวณเอง
+    //    ไม่มีเลขทับ → ใช้ผลรวมกำไรบาทรายใบ (ใบไหนกรอกเองใช้เลขนั้น) + Transit
+    //    ต้องใช้สูตรเดียวกับช่องในตาราง Monthly ไม่งั้นค่าคอมที่ CS Hub เห็นจะไม่ตรงกับที่หน้าจอโชว์
     let basis = null;
     try{
-      const sr = (typeof srLoad==='function') ? srLoad() : {};
-      const manual = sr['manual_thb_profit_'+key];
-      if(manual === '')             basis = null;              // ล้างเอง = ไม่มียอดจริง ใช้ที่ระบบคำนวณ
-      else if(manual !== undefined) basis = Number(manual);
-      else                          basis = (mDb>0 ? mDb : null);
-    }catch(e){}
+      basis = window.monthProfitBasis(key, active, mDb);
+      /* ไม่มีใบไหนกรอกเอง และไม่ได้พิมพ์ทับ → ปล่อยให้ใช้สูตรเดิมของระบบ (auto)
+         กันผลลัพธ์เพี้ยนในเคสที่บางใบตั้ง commRate รายงานเอาไว้ */
+      const anyManual = active.some(j=>window.hasManualProfitThb(j));
+      if(!anyManual && !window.monthHasOverride(key)) basis = (mDb>0 ? mDb : null);
+    }catch(e){ basis = null; }
     // กันกรอกผิดช่อง: ตัวเลขนี้ต้องเป็น "กำไร" ซึ่งย่อมมากกว่า "ค่าคอม" ที่คิดจากกำไรนั้นเสมอ
     // ถ้าน้อยกว่าค่าคอมที่ระบบคำนวณได้ แปลว่าเผลอเอาค่าคอมมาใส่ → ทิ้ง ใช้ยอดระบบแทน
     let badBasis = false;
@@ -4846,6 +4888,45 @@ function flushSecuredQueueToWeeklyReport(){
   try{ localStorage.removeItem(SECURED_QUEUE_KEY); }catch(e){}   // ล้างคิวเก่าที่ค้างจากเวอร์ชันก่อน
 }
 
+/* กรอกกำไรบาทจริงของใบนี้ (ตามระบบบัญชีบริษัท) — เว้นว่าง = กลับไปใช้ยอดที่ SFP คำนวณ
+   ไม่ไปยุ่งกับ j.profit / j.comm ของเดิมเลย ตัวเลข USD ยังเป็นของ SFP เหมือนเดิม
+   มีผลแค่กับยอดรวมบาทของเดือน ซึ่งเป็นฐานคิดค่าคอม */
+window.saveJobProfitThb = function(idx, el){
+  const j = (window.savedJobs||[])[Number(idx)];
+  if(!j || !el){ toast('❌ ไม่เจอ shipment ที่จะบันทึก'); return false; }
+  const raw = String(el.value==null?'':el.value).trim();
+  const had = window.hasManualProfitThb(j);
+  const prev = had ? Number(j.profitThbManual) : null;
+  if(raw === ''){
+    if(!had) return false;
+    /* เก็บเป็น '' ไม่ใช่ลบทิ้ง — ตัวรวมข้อมูลข้ามเครื่องข้ามช่องที่เป็น undefined
+       ถ้าลบคีย์ไปเลย อีกเครื่องจะไม่รู้ว่าถูกล้าง แล้วเลขเก่าจะเด้งกลับมา */
+    j.profitThbManual = '';
+  }else{
+    const n = Number(raw);
+    if(!isFinite(n)){ toast('❌ ใส่เป็นตัวเลขบาทเท่านั้น'); el.value = had?prev:''; return false; }
+    if(had && n === prev) return false;
+    j.profitThbManual = Math.round(n*100)/100;
+  }
+  j.updatedAt = new Date().toISOString();
+  try{ window.storageSave && window.storageSave(); }catch(e){ console.warn('saveJobProfitThb save', e); }
+  try{ window.syncShipmentsNow && window.syncShipmentsNow(); }catch(e){ console.warn('saveJobProfitThb sync', e); }
+  /* วาดใหม่ทั้งหน้า Sale — ยอดรวมกลุ่มเดือนและช่อง Monthly ต้องขยับตาม */
+  try{ window.renderShipments && window.renderShipments(); }catch(e){}
+  toast(raw==='' ? ('↺ ใช้ยอดที่ SFP คำนวณสำหรับ '+(j.no||'ใบนี้'))
+                 : ('✓ กำไรบาทของ '+(j.no||'ใบนี้')+' = '+Number(j.profitThbManual).toLocaleString('th-TH')+' ฿'));
+  return true;
+};
+
+/* ↺ ลบเลขที่พิมพ์ทับช่องรายเดือน เพื่อกลับไปใช้ผลรวมจากรายใบ */
+window.resetMonthProfitOverride = function(key){
+  const data = srLoad();
+  delete data['manual_thb_profit_'+key];
+  srSave(data);
+  try{ window.renderShipments && window.renderShipments(); }catch(e){}
+  toast('↺ '+key+' กลับไปใช้ผลรวมจากรายใบแล้ว');
+};
+
 function recalcJobFinancials(j){
   const ts=j.sell||j.totalSell||0, tc=j.cost||j.totalCost||0;
   const _active=(j.status==='confirmed'||j.status==='loaded'||j.status==='completed')&&j.status!=='cancelled';
@@ -6538,11 +6619,14 @@ function renderShipments(){
       return s+(isActive?(j.comm||0):0);
     },0);
     const mCommThb=keyJobs.reduce((s,j)=>s+(j.commThb||0),0);
+    /* ยอดกำไรบาทของกลุ่มเดือนนี้ — ใบไหนใส่เองใช้เลขนั้น ที่เหลือใช้ของ SFP */
+    const mProfitThbRow = window.monthProfitThbSum(window.monthActiveJobs(keyJobs), 0);
+    const mManualCount  = keyJobs.filter(j=>window.hasManualProfitThb(j)).length;
     // หัวกลุ่มเดือน — กดเพื่อย่อ/กางแถวงานของเดือนนั้น (ยอดรวมท้ายกลุ่มยังโชว์อยู่)
     const _cl = _mgrpIsCollapsed(key);
     html+=`<tr data-mgrp="${key}" onclick="toggleMonthGroup('${key}')" title="กดเพื่อย่อ/กางเดือนนี้"
         style="cursor:pointer;user-select:none">
-      <td colspan="23" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">
+      <td colspan="24" style="padding:6px 12px;background:var(--s2);font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em">
         <span style="display:inline-block;width:14px;color:var(--cyan);font-size:11px">${_cl?'▶':'▼'}</span>${typeLabel} · ${label} · ${keyJobs.length} jobs${_cl?' <span style="color:var(--gold)">· ย่อไว้</span>':''}
       </td></tr>`;
     keyJobs.forEach(j=>{
@@ -6567,6 +6651,13 @@ function renderShipments(){
         <td style="text-align:right;font-family:var(--mono);font-size:11px;padding:7px 10px">${j.status==='cancelled'?'—':j.margin.toFixed(1)+'%'}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.comm<0?'var(--red)':'var(--gold)'};font-weight:600;padding:7px 10px">${j.status==='cancelled'?'—':'$'+j.comm.toFixed(2)}</td>
         <td style="text-align:right;font-family:var(--mono);font-size:11px;color:${j.status==='cancelled'?'var(--muted)':j.commThb<0?'var(--red)':'var(--gold)'};padding:7px 10px">${j.status==='cancelled'?'—':j.commThb.toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'}</td>
+        <td style="padding:4px 6px;text-align:right">
+          <input type="number" step="100" data-pthb="${j._idx}" value="${window.hasManualProfitThb(j)?Number(j.profitThbManual):''}"
+            onchange="saveJobProfitThb(${j._idx}, this)"
+            placeholder="${j.status==='cancelled'?'—':Math.round((j.profit||0)*(j.rate||exRate)).toLocaleString('th-TH')}"
+            title="กำไรจริงเป็นบาทของใบนี้ — เว้นว่าง = ใช้ยอดที่ SFP คำนวณ (${Math.round((j.profit||0)*(j.rate||exRate)).toLocaleString('th-TH')} ฿)"
+            style="width:104px;background:${window.hasManualProfitThb(j)?'rgba(41,128,185,.10)':'var(--s2)'};border:1px solid ${window.hasManualProfitThb(j)?'rgba(41,128,185,.45)':'var(--border)'};border-radius:5px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:3px 6px;text-align:right;outline:none">
+        </td>
         <td style="padding:6px 8px;white-space:nowrap">${addedCell(j)}</td>
         <td style="padding:5px 8px;min-width:110px">${statusSel(j.status,j._idx)}</td>
         <td style="padding:4px 8px;min-width:190px"><input type="text" value="${j.remarks||''}" onchange="savedJobs[${j._idx}].remarks=this.value;storageSave()" oninput="this.style.background=this.value.trim()?'rgba(255,235,59,.5)':'transparent'" style="width:100%;background:${(j.remarks||'').trim()?'rgba(255,235,59,.5)':'transparent'};border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;font-weight:700;padding:3px 6px;border-radius:4px;outline:none" onfocus="this.style.borderBottomColor='var(--cyan)'" onblur="this.style.borderBottomColor='var(--border)'"></td>
@@ -6587,10 +6678,14 @@ function renderShipments(){
       <td></td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">$${mComm.toFixed(2)}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--gold)">${mCommThb.toLocaleString('th-TH',{maximumFractionDigits:0})} ฿</td>
+      <td style="text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;padding:5px 10px;color:var(--cyan)"
+          title="${mManualCount?(mManualCount+' ใบใส่เอง · ที่เหลือใช้ยอดที่ SFP คำนวณ'):'ยังไม่มีใบไหนใส่เอง — ใช้ยอดที่ SFP คำนวณทั้งหมด'}">
+        ${Math.round(mProfitThbRow).toLocaleString('th-TH')} ฿${mManualCount?`<span style="font-size:9px;opacity:.75"> (${mManualCount}✎)</span>`:''}
+      </td>
       <td colspan="4"></td>
     </tr>`;
   });
-  if(!jobs.length)html='<tr><td colspan="23" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
+  if(!jobs.length)html='<tr><td colspan="24" style="padding:32px;text-align:center;color:var(--muted)">No shipments found</td></tr>';
   tbody.innerHTML=html;
   // Total all — use filtered jobs
   const totP=jobs.reduce((s,j)=>{
@@ -7508,12 +7603,12 @@ function renderMonthlySummary(groups,sortedKeys){
     const commDue=commDueLabel(key),commDueCol=commDueColor(key);
     const mthKey=key.replace('-','_');
     const dbCol=mDb>0?'var(--cyan)':mDb<0?'var(--red)':'var(--muted)';
-    // Pre-fill with saved manual THB profit, or fallback to CB profit
-    const srDataNow = srLoad();
-    const savedThbProfit = srDataNow['manual_thb_profit_'+key];
-    // undefined = ยังไม่เคยกรอก → ใส่ยอด Transit ให้เป็นค่าตั้งต้น
-    // ''        = ผู้ใช้ลบออกเอง → ปล่อยว่างไว้ อย่าเติมอะไรกลับ
-    const commInputVal = savedThbProfit !== undefined ? savedThbProfit : (mDb>0 ? mDb : '');
+    /* ค่าตั้งต้นของช่องนี้ = ผลรวมกำไรบาทรายใบ (ใบไหนใส่เองใช้เลขนั้น) + Transit
+       ถ้าเคยพิมพ์ทับไว้ ใช้เลขที่พิมพ์ และโชว์ปุ่ม ↺ ให้กลับมาใช้ผลรวมได้ */
+    const _hasOv   = window.monthHasOverride(key);
+    const _sumThb  = window.monthProfitThbSum(activeJobs, mDb);
+    const _manualN = activeJobs.filter(j=>window.hasManualProfitThb(j)).length;
+    const commInputVal = window.monthProfitBasis(key, activeJobs, mDb);
     const _mRate = monthlyCommRateFor(commInputVal||0);
     const commInputDisplay = commInputVal>0 ? Math.round(commInputVal*_mRate).toLocaleString('th-TH',{maximumFractionDigits:0})+' ฿'+(commMode==='tiered'?` (${(_mRate*100).toFixed(0)}%)`:'') : '—';
     return `<tr style="border-bottom:1px solid var(--border)">
@@ -7539,10 +7634,11 @@ function renderMonthlySummary(groups,sortedKeys){
       <td style="padding:5px 8px;text-align:right">
         <input type="number" min="0" step="100" data-month="${key}" value="${commInputVal}" oninput="recalcMonthlyComm(this)"
           placeholder="${monthProfitThb>0?Math.round(monthProfitThb).toLocaleString('th-TH'):'฿ profit'}"
-          title="ใส่ยอด &quot;กำไร&quot; ของเดือนนี้เป็นบาท (ไม่ใช่ค่าคอม) — ระบบคำนวณได้ ${monthProfitThb>0?Math.round(monthProfitThb).toLocaleString('th-TH'):'—'} ฿ · ค่าคอมจะคิดให้เองในช่องถัดไป"
-          style="width:110px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:4px 6px;text-align:right;outline:none"
+          title="ใส่ยอด &quot;กำไร&quot; ของเดือนนี้เป็นบาท (ไม่ใช่ค่าคอม)${_hasOv?' — ตอนนี้เป็นเลขที่พิมพ์ทับไว้ ผลรวมจากรายใบคือ '+Math.round(_sumThb).toLocaleString('th-TH')+' ฿ (กด ↺ เพื่อกลับไปใช้)':' — มาจากผลรวมรายใบ'+(_manualN?' ('+_manualN+' ใบใส่เอง)':'')+' พิมพ์ทับได้'} · ค่าคอมจะคิดให้เองในช่องถัดไป"
+          style="width:110px;background:${_hasOv?'rgba(183,128,10,.10)':'var(--s2)'};border:1px solid ${_hasOv?'rgba(183,128,10,.5)':'var(--border)'};border-radius:5px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:4px 6px;text-align:right;outline:none"
           data-profit="${Math.round(monthProfitThb)}"
-          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='${_hasOv?'rgba(183,128,10,.5)':'var(--border)'}'">
+        ${_hasOv?`<button onclick="resetMonthProfitOverride('${key}')" title="กลับไปใช้ผลรวมจากรายใบ (${Math.round(_sumThb).toLocaleString('th-TH')} ฿)" style="border:none;background:none;color:var(--gold);cursor:pointer;font-size:12px;margin-left:2px;padding:0 2px">↺</button>`:(_manualN?`<span title="${_manualN} ใบใส่เอง" style="font-size:9px;color:var(--cyan);margin-left:2px">${_manualN}✎</span>`:'')}
         <span id="mwarn_${mthKey}" style="display:none;color:var(--gold);font-size:12px;margin-left:3px;cursor:help">⚠</span>
       </td>
       <td style="padding:9px 10px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold)" id="mcomm_${mthKey}">${commInputDisplay}</td>
@@ -13973,7 +14069,8 @@ onAuthStateChanged(auth, async user=>{
         //    ให้ข้ามเครื่องได้ แต่เฉพาะตอนที่ฝั่ง cloud "ใหม่กว่าจริง" เท่านั้น
         //    ใบไหนไม่มี updatedAt ทั้งสองฝั่ง = ตัดสินไม่ได้ ไม่แตะ (กันทับข้อมูลที่เพิ่งกรอก)
         const MONEY = ['sell','cost','profit','comm','commThb','margin','rate','q20','q40','q40hc',
-                       'charges','sells','costs','totalSell','totalCost','cbm','type','customer','shipper','pol','pod','del'];
+                       'charges','sells','costs','totalSell','totalCost','cbm','type','customer','shipper','pol','pod','del',
+                       'profitThbManual'];   // กำไรบาทที่กรอกเอง — ต้องข้ามเครื่องได้ด้วย
         const _rt=String(rj.updatedAt||''), _lt=String(lj.updatedAt||'');
         if(_rt && _lt && _rt > _lt) MONEY.forEach(f=>{
           if(rj[f] !== undefined && JSON.stringify(rj[f]) !== JSON.stringify(lj[f])){ lj[f]=rj[f]; changed=true; }
